@@ -25,7 +25,7 @@ test('native entry registers polling before a player window exists and survives 
   assert.deepEqual(menus.slice(0,2).map(item=>item.title),['Open Cue sidebar','Advanced']);
   assert.ok(!menus.some(item=>['Enable AI subtitles for this video','Stop AI subtitles','Play / continue','Retry at current position'].includes(item.title)));
   assert.deepEqual(menus.find(item=>item.title==='Advanced')?.items.map(item=>item.title),[
-    'Remux current video (reset timestamps)…','Export generated subtitles…','Save diagnostics',
+    'Save a copy as MKV (reset timestamps)…','Export generated subtitles…','Save diagnostics',
     'Diagnostics: player and audio track','Diagnostics: 100 subtitle reloads (test media)']);
   menus.find(item=>item.title==='Advanced')!.items.find(item=>item.title==='Save diagnostics')!.action();
   assert.equal(written[0][0],'@data/cue-session-diagnostic.json');

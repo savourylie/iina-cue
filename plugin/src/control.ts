@@ -26,7 +26,10 @@ export function originalLanguageChoice(code: string | undefined, status: string 
   const known = !!code && code !== "und";
   const label = originalLanguageLabel(known ? code : undefined);
   const name = label.replace(" (original)", "");
-  if (known && status === "tentative") return {label, hint: `Spoken language: ${name}, detected from the transcript and not yet verified.`};
+  if (known && status === "tentative") {
+    const cantonese = code === "zh" ? " Auto-detect cannot tell Cantonese from Chinese; if this is Cantonese, choose it under Source language." : "";
+    return {label, hint: `Spoken language: ${name}, detected from the transcript and not yet verified.${cantonese}`};
+  }
   if (known || !state.active) return {label, hint: ""};
   if (state.unclear) return {label, hint: "Spoken language not detected yet. If you know it, choose it under Source language."};
   return {label, hint: "Detecting the spoken language…"};
@@ -44,7 +47,7 @@ const errorCopy: Record<string, [string, string]> = {
   AUDIO_TRACK_MAPPING_AMBIGUOUS: ["Audio track not verified", "Cue could not confirm which audio track is playing, so it stopped preparing captions."],
   AUDIO_DELAY_UNSUPPORTED: ["Audio delay not supported", "Set the audio delay back to 0, then retry."],
   HELPER_DISCONNECTED: ["Subtitle engine disconnected", "Retry to reconnect."],
-  HELPER_RESTART_REQUIRED: ["Subtitle engine update waiting", "Wait for the remux to finish or close other Cue windows, then retry."],
+  HELPER_RESTART_REQUIRED: ["Subtitle engine update waiting", "Wait for the MKV copy to finish or close other Cue windows, then retry."],
   MODEL_LOAD_FAILED: ["Speech model did not load", "Retry. If it keeps failing, save diagnostics from Advanced."],
   ALIGNMENT_FAILED: ["Caption timing failed", "These captions did not pass the timing check. Retry or keep playing."],
   TRANSLATION_FAILED: ["Translation failed", "The translation did not pass validation. Retry or choose the original language."],

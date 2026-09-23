@@ -33,6 +33,10 @@
   .field-hint[hidden]{display:none}
   .option{display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer}
   .option input{margin-top:5px;flex:none}
+  .option-hint{display:block;font-size:12px;line-height:1.4;opacity:.8}
+  .developer{margin-top:4px}
+  .developer summary{padding:7px 10px;font-size:13px;opacity:.8;cursor:pointer}
+  .developer summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .size-heading{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px}
   #subtitle-size{display:block;width:100%;margin:5px 0 14px;accent-color:#728eff}
   output{font-variant-numeric:tabular-nums;opacity:.75}
@@ -90,13 +94,13 @@
 </select>
 <p id="target-hint" class="field-hint" hidden></p>
 <label for="source">Source language</label>
-<select id="source">
+<select id="source" aria-describedby="source-hint">
   <option value="auto">Auto-detect</option>
   <option value="en">English</option>
   <option value="ja">Japanese</option>
   <option value="zh">Chinese</option>
   <option value="ko">Korean</option>
-  <optgroup label="Experimental · Qwen alignment">
+  <optgroup label="Experimental">
     <option value="yue">Cantonese</option>
     <option value="fr">French</option>
     <option value="de">German</option>
@@ -106,33 +110,35 @@
     <option value="es">Spanish</option>
   </optgroup>
 </select>
-<p><small>Experimental source languages use the local aligner but have not passed Cue's transcription or translation quality checks. Auto-detect may not distinguish Cantonese from Chinese; choose Cantonese manually to test it.</small></p>
+<p id="source-hint" class="field-hint" hidden>Experimental: timed by the local aligner, but not yet through Cue's transcription or translation quality checks.</p>
 <div class="size-heading"><label for="subtitle-size">Subtitle size</label><output id="subtitle-size-value" for="subtitle-size">55</output></div>
 <input id="subtitle-size" type="range" min="16" max="96" step="1" value="55">
-<label class="option"><input id="pause-until-ready" type="checkbox">Pause until captions are ready</label>
+<label class="option"><input id="pause-until-ready" type="checkbox" aria-describedby="pause-hint"><span>Pause until captions are ready<span id="pause-hint" class="option-hint">Press play once captions are ready. Cue never resumes a pause you made.</span></span></label>
 <label class="option"><input id="subtitle-box" type="checkbox">White text on a translucent black background</label>
 <details id="advanced" class="advanced">
   <summary>Advanced</summary>
   <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions">
-    <button type="button" data-action="remux">Remux current video (reset timestamps)…</button>
+    <button type="button" data-action="remux">Save a copy as MKV (reset timestamps)…</button>
     <form id="remux-form" class="remux-form" hidden>
       <label for="remux-name">New MKV filename</label>
       <input id="remux-name" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-describedby="remux-path">
       <p id="remux-path" class="remux-save-path"></p>
       <p class="remux-note">Original stays unchanged. Video, audio, and subtitles are copied; timed metadata and data tracks are omitted.</p>
-      <div class="remux-form-actions"><button type="submit">Start remux</button><button id="remux-cancel" type="button">Cancel</button></div>
+      <div class="remux-form-actions"><button type="submit">Save copy</button><button id="remux-cancel" type="button">Cancel</button></div>
     </form>
     <div id="remux-progress" class="remux-progress" hidden>
       <div class="remux-progress-heading"><span id="remux-status" role="status" aria-live="polite"></span><output id="remux-percent" for="remux-bar"></output></div>
-      <progress id="remux-bar" max="100" aria-label="Remux progress"></progress>
+      <progress id="remux-bar" max="100" aria-label="MKV copy progress"></progress>
     </div>
     <button type="button" data-action="export">Export generated subtitles…</button>
     <button type="button" data-action="diagnostic">Save diagnostics</button>
-    <button type="button" data-action="player-diagnostic">Diagnostics: player and audio track</button>
-    <button type="button" data-action="reload-diagnostic">Diagnostics: 100 subtitle reloads (test media)</button>
+    <details class="developer">
+      <summary>Developer diagnostics</summary>
+      <button type="button" data-action="player-diagnostic">Player and audio track</button>
+      <button type="button" data-action="reload-diagnostic">100 subtitle reloads (test media)</button>
+    </details>
   </div>
 </details>
-<p><small>Playback continues while captions are prepared; Cue attaches them when ready. If you enable pausing, press play after captions are ready. Cue never resumes your own pause. Only nearby captions are prepared; incomplete exports are marked partial.</small></p>
 <script>
   let remuxState='idle';
   let remuxDraft=null;
@@ -190,11 +196,14 @@
     if([...source.options].some(option=>option.value===data.source))source.value=data.source;
     document.getElementById('pause-until-ready').checked=data.pauseUntilReady===true;
     document.getElementById('subtitle-box').checked=data.subtitleBox===true;
+    syncSourceHint();
     const size=document.getElementById('subtitle-size');
     if(Number.isInteger(data.subtitleSize)&&data.subtitleSize>=16&&data.subtitleSize<=96){size.value=String(data.subtitleSize);document.getElementById('subtitle-size-value').textContent=String(data.subtitleSize);}
   });
   document.getElementById('target').addEventListener('change',event=>iina.postMessage('action',{action:'set-target',target:event.target.value}));
-  document.getElementById('source').addEventListener('change',event=>iina.postMessage('action',{action:'set-source',target:event.target.value}));
+  // The experimental caveat only matters once an experimental language is chosen.
+  function syncSourceHint(){const source=document.getElementById('source');document.getElementById('source-hint').hidden=source.value==='auto'||!source.querySelector('optgroup').querySelector(`[value="${source.value}"]`);}
+  document.getElementById('source').addEventListener('change',event=>{syncSourceHint();iina.postMessage('action',{action:'set-source',target:event.target.value});});
   const size=document.getElementById('subtitle-size');
   size.addEventListener('input',event=>{const value=Number(event.target.value);document.getElementById('subtitle-size-value').textContent=String(value);iina.postMessage('action',{action:'preview-subtitle-size',value});});
   size.addEventListener('change',event=>iina.postMessage('action',{action:'set-subtitle-size',value:Number(event.target.value)}));

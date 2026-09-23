@@ -39,6 +39,8 @@ test('original output label follows detected language and preserves unknown stat
   const idle={active:false,unclear:false},working={active:true,unclear:false},unclear={active:true,unclear:true};
   assert.deepEqual(originalLanguageChoice('ca','tentative',working),{label:'Catalan (original)',hint:'Spoken language: Catalan, detected from the transcript and not yet verified.'});
   assert.deepEqual(originalLanguageChoice('en','manual',working),{label:'English (original)',hint:''});
+  assert.match(originalLanguageChoice('zh','tentative',working).hint,/Cantonese/);
+  assert.doesNotMatch(originalLanguageChoice('ja','tentative',working).hint,/Cantonese/);
   assert.deepEqual(originalLanguageChoice(undefined,'unknown',idle),{label:'Original language',hint:''});
   assert.equal(originalLanguageChoice('und','unknown',working).hint,'Detecting the spoken language…');
   assert.match(originalLanguageChoice('und','unknown',unclear).hint,/not detected yet/);
@@ -46,7 +48,7 @@ test('original output label follows detected language and preserves unknown stat
 });
 test('source selector exposes every pinned Qwen alignment language',()=>{
   const html=readFileSync('plugin/sidebar.html','utf8');
-  const source=html.match(/<select id="source">([\s\S]*?)<\/select>/)?.[1] ?? '';
+  const source=html.match(/<select id="source"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? '';
   const codes=[...source.matchAll(/<option value="([^"]+)">/g)].map(match=>match[1]);
   assert.deepEqual(new Set(codes),new Set(['auto','zh','yue','en','de','es','fr','it','pt','ru','ko','ja']));
 });

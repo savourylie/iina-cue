@@ -235,22 +235,22 @@ async function exportSubtitles() {
   } catch (error) { if (token === generation) showActionError(error); }
 }
 async function remuxCurrentMedia() {
-  if (remuxJobId || remuxStarting) { iina.core.osd("A remux is already running."); return; }
+  if (remuxJobId || remuxStarting) { iina.core.osd("An MKV copy is already being saved."); return; }
   const source = iina.mpv.getString("path");
-  if (!source || !source.startsWith("/")) return setRemuxStatus({text:"Open a local video before remuxing.",state:"error"}, true);
+  if (!source || !source.startsWith("/")) return setRemuxStatus({text:"Open a local video before saving an MKV copy.",state:"error"}, true);
   const slash = source.lastIndexOf("/");
   const dot = source.lastIndexOf(".");
   const suggested = `${dot > slash ? source.slice(slash + 1, dot) : source.slice(slash + 1)}.cue-remux.mkv`;
   remuxStarting = true;
   try {
-    const folder = await iina.utils.chooseFile("Choose a folder for the remuxed copy", {chooseDir:true});
+    const folder = await iina.utils.chooseFile("Choose a folder for the MKV copy", {chooseDir:true});
     if (!folder) return;
-    if (iina.mpv.getString("path") !== source) return setRemuxStatus({text:"The open video changed. Select Remux again for the current video.",state:"error"}, true);
+    if (iina.mpv.getString("path") !== source) return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
     remuxDraft = {source, folder, suggested};
     try { setupSidebar(); iina.sidebar.show(); } catch {}
     if (remuxStatus.state === "error") setRemuxStatus({text:"",state:"idle"});
     syncRemuxDraft();
-  } catch (error) { setRemuxStatus({text:`Remux could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true); }
+  } catch (error) { setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true); }
   finally {remuxStarting = false;}
 }
 async function confirmRemux(response: string) {
@@ -259,7 +259,7 @@ async function confirmRemux(response: string) {
   const {source, folder, suggested} = draft;
   if (iina.mpv.getString("path") !== source) {
     remuxDraft = undefined; syncRemuxDraft();
-    return setRemuxStatus({text:"The open video changed. Select Remux again for the current video.",state:"error"}, true);
+    return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
   }
   const name = (response.trim() || suggested).replace(/\.(mp4|mov|m4v|webm|ts)$/i, ".mkv");
   const filename = name.toLowerCase().endsWith(".mkv") ? name : `${name}.mkv`;
@@ -270,14 +270,14 @@ async function confirmRemux(response: string) {
   if (iina.file.exists(output)) return setRemuxStatus({text:"That output file already exists. Choose another name.",state:"error"}, true);
   remuxStarting = true;
   remuxDraft = undefined; syncRemuxDraft();
-  setRemuxStatus({text:"Preparing remux…",state:"running"});
+  setRemuxStatus({text:"Preparing the MKV copy…",state:"running"});
   try {
     const result = await rpc<{job_id: string}>("POST", "/remux", {source, output});
     remuxJobId = result.job_id;
     setRemuxStatus({text:"Copying streams…",state:"running"});
   } catch (error) {
     if (iina.mpv.getString("path") === source) {remuxDraft = draft; syncRemuxDraft();}
-    setRemuxStatus({text:`Remux could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true);
+    setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true);
   } finally {remuxStarting = false;}
 }
 async function pollRemux() {
@@ -290,12 +290,12 @@ async function pollRemux() {
     if (job.state === "running") {
       const text = job.phase === "verifying" ? "Verifying timestamps and tracks…"
         : job.phase === "saving" ? "Saving the new video…"
-        : job.phase === "copying" ? "Copying streams…" : "Preparing remux…";
+        : job.phase === "copying" ? "Copying streams…" : "Preparing the MKV copy…";
       setRemuxStatus({text,state:"running",progressPct:job.progress_pct});
     }
     else {
       remuxJobId = undefined;
-      if (job.state === "complete") setRemuxStatus({text:`Remux complete: ${job.path}`,state:"complete",progressPct:100}, true);
+      if (job.state === "complete") setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true);
       else {
         const problem = ({REMUX_FAILED:"Could not copy this video's tracks into the new MKV.",
           REMUX_VERIFY_FAILED:"The new video's tracks or timestamps failed verification.",
@@ -306,7 +306,7 @@ async function pollRemux() {
       }
     }
   } catch (error) {
-    if (remuxJobId === id) {remuxJobId = undefined; setRemuxStatus({text:`Remux status unavailable (${String(error).replace(/^Error: /, "")}). Check the output location.`,state:"error"}, true);}
+    if (remuxJobId === id) {remuxJobId = undefined; setRemuxStatus({text:`MKV copy status unavailable (${String(error).replace(/^Error: /, "")}). Check the output location.`,state:"error"}, true);}
   } finally {remuxPolling = false;}
 }
 function saveDiagnostics() {
@@ -323,7 +323,7 @@ function playerAudioDiagnostics() {
 }
 function reloadDiagnostics() { void stop().then(rendererSmoke).catch(showActionError); }
 
-advancedItem("Remux current video (reset timestamps)…", () => { void remuxCurrentMedia(); });
+advancedItem("Save a copy as MKV (reset timestamps)…", () => { void remuxCurrentMedia(); });
 advancedItem("Export generated subtitles…", () => { void exportSubtitles(); });
 advancedItem("Save diagnostics", saveDiagnostics);
 advancedItem("Diagnostics: player and audio track", playerAudioDiagnostics);
