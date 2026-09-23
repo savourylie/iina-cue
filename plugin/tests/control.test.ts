@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {acceptSnapshot,originalLanguageEvidenceLabel,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
+import {acceptSnapshot,actionErrorStatus,errorStatus,originalLanguageEvidenceLabel,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
 test('prepared reply from old epoch or helper never accepted',()=>{
   const reply={session_id:'s',seek_epoch:1,instance_id:'new'};
   assert.equal(acceptSnapshot(reply,'s',1,'new'),true);
@@ -47,9 +47,25 @@ test('source selector exposes every pinned Qwen alignment language',()=>{
 });
 test('stage status names the work and elapsed time without treating skipped audio as coverage',()=>{
   const snapshot={stage:'loading_model',stage_elapsed_s:12,skipped_language_ranges:[] as number[][]};
-  assert.equal(preparationStatus(snapshot),'Loading the speech model… · 12 s');
+  assert.deepEqual(preparationStatus(snapshot),{tone:'working',title:'Preparing captions',detail:'Loading the speech model… · 12 s'});
   snapshot.stage='idle';snapshot.skipped_language_ranges=[[0,20000]];
-  assert.match(preparationStatus(snapshot),/Language was unclear in earlier audio/);
+  const unclear=preparationStatus(snapshot);
+  assert.equal(unclear.tone,'warning');assert.equal(unclear.title,'Language unclear');assert.equal(unclear.retry,true);
+});
+test('status copy keeps error codes out of the headline and pause ownership in the detail',()=>{
+  const known=errorStatus('LANGUAGE_UNCERTAIN');
+  assert.equal(known.tone,'error');assert.equal(known.code,'LANGUAGE_UNCERTAIN');assert.equal(known.retry,true);
+  assert.doesNotMatch(statusText(known),/LANGUAGE_UNCERTAIN/);
+  const unknown=errorStatus('HELPER_UNAVAILABLE');
+  assert.equal(unknown.title,'Captions stopped');assert.equal(unknown.code,'HELPER_UNAVAILABLE');
+  assert.doesNotMatch(statusText(unknown),/HELPER_UNAVAILABLE/);
+  assert.match(errorStatus('ALIGNMENT_LANGUAGE_UNSUPPORTED','Greek').detail!,/identified as Greek/);
+  assert.equal(actionErrorStatus('OUTPUT_EXISTS').tone,'warning');
+  assert.equal(readyStatus(48200,false,false).detail,'48 s prepared ahead.');
+  assert.match(readyStatus(48200,true,true).detail!,/Press play to continue\.$/);
+  assert.match(readyStatus(48200,true,false).detail!,/Video remains paused\.$/);
+  const partial=partialFailureStatus(30000);
+  assert.equal(partial.tone,'warning');assert.match(partial.detail!,/^30 s of captions remain available/);
 });
 test('user paused playback is not held or resumed',()=>{
   const p=new PlaybackIntent();assert.equal(p.hold(true),false);p.ready();assert.equal(p.holding,false);

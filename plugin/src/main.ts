@@ -1,5 +1,6 @@
 import {rpc, disposeClient} from "./client";
-import {acceptSnapshot, originalLanguageEvidenceLabel, originalLanguageLabel, ownedTrack, PlaybackIntent, preparationStatus, targetSubtitleExists} from "./control";
+import {acceptSnapshot, actionErrorStatus, errorStatus, OFF_STATUS, originalLanguageEvidenceLabel, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, statusText, targetSubtitleExists} from "./control";
+import type {CueStatus} from "./control";
 import {mediaSnapshot, number, paused, SubtitleRenderer, tracks} from "./player";
 import type {Snapshot} from "./types";
 import {rendererSmoke} from "./smoke";
@@ -16,8 +17,7 @@ let epoch = 0;
 let seq = 0;
 let busy = false;
 let selected = false;
-let latestStatus = "AI subtitles are off";
-let latestStatusIsError = false;
+let latestStatus: CueStatus = OFF_STATUS;
 type RemuxStatus = {text: string; state: "idle" | "running" | "complete" | "error"; progressPct?: number | null};
 let remuxStatus: RemuxStatus = {text: "", state: "idle"};
 let remuxJobId: string | undefined;
@@ -58,27 +58,13 @@ function traceEvent(event: string, data: object = {}) {
   trace.push({event,at:Date.now(),generation,epoch,...data});
   if (trace.length>32) trace.shift();
 }
-const errorText: Record<string, string> = {
-  SETUP_REQUIRED: "Local models are not installed. Complete Cue setup first.",
-  LANGUAGE_UNCERTAIN: "Language could not be detected. Choose the source language and retry.",
-  ALIGNMENT_LANGUAGE_UNSUPPORTED: "This source language cannot be aligned yet.",
-  AUDIO_TRACK_MAPPING_AMBIGUOUS: "The audio track could not be verified. Subtitle preparation stopped.",
-  AUDIO_DELAY_UNSUPPORTED: "This preview does not support nonzero audio delay.",
-  HELPER_DISCONNECTED: "The local subtitle engine disconnected. You can retry.",
-  HELPER_RESTART_REQUIRED: "Wait for an active remux to finish or close other Cue windows, then retry to load the updated helper.",
-  MODEL_LOAD_FAILED: "The model failed to load. Check the local diagnostic log.",
-  ALIGNMENT_FAILED: "Subtitle alignment failed validation. Retry or keep playing.",
-  TRANSLATION_FAILED: "The translation failed validation. Retry or choose the original language.",
-  OUTPUT_EXISTS: "The output file already exists. Choose a different export path.",
-  UNSAFE_PATH: "Choose a new absolute .srt export path in an existing folder."
-};
-function status(text: string, osd = false, error = false) {
-  const changed = latestStatus !== text || latestStatusIsError !== error;
-  latestStatus = text; latestStatusIsError = error;
-  if (sidebarLoaded) iina.sidebar.postMessage("cue-status", {text, enabled, error});
-  if (osd && changed) iina.core.osd(text);
+function status(next: CueStatus, osd = false) {
+  const changed = JSON.stringify(latestStatus) !== JSON.stringify(next);
+  latestStatus = next;
+  if (sidebarLoaded) iina.sidebar.postMessage("cue-status", {...next, enabled});
+  if (osd && changed) iina.core.osd(statusText(next));
 }
-function refreshStatus() { status(latestStatus, false, latestStatusIsError); }
+function refreshStatus() { status(latestStatus); }
 function setRemuxStatus(update: RemuxStatus, osd = false) {
   remuxStatus = update;
   if (sidebarLoaded) {try {iina.sidebar.postMessage("cue-remux-status", update);} catch {}}
@@ -91,15 +77,12 @@ function syncRemuxDraft() {
 }
 function showError(e: unknown) {
   const code = String(e).replace(/^Error: /, "");
-  if (code === "ALIGNMENT_LANGUAGE_UNSUPPORTED" && session?.language?.code && session.language.code !== "und") {
-    const name = originalLanguageLabel(session.language.code).replace(" (original)", "");
-    return status(`Transcribed text was classified as ${name}. Cue cannot time subtitles in that language yet.`, true, true);
-  }
-  status(errorText[code] || `Subtitle preparation failed (${code}). Retry or keep playing.`, true, true);
+  const language = session?.language?.code && session.language.code !== "und" ? originalLanguageLabel(session.language.code).replace(" (original)", "") : undefined;
+  status(errorStatus(code, language), true);
 }
 function showActionError(e: unknown) {
   const code = String(e).replace(/^Error: /, "");
-  status(errorText[code] || `Cue action failed (${code}).`, true);
+  status(actionErrorStatus(code), true);
 }
 function hold() {
   if (iina.preferences.get("pauseUntilReady") === true && intent.hold(paused())) iina.mpv.set("pause", true);
@@ -108,11 +91,11 @@ function syncSubtitleAppearance() {
   const own = renderer.path && ownedTrack(tracks(), renderer.path);
   if (enabled && own && String(own.id) === iina.mpv.getString("sid")) {
     if (iina.preferences.get("subtitleBox") === true) {
-      try { subtitleStyle.enable(); } catch (error) { traceEvent("style_error", {error:String(error)}); status("Could not apply the black subtitle background; captions still work.", true); }
+      try { subtitleStyle.enable(); } catch (error) { traceEvent("style_error", {error:String(error)}); status({tone:"warning", title:"Background not applied", detail:"Captions still work."}, true); }
     } else subtitleStyle.restore();
     const size = validSubtitleSize(iina.preferences.get("subtitleSize"));
     if (size !== undefined) {
-      try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status("Could not change subtitle size; captions still work.", true); }
+      try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:"Size not changed", detail:"Captions still work."}, true); }
     } else subtitleSize.restore();
   } else { subtitleStyle.restore(); subtitleSize.restore(); }
 }
@@ -122,7 +105,7 @@ async function stop(forRestart = false) {
   intent.reset(); subtitleStyle.restore(); subtitleSize.restore(); renderer.remove(); syncSettings();
   if (seekTimer) clearTimeout(seekTimer);
   awaitingSeek = false;
-  if (!forRestart) status("AI subtitles are off");
+  if (!forRestart) status(OFF_STATUS);
   if (previous) { try { await rpc("DELETE", `/sessions/${previous.session_id}`); } catch {} }
 }
 async function start() {
@@ -134,7 +117,7 @@ async function start() {
   const token = generation;
   try {
     const media = mediaSnapshot();
-    enabled = true; hold(); status("Starting the local subtitle engine…", true);
+    enabled = true; hold(); status({tone:"working", title:"Starting", detail:"Loading the local subtitle engine…"}, true);
     const created = await rpc<Snapshot>("POST", "/sessions", {...media,
       request_id: `${Date.now()}-${generation}`, settings: {target: target(), source: iina.preferences.get("source")}});
     if (generation !== token || !enabled) { await rpc("DELETE", `/sessions/${created.session_id}`); return; }
@@ -170,14 +153,14 @@ async function consume(snapshot: Snapshot, token: number) {
   }
   if (!session || token !== generation) return;
   if (snapshot.error) {
-    if (session.ready) status(`${(session.buffer_wall_ms/1000).toFixed(0)} seconds of captions remain available; later processing failed. Keep playing or retry.`,true,true);
+    if (session.ready) status(partialFailureStatus(session.buffer_wall_ms), true);
     else showError(snapshot.error.code);
     return;
   }
   if (session.ready) {
     const wasHolding = intent.holding;
     intent.ready();
-    status(`Captions ready · ${(session.buffer_wall_ms/1000).toFixed(0)} s ahead${paused() ? wasHolding ? " · Press play to continue" : " · Video remains paused" : ""}`, wasHolding);
+    status(readyStatus(session.buffer_wall_ms, paused(), wasHolding), wasHolding);
   } else {
     if (session.buffer_wall_ms <= 1000) hold();
     const stage = preparationStatus(session);
@@ -201,7 +184,7 @@ async function poll() {
       if (["CLIENT_REQUIRED","NOT_FOUND","HELPER_DISCONNECTED"].includes(code)) {
         // Native modal panels can suspend JS timers long enough for a lease
         // to expire. Rebuild the session at the actual current playback point.
-        status("Reconnecting to the local subtitle engine…");
+        status({tone:"working", title:"Reconnecting", detail:"Reconnecting to the local subtitle engine…"});
         await start();
       } else {enabled = false; showError(e);}
     }
@@ -221,7 +204,7 @@ function setSubtitleSize(value: number, save: boolean) {
   if (save) { iina.preferences.set("subtitleSize", size); iina.preferences.sync(); syncSettings(); }
   const own = renderer.path && ownedTrack(tracks(), renderer.path);
   if (enabled && own && String(own.id) === iina.mpv.getString("sid")) {
-    try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status("Could not change subtitle size; captions still work.", true); }
+    try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:"Size not changed", detail:"Captions still work."}, true); }
   }
 }
 function toggle(key: "pauseUntilReady" | "subtitleBox", value: boolean) {
@@ -237,14 +220,14 @@ const advanced = iina.menu.item("Advanced");
 async function exportSubtitles() {
   const active = session;
   const token = generation;
-  if (!active || !active.artifact?.cue_count) return status("No generated subtitles to export yet.", true);
+  if (!active || !active.artifact?.cue_count) return status({tone:"warning", title:"Nothing to export yet", detail:"Cue has not generated captions for this video."}, true);
   let output: string | undefined;
   try { output = await iina.utils.prompt("Enter an absolute SRT export path. Existing files are not overwritten; incomplete exports are marked partial."); }
   catch { return; }
   if (!output || token !== generation || session?.session_id !== active.session_id) return;
   try {
     const result = await rpc<{path: string}>("POST", `/sessions/${active.session_id}/export`, {output});
-    if (token === generation) status(`Subtitles exported to ${result.path}`, true);
+    if (token === generation) status({tone:"info", title:"Subtitles exported", detail:result.path}, true);
   } catch (error) { if (token === generation) showActionError(error); }
 }
 async function remuxCurrentMedia() {
@@ -332,7 +315,7 @@ function saveDiagnostics() {
 }
 function playerAudioDiagnostics() {
   const data = {mpv: iina.mpv.getString("mpv-version"), audio: tracks().filter(t=>t.type==="audio").map(t=>({id:t.id,ff_index:t["ff-index"],selected:t.selected,codec:t.codec})), paused: paused()};
-  iina.console.log(JSON.stringify(data)); status(JSON.stringify(data), true);
+  iina.console.log(JSON.stringify(data)); status({tone:"info", title:"Player and audio track", detail:JSON.stringify(data)}, true);
 }
 function reloadDiagnostics() { void stop().then(rendererSmoke).catch(showActionError); }
 
@@ -393,7 +376,7 @@ listen("mpv.audio-delay.changed", () => { if (enabled && number("audio-delay") !
 listen("mpv.sid.changed", () => {
   if (!enabled || !selected || renderer.changing || !renderer.path) return;
   const own = ownedTrack(tracks(), renderer.path);
-  if (!own || String(own.id) !== iina.mpv.getString("sid")) { void stop(); status("Your subtitle selection was kept; Cue stopped preparing captions.", true); }
+  if (!own || String(own.id) !== iina.mpv.getString("sid")) { void stop(); status({tone:"info", title:"Cue stopped", detail:"Your subtitle selection was kept."}, true); }
 });
 listen("mpv.end-file", () => { remuxDraft = undefined; syncRemuxDraft(); void stop(); });
 listen("iina.file-loaded", () => {

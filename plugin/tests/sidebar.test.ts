@@ -7,7 +7,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   const html = readFileSync('plugin/sidebar.html', 'utf8');
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
-  const elements = new Map<string, {checked: boolean; hidden: boolean; open: boolean; value: number | string; textContent: string; dataset: {action?: string; state?: string}; listeners: Map<string, (event: any) => void>; addEventListener: (name: string, callback: (event: any) => void) => void; removeAttribute: (name: string) => void; focus: () => void}>();
+  const elements = new Map<string, {checked: boolean; hidden: boolean; open: boolean; value: number | string; textContent: string; dataset: {action?: string; state?: string; tone?: string}; title?: string; listeners: Map<string, (event: any) => void>; addEventListener: (name: string, callback: (event: any) => void) => void; removeAttribute: (name: string) => void; focus: () => void}>();
   function element(id: string) {
     if (!elements.has(id)) {
       const listeners = new Map<string, (event: any) => void>();
@@ -31,12 +31,14 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   });
   assert.equal(posted[0][0], 'ready');
 
-  const error = 'Language could not be detected. Choose the source language and retry.';
-  messages.get('cue-status')!({text:error, enabled:true, error:true});
-  assert.equal(element('ai-enabled').checked, true);
-  assert.equal(element('issue').hidden, false);
-  assert.equal(element('issue-text').textContent, error);
-  assert.equal(element('status').hidden, true);
+  messages.get('cue-status')!({tone:'error', title:'Language not detected', detail:'Choose the source language below, then retry.', retry:true, code:'LANGUAGE_UNCERTAIN', enabled:false});
+  assert.equal(element('ai-enabled').checked, false);
+  assert.equal(element('status').hidden, false);
+  assert.equal(element('status').dataset.tone, 'error');
+  assert.equal(element('status-title').textContent, 'Language not detected');
+  assert.equal(element('status-detail').textContent, 'Choose the source language below, then retry.');
+  assert.doesNotMatch(element('status-title').textContent + element('status-detail').textContent, /LANGUAGE_UNCERTAIN/);
+  assert.equal(element('retry').hidden, false);
   element('retry').listeners.get('click')!({});
   assert.equal(posted[posted.length-1][0], 'action');
   assert.equal(posted[posted.length-1][1].action, 'retry');
@@ -44,12 +46,16 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   element('ai-enabled').listeners.get('change')!({target:{checked:false}});
   assert.equal(posted[posted.length-1][1].action, 'set-enabled');
   assert.equal(posted[posted.length-1][1].value, false);
-  messages.get('cue-status')!({text:'AI subtitles are off', enabled:false, error:false});
+  messages.get('cue-status')!({tone:'off', title:'AI subtitles are off', enabled:false});
   assert.equal(element('ai-enabled').checked, false);
-  assert.equal(element('issue').hidden, true);
   assert.equal(element('status').hidden, true);
-  messages.get('cue-status')!({text:'Starting the local subtitle engine…', enabled:true, error:false});
+  messages.get('cue-status')!({tone:'working', title:'Starting', detail:'Loading the local subtitle engine…', enabled:true});
+  assert.equal(element('ai-enabled').checked, true);
   assert.equal(element('status').hidden, false);
+  assert.equal(element('status').dataset.tone, 'working');
+  assert.equal(element('retry').hidden, true);
+  assert.match(html, /role="status" aria-live="polite"/);
+  assert.doesNotMatch(html, /role="alert"/);
   assert.match(html, /<summary>Advanced<\/summary>/);
   advancedButtons[2].listeners.get('click')!({});
   assert.equal(posted[posted.length-1][1].action, 'diagnostic');

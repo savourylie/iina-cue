@@ -39,13 +39,13 @@ test('native entry registers polling before a player window exists and survives 
   // contract: a reopened video reconnects on demand instead of failing.
   events.get('iina.window-will-close')!();
   assert.equal(cleared,0);assert.equal(intervals,1);assert.ok(events.has('mpv.seek'));assert.ok(events.has('iina.window-loaded'));
-  assert.ok(posted.some(([name,data])=>name==='cue-status'&&data.text==='AI subtitles are off'&&data.enabled===false&&data.error===false));
+  assert.ok(posted.some(([name,data])=>name==='cue-status'&&data.tone==='off'&&data.title==='AI subtitles are off'&&data.enabled===false));
   events.get('iina.window-loaded')!();assert.equal(loads,1);
   // A user switch-off while file-load cleanup is pending must cancel auto-enable.
   events.get('iina.file-loaded')!();
   sidebarMessages.get('action')!({action:'set-enabled',value:false});
   await Promise.resolve();
-  assert.ok(!posted.some(([name,data])=>name==='cue-status'&&data.error===true));
+  assert.ok(!posted.some(([name,data])=>name==='cue-status'&&data.tone==='error'));
   mediaPath='/fixture/movie.mp4';
   sidebarMessages.get('action')!({action:'remux'});
   assert.match(folderPrompt,/Choose a folder/);
