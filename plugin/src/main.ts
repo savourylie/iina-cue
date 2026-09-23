@@ -1,5 +1,5 @@
 import {rpc, disposeClient} from "./client";
-import {acceptSnapshot, actionErrorStatus, errorStatus, OFF_STATUS, originalLanguageEvidenceLabel, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, statusText, targetSubtitleExists} from "./control";
+import {acceptSnapshot, actionErrorStatus, errorStatus, OFF_STATUS, originalLanguageChoice, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
 import {mediaSnapshot, number, paused, SubtitleRenderer, tracks} from "./player";
 import type {Snapshot} from "./types";
@@ -47,11 +47,13 @@ function syncSettings() {
   const manual = iina.preferences.get("source");
   const source = sources.has(manual) ? manual : "auto";
   const originalCode = source !== "auto" ? source : detected && detected !== "und" ? detected : undefined;
+  const original = originalLanguageChoice(originalCode, source === "auto" ? session?.language?.status : "manual",
+    {active: enabled && !!session, unclear: !!session?.skipped_language_ranges?.length});
   if (sidebarLoaded) iina.sidebar.postMessage("cue-settings", {
     target: target(), source, pauseUntilReady: iina.preferences.get("pauseUntilReady") === true,
     subtitleBox: iina.preferences.get("subtitleBox") === true,
     subtitleSize: validSubtitleSize(iina.preferences.get("subtitleSize")) ?? subtitleSize.current(),
-    originalLabel: originalLanguageEvidenceLabel(originalCode, source === "auto" ? session?.language?.status : "manual")
+    originalLabel: original.label, originalHint: original.hint
   });
 }
 function traceEvent(event: string, data: object = {}) {
@@ -79,6 +81,7 @@ function showError(e: unknown) {
   const code = String(e).replace(/^Error: /, "");
   const language = session?.language?.code && session.language.code !== "und" ? originalLanguageLabel(session.language.code).replace(" (original)", "") : undefined;
   status(errorStatus(code, language), true);
+  syncSettings();
 }
 function showActionError(e: unknown) {
   const code = String(e).replace(/^Error: /, "");
@@ -130,9 +133,10 @@ async function start() {
 }
 async function consume(snapshot: Snapshot, token: number) {
   if (!session || token !== generation || !acceptSnapshot(snapshot, session.session_id, epoch, session.instance_id)) return;
-  const priorLanguage = session.language?.code;
+  const languageKey = (s: Snapshot) => `${s.language?.code}|${s.language?.status}|${!!s.skipped_language_ranges?.length}`;
+  const priorLanguage = languageKey(session);
   session = snapshot;
-  if (snapshot.language?.code !== priorLanguage) syncSettings();
+  if (languageKey(snapshot) !== priorLanguage) syncSettings();
   const a = snapshot.artifact;
   if (a && a.revision > renderer.installed) {
     const valid = () => enabled && generation === token && !!session && acceptSnapshot(snapshot, session.session_id, epoch, session.instance_id);

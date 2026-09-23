@@ -29,6 +29,8 @@
   .status-retry:hover{background:#8882}
   .status-retry:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   select{display:block;width:100%;padding:7px;margin:4px 0 14px}
+  .field-hint{margin:-8px 0 14px;font-size:12px;line-height:1.4;opacity:.8}
+  .field-hint[hidden]{display:none}
   .option{display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer}
   .option input{margin-top:5px;flex:none}
   .size-heading{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px}
@@ -78,14 +80,15 @@
   </div>
 </div>
 <label for="target">Subtitle language</label>
-<select id="target">
-  <option value="original">Original language (detecting…)</option>
+<select id="target" aria-describedby="target-hint">
+  <option value="original">Original language</option>
   <option value="zh-TW">Traditional Chinese</option>
   <option value="zh-CN">Simplified Chinese</option>
   <option value="en">English</option>
   <option value="ja">Japanese</option>
   <option value="ko">Korean</option>
 </select>
+<p id="target-hint" class="field-hint" hidden></p>
 <label for="source">Source language</label>
 <select id="source">
   <option value="auto">Auto-detect</option>
@@ -179,6 +182,9 @@
   iina.onMessage('cue-settings',data=>{
     const target=document.getElementById('target');
     if(typeof data.originalLabel==='string')target.querySelector('[value="original"]').textContent=data.originalLabel;
+    const hint=document.getElementById('target-hint');
+    hint.textContent=typeof data.originalHint==='string'?data.originalHint:'';
+    hint.hidden=!hint.textContent;
     if([...target.options].some(option=>option.value===data.target))target.value=data.target;
     const source=document.getElementById('source');
     if([...source.options].some(option=>option.value===data.source))source.value=data.source;

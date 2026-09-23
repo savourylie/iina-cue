@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {acceptSnapshot,actionErrorStatus,errorStatus,originalLanguageEvidenceLabel,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
+import {acceptSnapshot,actionErrorStatus,errorStatus,originalLanguageChoice,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
 test('prepared reply from old epoch or helper never accepted',()=>{
   const reply={session_id:'s',seek_epoch:1,instance_id:'new'};
   assert.equal(acceptSnapshot(reply,'s',1,'new'),true);
@@ -35,9 +35,14 @@ test('original output label follows detected language and preserves unknown stat
   assert.equal(originalLanguageLabel('pl'),'Polish (original)');
   assert.equal(originalLanguageLabel('es'),'Spanish (original)');
   assert.equal(originalLanguageLabel('yue'),'Cantonese (original)');
-  assert.equal(originalLanguageLabel('und'),'Original language (detecting…)');
-  assert.equal(originalLanguageEvidenceLabel('ca','tentative'),'Original language (transcript: Catalan; unverified)');
-  assert.equal(originalLanguageEvidenceLabel('en','manual'),'English (original)');
+  assert.equal(originalLanguageLabel('und'),'Original language');
+  const idle={active:false,unclear:false},working={active:true,unclear:false},unclear={active:true,unclear:true};
+  assert.deepEqual(originalLanguageChoice('ca','tentative',working),{label:'Catalan (original)',hint:'Spoken language: Catalan, detected from the transcript and not yet verified.'});
+  assert.deepEqual(originalLanguageChoice('en','manual',working),{label:'English (original)',hint:''});
+  assert.deepEqual(originalLanguageChoice(undefined,'unknown',idle),{label:'Original language',hint:''});
+  assert.equal(originalLanguageChoice('und','unknown',working).hint,'Detecting the spoken language…');
+  assert.match(originalLanguageChoice('und','unknown',unclear).hint,/not detected yet/);
+  assert.doesNotMatch(originalLanguageChoice('und','unknown',unclear).label,/detecting/i);
 });
 test('source selector exposes every pinned Qwen alignment language',()=>{
   const html=readFileSync('plugin/sidebar.html','utf8');

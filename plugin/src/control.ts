@@ -16,14 +16,20 @@ export function originalLanguageLabel(code?: string): string {
     de:"German",es:"Spanish",fr:"French",it:"Italian",pt:"Portuguese",ru:"Russian",
     el:"Greek",ell:"Greek",gre:"Greek",ca:"Catalan",pl:"Polish",pol:"Polish"};
   const name = names[code || ""];
-  return name ? `${name} (original)` : code && code !== "und" ? `${code.toUpperCase()} (original)` : "Original language (detecting…)";
+  return name ? `${name} (original)` : code && code !== "und" ? `${code.toUpperCase()} (original)` : "Original language";
 }
-export function originalLanguageEvidenceLabel(code?: string, status?: string): string {
-  if (status === "tentative" && code && code !== "und") {
-    const name = originalLanguageLabel(code).replace(" (original)", "");
-    return `Original language (transcript: ${name}; unverified)`;
-  }
-  return originalLanguageLabel(code);
+/**
+ * The "original" option stays short enough for a narrow sidebar; how Cue knows
+ * the spoken language goes in a hint line under the select.
+ */
+export function originalLanguageChoice(code: string | undefined, status: string | undefined, state: {active: boolean; unclear: boolean}): {label: string; hint: string} {
+  const known = !!code && code !== "und";
+  const label = originalLanguageLabel(known ? code : undefined);
+  const name = label.replace(" (original)", "");
+  if (known && status === "tentative") return {label, hint: `Spoken language: ${name}, detected from the transcript and not yet verified.`};
+  if (known || !state.active) return {label, hint: ""};
+  if (state.unclear) return {label, hint: "Spoken language not detected yet. If you know it, choose it under Source language."};
+  return {label, hint: "Detecting the spoken language…"};
 }
 /** One sidebar status: the headline a glancing viewer needs, then the detail and recovery. */
 export type StatusTone = "off" | "working" | "ready" | "info" | "warning" | "error";
