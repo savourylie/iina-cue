@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Explicit-consent, revision-pinned model installer; never run by generation."""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument("--accept-download", action="store_true", help="Consent after reviewing sources, sizes, and the Gemma license")
+args = parser.parse_args()
+manifest = json.loads((ROOT/"models/manifest.json").read_text())
+total = sum(f["bytes"] for a in manifest["assets"] for f in a["files"])
+print(f"Download: {total:,} bytes. Allow 6 GB free for assets and runtime. No microphone or administrator permission.")
+for a in manifest["assets"]: print(f"Source: https://huggingface.co/{a['repository']}/tree/{a['revision']}")
+print("Gemma terms: https://ai.google.dev/gemma/terms ; runtime/model notices: THIRD_PARTY_NOTICES.md")
+if not args.accept_download: raise SystemExit("Review the plan, then rerun with --accept-download to consent.")
+if shutil.disk_usage(ROOT).free < total*1.2: raise SystemExit("Insufficient disk space")
+for a in manifest["assets"]:
+    folder = ROOT/".runtime/models"/a["folder"]
+    folder.mkdir(parents=True, exist_ok=True)
+    for f in a["files"]:
+        dest = folder/f["path"]
+        if dest.is_symlink() or ".." in Path(f["path"]).parts: raise SystemExit("Unsafe destination")
+        def valid(path):
+            if not path.is_file() or path.stat().st_size != f["bytes"]: return False
+            h = hashlib.sha256() if f["sha256"] else hashlib.sha1()
+            if not f["sha256"]: h.update(f"blob {f['bytes']}\0".encode())
+            with path.open("rb") as src:
+                for block in iter(lambda: src.read(1024*1024), b""): h.update(block)
+            return h.hexdigest() == (f["sha256"] or f["git_blob"])
+        if valid(dest): print(f"Verified: {a['name']}/{f['path']}"); continue
+        tmp = dest.with_suffix(dest.suffix+".download")
+        if tmp.is_symlink(): raise SystemExit("Unsafe temporary path")
+        url = f"https://huggingface.co/{a['repository']}/resolve/{a['revision']}/{f['path']}"
+        print(f"Downloading {a['name']}/{f['path']} ({f['bytes']:,} bytes)", flush=True)
+        with urllib.request.urlopen(url, timeout=60) as response, tmp.open("wb") as out:
+            shutil.copyfileobj(response, out, 1024*1024)
+        if not valid(tmp): raise SystemExit("Checksum mismatch; asset was not installed")
+        tmp.replace(dest)
+print("Model assets verified. Run scripts/benchmark with a permitted local clip.")

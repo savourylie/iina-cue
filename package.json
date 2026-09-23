@@ -1,0 +1,12 @@
+{
+  "name": "iina-cue", "version": "0.1.0", "private": true, "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && node scripts/build-plugin.mjs",
+    "test": "node --import tsx --test plugin/tests/*.test.ts",
+    "check": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3", "esbuild": "0.25.12",
+    "iina-plugin-definition": "0.0.6", "tsx": "4.21.0", "@types/node": "24.10.1"
+  }
+}

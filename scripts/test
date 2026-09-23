@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$CUE_PROJECT"
+.venv/bin/python -m pytest
+npm run check

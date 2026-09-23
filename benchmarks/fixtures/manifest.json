@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {"id": "english-synthetic", "kind": "macos-local-speech-synthesis", "language": "en", "text": "The train leaves at nine tomorrow morning. Please remember to bring your ticket.", "path": "generated/english.wav", "rights": "original test sentence, generated locally", "usage": "diagnostic only, not held-out quality evidence"},
+    {"id": "silent-control", "kind": "ffmpeg-lavfi", "duration_ms": 80000, "generator": "scripts/integration-smoke.py", "usage": "control plane, no AI performance claim"},
+    {"id": "multitrack-pts", "kind": "ffmpeg-lavfi", "generator": "helper/tests/test_media.py", "usage": "audio mapping and time origin verification"}
+  ],
+  "private_media_discovery": false,
+  "real_dialogue_3_to_5_minute_fixture": "not supplied"
+}

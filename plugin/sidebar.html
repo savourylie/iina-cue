@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<style>
+  body{font:14px -apple-system,sans-serif;background:transparent;color:CanvasText;padding:18px;line-height:1.7;color-scheme:light dark}
+  button,select,input{font:inherit}button{padding:7px 12px;margin:4px 4px 4px 0}
+  select{display:block;width:100%;padding:7px;margin:4px 0 14px}
+  .option{display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer}
+  .option input{margin-top:5px;flex:none}
+  .size-heading{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px}
+  #subtitle-size{display:block;width:100%;margin:5px 0 14px;accent-color:#728eff}
+  output{font-variant-numeric:tabular-nums;opacity:.75}
+  #status{white-space:pre-wrap;overflow-wrap:anywhere;min-height:80px}
+  small{opacity:.7}
+</style>
+<h2>Cue subtitles</h2>
+<label for="target">Subtitle language</label>
+<select id="target">
+  <option value="original">Original language (detecting…)</option>
+  <option value="zh-TW">Traditional Chinese</option>
+  <option value="zh-CN">Simplified Chinese</option>
+  <option value="en">English</option>
+  <option value="ja">Japanese</option>
+  <option value="ko">Korean</option>
+</select>
+<div class="size-heading"><label for="subtitle-size">Subtitle size</label><output id="subtitle-size-value" for="subtitle-size">55</output></div>
+<input id="subtitle-size" type="range" min="16" max="96" step="1" value="55">
+<label class="option"><input id="pause-until-ready" type="checkbox">Pause until captions are ready</label>
+<label class="option"><input id="subtitle-box" type="checkbox">White text on a translucent black background</label>
+<p id="status" role="status" aria-live="polite">AI subtitles are off</p>
+<button data-action="play">Play / continue</button>
+<button data-action="retry">Enable / retry</button>
+<button data-action="stop">Stop AI</button>
+<button data-action="diagnostic">Save diagnostics</button>
+<p><small>Playback continues while captions are prepared; Cue attaches them when ready. If you enable pausing, press play after captions are ready. Cue never resumes your own pause. Only nearby captions are prepared; incomplete exports are marked partial.</small></p>
+<script>
+  iina.onMessage('cue-status',data=>{document.getElementById('status').textContent=data.text;});
+  iina.onMessage('cue-settings',data=>{
+    const target=document.getElementById('target');
+    if(typeof data.originalLabel==='string')target.querySelector('[value="original"]').textContent=data.originalLabel;
+    if([...target.options].some(option=>option.value===data.target))target.value=data.target;
+    document.getElementById('pause-until-ready').checked=data.pauseUntilReady===true;
+    document.getElementById('subtitle-box').checked=data.subtitleBox===true;
+    const size=document.getElementById('subtitle-size');
+    if(Number.isInteger(data.subtitleSize)&&data.subtitleSize>=16&&data.subtitleSize<=96){size.value=String(data.subtitleSize);document.getElementById('subtitle-size-value').textContent=String(data.subtitleSize);}
+  });
+  document.getElementById('target').addEventListener('change',event=>iina.postMessage('action',{action:'set-target',target:event.target.value}));
+  const size=document.getElementById('subtitle-size');
+  size.addEventListener('input',event=>{const value=Number(event.target.value);document.getElementById('subtitle-size-value').textContent=String(value);iina.postMessage('action',{action:'preview-subtitle-size',value});});
+  size.addEventListener('change',event=>iina.postMessage('action',{action:'set-subtitle-size',value:Number(event.target.value)}));
+  document.getElementById('pause-until-ready').addEventListener('change',event=>iina.postMessage('action',{action:'set-pause-until-ready',value:event.target.checked}));
+  document.getElementById('subtitle-box').addEventListener('change',event=>iina.postMessage('action',{action:'set-subtitle-box',value:event.target.checked}));
+  document.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));
+  iina.postMessage('ready',{});
+</script>
+</html>

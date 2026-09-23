@@ -1,0 +1,13 @@
+.venv/
+.runtime/
+.cache/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+benchmarks/fixtures/generated/
+benchmarks/results/
+plugin/dist/
+.DS_Store

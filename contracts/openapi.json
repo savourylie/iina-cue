@@ -1,0 +1,877 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Cue local development API",
+    "version": "0.1.0",
+    "description": "Implemented preview subset. JSON request bodies or IINA application/x-www-form-urlencoded with a JSON payload field. All responses include instance_id. Host must match the actual loopback address/port; any Origin is rejected."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}/v1",
+      "variables": {
+        "port": {
+          "default": "49152",
+          "description": "Actual OS-assigned port from private connection manifest"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "BearerToken": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerToken": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health without loading models",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        }
+      }
+    },
+    "/setup": {
+      "get": {
+        "summary": "Asset presence only; does not claim inference readiness",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        }
+      }
+    },
+    "/clients": {
+      "post": {
+        "summary": "Register a lease",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/heartbeat": {
+      "post": {
+        "summary": "Renew client lease and return live session IDs",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client": {
+      "delete": {
+        "summary": "Remove this client and its sessions",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/sessions": {
+      "post": {
+        "summary": "Create idempotent media session",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "request_id",
+                  "path"
+                ],
+                "properties": {
+                  "request_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "Absolute local media path"
+                  },
+                  "position_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "track": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "settings": {
+                    "type": "object",
+                    "properties": {
+                      "target": {
+                        "enum": [
+                          "original",
+                          "zh-TW",
+                          "zh-CN",
+                          "en",
+                          "ja",
+                          "ko"
+                        ]
+                      },
+                      "source": {
+                        "enum": [
+                          "auto",
+                          "en",
+                          "zh",
+                          "ja",
+                          "ko"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}": {
+      "delete": {
+        "summary": "Stop one session",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/sessions/{id}/playback": {
+      "put": {
+        "summary": "Ordered playback/seek update",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "client_seq",
+                  "seek_epoch",
+                  "position_ms"
+                ],
+                "properties": {
+                  "client_seq": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "seek_epoch": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "position_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "rate": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 8
+                  },
+                  "audio_delay_ms": {
+                    "type": "integer",
+                    "const": 0
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/snapshot": {
+      "get": {
+        "summary": "Prepared and installed coverage",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ]
+      }
+    },
+    "/sessions/{id}/render-ack": {
+      "post": {
+        "summary": "Fence installed coverage by revision, hash and epoch",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "revision",
+                  "sha256",
+                  "seek_epoch",
+                  "success"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "seek_epoch": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/actions": {
+      "post": {
+        "summary": "Retry or prioritize",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "retry",
+                      "prioritize"
+                    ]
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions/{id}/export": {
+      "post": {
+        "summary": "Exclusive partial-aware export",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "output"
+                ],
+                "properties": {
+                  "output": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cache/status": {
+      "get": {
+        "summary": "Cache size and record counts",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-Cue-Client",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "summary": "Refuse if clients remain active",
+        "responses": {
+          "200": {
+            "description": "Success; JSON object containing instance_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, stale update, setup or runtime error"
+          },
+          "403": {
+            "description": "Invalid Host, Origin, or bearer token"
+          },
+          "404": {
+            "description": "Missing or different-client session"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payload"
+                ],
+                "properties": {
+                  "payload": {
+                    "type": "string",
+                    "description": "JSON-serialized request object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

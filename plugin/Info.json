@@ -1,0 +1,10 @@
+{
+  "name": "Cue for IINA · Technical Preview", "version": "0.1.0", "identifier": "io.iina.cue",
+  "author": {"name": "Calvin Ku"},
+  "description": "Local, progressive AI subtitles. Requires the Cue helper and models.",
+  "entry": "dist/main.js", "globalEntry": "dist/global.js",
+  "preferencesPage": "preferences.html", "sidebarTab": {"name": "Cue subtitles"},
+  "permissions": ["file-system", "network-request", "show-osd", "show-alert"],
+  "allowedDomains": ["127.0.0.1"],
+  "preferenceDefaults": {"bootstrap": "", "autoEnable": false, "target": "original", "source": "auto", "pauseUntilReady": false, "subtitleBox": true, "subtitleSize": 0}
+}

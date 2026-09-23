@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "backend": "litert-lm-gpu+mlx-audio",
+  "gemma_quantization": "publisher mixed 2/4/8-bit mobile quantization; full multimodal artifact",
+  "assets": [
+    {
+      "name": "gemma",
+      "repository": "litert-community/gemma-4-E2B-it-litert-lm",
+      "revision": "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1",
+      "folder": "gemma",
+      "files": [
+        {
+          "path": "gemma-4-E2B-it.litertlm",
+          "bytes": 2588147712,
+          "sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+          "git_blob": null
+        }
+      ]
+    },
+    {
+      "name": "aligner",
+      "repository": "mlx-community/Qwen3-ForcedAligner-0.6B-4bit",
+      "revision": "2f652af86ae0c73fe189b9429225c908ce4bf020",
+      "folder": "aligner",
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 1161,
+          "sha256": null,
+          "git_blob": "c44736493efd71ec96218cc626904698cdb13235"
+        },
+        {
+          "path": "config.json",
+          "bytes": 6940,
+          "sha256": null,
+          "git_blob": "58af119505102b50602ec5848eb68877aaad67b5"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 115,
+          "sha256": null,
+          "git_blob": "b0a540032cf7b6b5ba1438d04ab69b7e787d9b8e"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671853,
+          "sha256": null,
+          "git_blob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 971305827,
+          "sha256": "630bcfbaccf2635940bbe94ad5475fd60ee4f47259b62d36deff806d60bcf24c",
+          "git_blob": "b4aed839788318231a9c1bbad1733ac60f8921ef"
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "bytes": 79107,
+          "sha256": null,
+          "git_blob": "94807bc9fca7e2009eecde2fff305df2ad231f47"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 330,
+          "sha256": null,
+          "git_blob": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 12666,
+          "sha256": null,
+          "git_blob": "3df92df83b22342e36a7b11cf9a70de2a2996bec"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "sha256": null,
+          "git_blob": "4783fe10ac3adce15ac8f358ef5462739852c569"
+        }
+      ]
+    }
+  ],
+  "rejected_artifacts": [
+    {
+      "filename": "gemma-4-E2B-it-gpu.litertlm",
+      "sha256": "a53a59001894c58e6bdb5b9b227709f91a2e3e556baa7d85acf9c55402ba5cf5",
+      "reason": "actual audio conversation fails: TF_LITE_AUDIO_ENCODER_HW not found"
+    }
+  ]
+}

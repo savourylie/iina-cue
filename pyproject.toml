@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling==1.29.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iina-cue"
+version = "0.1.0"
+description = "Local progressive subtitles for IINA"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "numpy>=2.2,<3",
+  "litert-lm-api==0.17.1",
+  "mlx-audio>=0.4,<0.5",
+  "lingua-language-detector>=2.1,<3",
+  "soundfile>=0.13,<0.14",
+  "nagisa>=0.2,<0.3",
+  "soynlp>=0.0.493,<0.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+cue-helper = "cue.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["helper/src/cue"]
+
+[tool.pytest.ini_options]
+testpaths = ["helper/tests"]
+pythonpath = ["helper/src"]

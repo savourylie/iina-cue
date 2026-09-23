@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec "$CUE_PROJECT/.venv/bin/python" -m cue.cli "$@"

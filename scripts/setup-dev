@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$CUE_PROJECT"
+UV_CACHE_DIR="$CUE_PROJECT/.cache/uv" uv sync --frozen --python 3.12
+npm ci --cache "$CUE_PROJECT/.cache/npm"
+npm run build
+"$CUE_PROJECT/scripts/doctor"
+echo 'No models downloaded. Review scripts/setup-models before downloading.'

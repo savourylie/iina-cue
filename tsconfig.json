@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", "module": "ESNext", "moduleResolution": "Bundler",
+    "strict": true, "skipLibCheck": true, "lib": ["ES2020"],
+    "types": ["node", "iina"], "typeRoots": ["node_modules/@types", "node_modules/iina-plugin-definition"], "noEmit": true
+  },
+  "include": ["plugin/src/**/*.ts", "plugin/tests/**/*.ts"]
+}
