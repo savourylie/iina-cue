@@ -2,78 +2,80 @@
 <html lang="en">
 <meta charset="utf-8">
 <style>
-  :root{color-scheme:light dark;--tone-working:#5468e0;--tone-ready:#1d7f47;--tone-info:#6e6e73;--tone-warning:#a8570a;--tone-error:#c0283d;--focus:#3d55d9}
-  @media(prefers-color-scheme:dark){:root{--tone-working:#8797ff;--tone-ready:#4fcf82;--tone-info:#a1a1a6;--tone-warning:#ffb04a;--tone-error:#ff7585;--focus:#8f9dff}}
-  body{font:14px -apple-system,sans-serif;background:transparent;color:CanvasText;padding:18px;line-height:1.5}
+  :root{color-scheme:light dark;
+    --accent:#3d55d9;--focus:#3d55d9;--separator:rgb(0 0 0 / .14);--fill:rgb(0 0 0 / .05);--fill-hover:rgb(0 0 0 / .08);--switch-off:rgb(0 0 0 / .42);
+    --tone-working:#5468e0;--tone-ready:#1d7f47;--tone-info:#6e6e73;--tone-warning:#a8570a;--tone-error:#c0283d;
+    --text-ready:#17663a;--text-error:#a3202f}
+  @media(prefers-color-scheme:dark){:root{
+    --focus:#8f9dff;--separator:rgb(255 255 255 / .16);--fill:rgb(255 255 255 / .06);--fill-hover:rgb(255 255 255 / .1);--switch-off:rgb(255 255 255 / .34);
+    --tone-working:#8797ff;--tone-ready:#4fcf82;--tone-info:#a1a1a6;--tone-warning:#ffb04a;--tone-error:#ff7585;
+    --text-ready:#7fd9a3;--text-error:#ff8190}}
+  body{margin:0;padding:14px 16px 20px;font:13px/1.45 -apple-system,BlinkMacSystemFont,sans-serif;background:transparent;color:CanvasText}
   button,select,input{font:inherit}
-  .generation{margin:18px 0 20px}
-  .switch-control{display:inline-flex;align-items:center;gap:9px;cursor:pointer;white-space:nowrap;font-weight:600}
+  :focus-visible{outline:2px solid var(--focus);outline:auto 3px -webkit-focus-ring-color;outline-offset:2px}
+  h1{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  section+section{margin-top:18px;padding-top:14px;border-top:1px solid var(--separator)}
+  h2{margin:0 0 10px;font-size:11px;font-weight:600;letter-spacing:.02em;color:CanvasText;opacity:.62}
+  label{display:block}
+  .switch-control{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;font-weight:600}
   .switch-control input{position:absolute;opacity:0;width:1px;height:1px}
-  .switch-track{position:relative;display:inline-block;width:38px;height:22px;flex:none;border-radius:999px;background:#777;transition:background .15s ease}
-  .switch-track::after{content:"";position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:white;box-shadow:0 1px 3px #0005;transition:transform .15s ease}
-  .switch-control input:checked + .switch-track{background:#697cf4}
-  .switch-control input:checked + .switch-track::after{transform:translateX(16px)}
-  .switch-control input:focus-visible + .switch-track{outline:2px solid #8697ff;outline-offset:3px}
-  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-detail:empty{display:none}
-  .status{--tone:var(--tone-info);display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:4px 9px;margin-top:12px;padding:9px 10px;border-radius:8px;background:#8881;background:color-mix(in srgb,var(--tone) 9%,transparent)}
+  .switch-track{position:relative;display:inline-block;width:32px;height:18px;flex:none;border-radius:999px;background:var(--switch-off);transition:background .15s ease}
+  .switch-track::after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:white;box-shadow:0 1px 2px rgb(0 0 0 / .3);transition:transform .15s ease}
+  .switch-control input:checked + .switch-track{background:var(--accent);background:AccentColor}
+  .switch-control input:checked + .switch-track::after{transform:translateX(14px)}
+  .switch-control input:focus-visible + .switch-track{outline:2px solid var(--focus);outline:auto 3px -webkit-focus-ring-color;outline-offset:2px}
+  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-detail:empty,.field-hint[hidden]{display:none}
+  .status{--tone:var(--tone-info);display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:4px 8px;margin-top:10px;padding:8px 10px;border-radius:7px;background:var(--fill);background:color-mix(in srgb,var(--tone) 9%,transparent)}
   .status[data-tone="working"]{--tone:var(--tone-working)}
   .status[data-tone="ready"]{--tone:var(--tone-ready)}
   .status[data-tone="warning"]{--tone:var(--tone-warning)}
   .status[data-tone="error"]{--tone:var(--tone-error)}
-  .status-dot{width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--tone)}
+  .status-dot{width:8px;height:8px;margin-top:5px;border-radius:50%;background:var(--tone)}
   .status[data-tone="working"] .status-dot{animation:status-pulse 1.6s ease-in-out infinite}
   @keyframes status-pulse{50%{opacity:.35}}
-  .status-title{margin:0;font-weight:600;line-height:1.4}
-  .status-detail{margin:1px 0 0;font-size:13px;line-height:1.4;opacity:.8;overflow-wrap:break-word}
-  .status-retry{align-self:center;min-height:28px;padding:3px 12px;border:1px solid #8889;border-radius:6px;background:Canvas;color:CanvasText;cursor:pointer;white-space:nowrap}
-  .status-retry:hover{background:#8882}
-  .status-retry:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-  select{display:block;width:100%;padding:7px;margin:4px 0 14px}
-  .field-hint{margin:-8px 0 14px;font-size:12px;line-height:1.4;opacity:.8}
-  .field-hint[hidden]{display:none}
-  .option{display:flex;gap:8px;align-items:flex-start;margin:10px 0;cursor:pointer}
-  .option input{margin-top:5px;flex:none}
-  .option-hint{display:block;font-size:12px;line-height:1.4;opacity:.8}
-  .developer{margin-top:4px}
-  .developer summary{padding:7px 10px;font-size:13px;opacity:.8;cursor:pointer}
-  .developer summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-  .size-heading{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px}
-  #subtitle-size{display:block;width:100%;margin:5px 0 14px;accent-color:#728eff}
-  output{font-variant-numeric:tabular-nums;opacity:.75}
-  #status{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0}
-  .advanced{margin:18px 0 14px}
-  .advanced summary{display:flex;align-items:center;justify-content:space-between;min-height:38px;box-sizing:border-box;padding:7px 11px;border:1px solid #8886;border-radius:8px;background:#8882;cursor:pointer;font-weight:600;list-style:none}
-  .advanced summary::-webkit-details-marker{display:none}
-  .advanced summary::after{content:"";width:7px;height:7px;margin-right:3px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform .15s ease}
-  .advanced[open] summary::after{transform:rotate(225deg)}
-  .advanced summary:focus-visible,.advanced-actions button:focus-visible{outline:2px solid #8697ff;outline-offset:2px}
-  .advanced-actions{display:grid;gap:4px;margin-top:8px}
-  .advanced-actions button{width:100%;min-height:36px;padding:7px 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:inherit;text-align:left;cursor:pointer}
-  .advanced-actions button:hover{border-color:#8886;background:#8882}
-  .remux-form{display:grid;gap:8px;padding:8px 10px 12px;border:1px solid #8886;border-radius:8px}
+  .status-title{margin:0;font-weight:600}
+  .status-detail{margin:1px 0 0;font-size:12px;line-height:1.4;opacity:.8;overflow-wrap:break-word}
+  .status-retry{align-self:center;white-space:nowrap}
+  .field{margin-top:12px}
+  .field label{margin-bottom:4px}
+  select{display:block;width:100%}
+  .field-hint{margin:5px 0 0;font-size:12px;line-height:1.4;opacity:.75}
+  .size-heading{display:flex;justify-content:space-between;align-items:baseline}
+  .size-heading label{margin:0}
+  #subtitle-size{display:block;width:100%;margin:4px 0 0;accent-color:AccentColor}
+  output{font-variant-numeric:tabular-nums;opacity:.7}
+  .option{display:flex;gap:7px;align-items:flex-start;margin-top:10px;cursor:pointer}
+  .option input{margin:2px 0 0;flex:none;accent-color:AccentColor}
+  .option-hint{display:block;margin-top:1px;font-size:12px;line-height:1.4;opacity:.75}
+  details summary{display:flex;align-items:center;gap:6px;width:max-content;cursor:pointer;list-style:none;font-weight:600}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:"";width:5px;height:5px;margin:0 3px 0 1px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .15s ease;opacity:.7}
+  details[open]>summary::before{transform:rotate(45deg)}
+  .advanced{margin-top:18px;padding-top:14px;border-top:1px solid var(--separator)}
+  .advanced-actions{display:grid;gap:1px;margin-top:6px}
+  .advanced-actions>button,.developer>button{width:100%;padding:6px 8px;border:0;border-radius:5px;background:transparent;color:inherit;text-align:left;cursor:pointer}
+  .advanced-actions>button:hover,.developer>button:hover{background:var(--fill-hover)}
+  .developer{margin-top:6px}
+  .developer summary{padding:4px 0;font-size:12px;font-weight:500;opacity:.75}
+  .remux-form{display:grid;gap:7px;margin:2px 0 6px;padding:10px;border-radius:7px;background:var(--fill)}
   .remux-form label{font-weight:600}
-  .remux-form input{box-sizing:border-box;width:100%;height:36px;padding:6px 9px;border:1px solid #8889;border-radius:6px;background:Canvas;color:CanvasText}
-  .remux-form input:focus-visible{outline:2px solid #8697ff;outline-offset:2px}
+  .remux-form input{box-sizing:border-box;width:100%}
   .remux-save-path,.remux-note{margin:0;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
   .remux-note{opacity:.75}
-  .remux-form-actions{display:flex;gap:8px;margin-top:2px}
-  .remux-form-actions button{flex:1;text-align:center}
-  .remux-form-actions button[type="submit"]{background:#697cf4;color:white}
-  .remux-form-actions button[type="submit"]:hover{background:#566be8}
-  .remux-progress{padding:2px 10px 8px;font-size:12px}
+  .remux-form-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:2px}
+  .remux-form-actions button[type="submit"]{order:2}
+  .remux-progress{padding:4px 8px 8px;font-size:12px}
   .remux-progress-heading{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
   #remux-status{overflow-wrap:anywhere}
   #remux-percent{flex:none;font-variant-numeric:tabular-nums}
-  #remux-bar{display:block;width:100%;height:8px;margin-top:6px;accent-color:#728eff}
-  .remux-progress[data-state="error"] #remux-status{color:#ba2339}
-  .remux-progress[data-state="complete"] #remux-status{color:#267345}
-  small{opacity:.7}
-  @media(prefers-color-scheme:dark){.remux-progress[data-state="error"] #remux-status{color:#ff8190}.remux-progress[data-state="complete"] #remux-status{color:#80d9a4}}
+  #remux-bar{display:block;width:100%;margin-top:6px;accent-color:AccentColor}
+  .remux-progress[data-state="error"] #remux-status{color:var(--text-error)}
+  .remux-progress[data-state="complete"] #remux-status{color:var(--text-ready)}
   @media(max-width:280px){.status{grid-template-columns:auto minmax(0,1fr)}.status-retry{grid-column:2;justify-self:start}}
-  @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,.advanced summary::after{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
+  @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
-<h2>Cue subtitles</h2>
-<div class="generation">
+<h1>Cue subtitles</h1>
+<section>
   <label class="switch-control" for="ai-enabled"><span>AI subtitles</span><input id="ai-enabled" type="checkbox" role="switch" aria-label="AI subtitles"><span class="switch-track" aria-hidden="true"></span></label>
   <div role="status" aria-live="polite" aria-atomic="true">
     <div id="status" class="status" data-tone="off" hidden>
@@ -82,7 +84,10 @@
       <button id="retry" class="status-retry" type="button" hidden>Retry</button>
     </div>
   </div>
-</div>
+</section>
+<section aria-labelledby="language-heading">
+<h2 id="language-heading">Language</h2>
+<div class="field">
 <label for="target">Subtitle language</label>
 <select id="target" aria-describedby="target-hint">
   <option value="original">Original language</option>
@@ -93,6 +98,8 @@
   <option value="ko">Korean</option>
 </select>
 <p id="target-hint" class="field-hint" hidden></p>
+</div>
+<div class="field">
 <label for="source">Source language</label>
 <select id="source" aria-describedby="source-hint">
   <option value="auto">Auto-detect</option>
@@ -111,10 +118,18 @@
   </optgroup>
 </select>
 <p id="source-hint" class="field-hint" hidden>Experimental: timed by the local aligner, but not yet through Cue's transcription or translation quality checks.</p>
+</div>
+</section>
+<section aria-labelledby="appearance-heading">
+<h2 id="appearance-heading">Appearance</h2>
 <div class="size-heading"><label for="subtitle-size">Subtitle size</label><output id="subtitle-size-value" for="subtitle-size">55</output></div>
 <input id="subtitle-size" type="range" min="16" max="96" step="1" value="55">
-<label class="option"><input id="pause-until-ready" type="checkbox" aria-describedby="pause-hint"><span>Pause until captions are ready<span id="pause-hint" class="option-hint">Press play once captions are ready. Cue never resumes a pause you made.</span></span></label>
 <label class="option"><input id="subtitle-box" type="checkbox">White text on a translucent black background</label>
+</section>
+<section aria-labelledby="playback-heading">
+<h2 id="playback-heading">Playback</h2>
+<label class="option"><input id="pause-until-ready" type="checkbox" aria-describedby="pause-hint"><span>Pause until captions are ready<span id="pause-hint" class="option-hint">Press play once captions are ready. Cue never resumes a pause you made.</span></span></label>
+</section>
 <details id="advanced" class="advanced">
   <summary>Advanced</summary>
   <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions">

@@ -1,8 +1,21 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><style>
-body{font:14px -apple-system,sans-serif;margin:24px;line-height:1.7;color:CanvasText;background:Canvas}input[type=text]{width:100%;box-sizing:border-box;padding:6px}p{max-width:650px}label{display:block;margin:14px 0}small{opacity:.75}
-</style><h2>Cue · Local AI subtitles</h2><p>Technical preview. Uses Gemma E2B and Qwen forced alignment; your video and captions stay on this Mac.</p>
-<label>Absolute path to the helper launcher<input type="text" data-pref-key="bootstrap" placeholder="Leave blank to use the helper bundled with this build"></label>
+:root{color-scheme:light dark}
+body{margin:20px 24px;font:13px/1.55 -apple-system,BlinkMacSystemFont,sans-serif;color:CanvasText;background:Canvas}
+main{max-width:600px}
+h1{margin:0 0 4px;font-size:15px}
+h2{margin:22px 0 6px;font-size:13px}
+p{margin:6px 0}
+label{display:block;margin:10px 0}
+input[type=text]{display:block;width:100%;box-sizing:border-box;margin-top:4px}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.note{font-size:12px;opacity:.75}
+</style><main>
+<h1>Cue for IINA · Technical Preview</h1>
+<p>Local AI subtitles. Uses Gemma E2B and Qwen forced alignment; your video and captions stay on this Mac.</p>
 <label><input type="checkbox" data-pref-key="autoEnable"> Enable when a video lacks subtitles in the selected language</label>
 <p>Manual activation and original-language captions are the defaults. Playback continues while captions are prepared, and Cue attaches them when ready. In the sidebar, you can change the subtitle and source language, adjust subtitle size, pause until captions are ready, or switch the translucent black background. Cue never resumes your own pause. The Plugin → Cue menu offers the same language choices.</p>
+<h2>Setup</h2>
 <p>First-time setup: run <code>scripts/setup-dev</code>, review the sources, terms, and roughly 3.56 GB of model weights shown by <code>scripts/setup-models</code>, then approve the download. This development build does not yet have a Terminal-free installer.</p>
-<small>Permissions: read selected videos and write local captions, run a local helper, connect only to 127.0.0.1, and show status. No microphone, screen recording, cloud service, or telemetry.</small></html>
+<label>Absolute path to the helper launcher<input type="text" data-pref-key="bootstrap" placeholder="Leave blank to use the helper bundled with this build"></label>
+<p class="note">Permissions: read selected videos and write local captions, run a local helper, connect only to 127.0.0.1, and show status. No microphone, screen recording, cloud service, or telemetry.</p>
+</main></html>
