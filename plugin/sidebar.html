@@ -227,6 +227,7 @@
   document.getElementById('ai-enabled').addEventListener('change',event=>iina.postMessage('action',{action:'set-enabled',value:event.target.checked}));
   document.getElementById('retry').addEventListener('click',()=>iina.postMessage('action',{action:'retry'}));
   remuxName.addEventListener('input',updateRemuxPath);
+  remuxName.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();iina.postMessage('action',{action:'cancel-remux'});}});
   document.getElementById('remux-form').addEventListener('submit',event=>{event.preventDefault();iina.postMessage('action',{action:'confirm-remux',filename:remuxName.value});});
   document.getElementById('remux-cancel').addEventListener('click',()=>iina.postMessage('action',{action:'cancel-remux'}));
   document.querySelectorAll('#advanced-actions button[data-action]').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));

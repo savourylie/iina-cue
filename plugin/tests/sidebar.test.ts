@@ -76,6 +76,11 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   assert.equal(posted[posted.length-1][1].filename,'fixed-copy.mp4');
   element('remux-cancel').listeners.get('click')!({});
   assert.equal(posted[posted.length-1][1].action,'cancel-remux');
+  posted.length=0;
+  element('remux-name').listeners.get('keydown')!({key:'a',preventDefault(){}});
+  assert.equal(posted.length,0);
+  element('remux-name').listeners.get('keydown')!({key:'Escape',preventDefault(){}});
+  assert.equal(posted[0][1].action,'cancel-remux');
   messages.get('cue-remux-draft')!({active:false});
   assert.equal(element('remux-form').hidden,true);
 
