@@ -1,10 +1,12 @@
 import subprocess
+import errno
 from pathlib import Path
 import numpy as np
 import pytest
 import soundfile as sf
 from cue.core import CueError
-from cue.media import Media, binary, extract, local_media, select_stream
+from cue.media import Media, binary, extract, local_media, probe, select_stream
+from cue.remux import _duration_seconds, _progress_percent, remux
 
 @pytest.fixture(scope='session')
 def fixture(tmp_path_factory):
@@ -35,6 +37,9 @@ def test_late_audio_is_padded(tmp_path):
     data,sr=sf.read(dest)
     assert np.max(np.abs(data[:15000]))==0
     assert np.max(np.abs(data[17000:]))>.01
+    copy=tmp_path/'late-remux.mkv';remux(str(path),str(copy))
+    starts={s['codec_type']:float(s['start_time']) for s in probe(copy)['streams']}
+    assert abs((starts['audio']-starts['video'])-1)<.1
 
 def test_nonzero_container_origin(tmp_path):
     path=tmp_path/'origin.mkv'
@@ -49,3 +54,53 @@ def test_source_change_invalidates(fixture):
     assert media.unchanged()
     altered=Media(**{**media.__dict__,'size':media.size+1})
     assert not altered.unchanged()
+
+def test_remux_keeps_original_and_copies_every_stream(fixture,tmp_path):
+    before=fixture.stat()
+    output=tmp_path/'timestamp fixed.mkv'
+    updates=[]
+    assert remux(str(fixture),str(output),lambda phase,percent:updates.append((phase,percent)))==str(output)
+    assert any(phase=='copying' and percent is not None and percent>0 for phase,percent in updates)
+    assert ('verifying',99) in updates and ('saving',99) in updates
+    assert all(percent is None or 0<=percent<=99 for _,percent in updates)
+    assert fixture.stat().st_size==before.st_size and fixture.stat().st_mtime_ns==before.st_mtime_ns
+    original=probe(fixture); copied=probe(output)
+    assert sorted((s['codec_type'],s['codec_name']) for s in original['streams'])==sorted((s['codec_type'],s['codec_name']) for s in copied['streams'])
+    assert abs(float(original['format']['duration'])-float(copied['format']['duration']))<.25
+    assert abs(min(float(s['start_time']) for s in copied['streams']))<.1
+    with pytest.raises(CueError,match='OUTPUT_EXISTS'):remux(str(fixture),str(output))
+    with pytest.raises(CueError):remux(str(fixture),str(fixture))
+
+def test_remux_progress_uses_ffmpeg_microseconds_and_stays_below_completion():
+    assert _progress_percent({'out_time_us':'2500000'},10)==25
+    assert _progress_percent({'out_time_ms':'2500000'},10)==25
+    assert _progress_percent({'out_time':'00:00:02.500000'},10)==25
+    assert _progress_percent({'out_time_us':'15000000'},10)==99
+    assert _progress_percent({'out_time_us':'N/A'},10) is None
+
+def test_remux_shifts_nonzero_origin_to_zero(tmp_path):
+    source=tmp_path/'offset.mkv'
+    subprocess.run([binary('ffmpeg'),'-v','error','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=2',
+                    '-af','asetpts=PTS+5/TB','-c:a','pcm_s16le','-y',str(source)],check=True)
+    source_info=probe(source)
+    assert float(source_info['streams'][0]['start_time'])==5
+    assert abs(_duration_seconds(source_info)-2)<.1
+    output=tmp_path/'offset fixed.mkv'
+    remux(str(source),str(output))
+    assert abs(float(probe(output)['streams'][0]['start_time']))<.1
+
+def test_remux_on_disk_without_hard_links_does_not_replace_racing_output(fixture,tmp_path,monkeypatch):
+    output=tmp_path/'copy.mkv'
+    def unsupported(source,destination):
+        output.write_text('another file won the name')
+        raise OSError(errno.ENOTSUP,'hard links unavailable')
+    with monkeypatch.context() as patch:
+        patch.setattr('cue.remux.os.link',unsupported)
+        with pytest.raises(CueError,match='OUTPUT_EXISTS'):remux(str(fixture),str(output))
+    assert output.read_text()=='another file won the name'
+    output.unlink()
+    def no_links(*_):raise OSError(errno.ENOTSUP,'hard links unavailable')
+    with monkeypatch.context() as patch:
+        patch.setattr('cue.remux.os.link',no_links)
+        remux(str(fixture),str(output))
+    assert len(probe(output)['streams'])==3

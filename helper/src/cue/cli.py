@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import time
 from .bootstrap import PROJECT, call, connection, ensure, models_root, runtime_root
-from .core import Cue, CueError, Settings, digest, srt
+from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, digest, srt
 from .doctor import doctor
 from .media import Media, fingerprint, local_media
 from .storage import Cache, atomic_write
@@ -51,7 +51,7 @@ def main():
     b = commands.add_parser("benchmark")
     b.add_argument("--media"); b.add_argument("--from-ms", type=int, default=0); b.add_argument("--duration-ms", type=int, default=180000)
     b.add_argument("--mode", choices=["original","zh-TW","zh-CN","en","ja","ko"], default="zh-TW")
-    b.add_argument("--source", choices=["auto","en","zh","ja","ko"], default="auto")
+    b.add_argument("--source", choices=["auto", *SOURCE_LANGUAGES], default="auto")
     b.add_argument("--stream", type=int); b.add_argument("--runs", type=int, default=2); b.add_argument("--output", default="benchmarks/results/local-benchmark")
     c = commands.add_parser("cache"); c.add_argument("action", choices=["status","clear"]); c.add_argument("--media")
     e = commands.add_parser("export"); e.add_argument("--media", required=True); e.add_argument("--target", choices=["original","zh-TW","zh-CN","en","ja","ko"], default="zh-TW"); e.add_argument("--output", required=True)

@@ -12,9 +12,11 @@ import secrets
 import threading
 import time
 from urllib.parse import parse_qs
-from .core import Cue, CueError, Settings, continuous_end, digest, next_window, srt
+from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
+from .bootstrap import HELPER_VERSION
 from .media import Media
 from .pipeline import worker_entry
+from .remux import remux, validate_destination
 from .storage import Cache, atomic_write, private_dir
 
 def opaque() -> str: return secrets.token_hex(16)
@@ -48,6 +50,7 @@ class Session:
     seek_at: float = 0
     versions: dict = field(default_factory=dict)
     retry_window: list[int] | None = None
+    skipped_language: list[list[int]] = field(default_factory=list)
 
 class Supervisor:
     def __init__(self, root: Path, models: Path, clock=time.monotonic):
@@ -57,6 +60,7 @@ class Supervisor:
         self.clients: dict[str, float] = {}
         self.sessions: dict[str, Session] = {}
         self.requests = {}
+        self.remux_jobs: dict[str, dict] = {}
         self.active = None
         self.busy = None
         self.worker = None
@@ -70,7 +74,7 @@ class Supervisor:
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
         ctx = mp.get_context("spawn")
-        self.inbox, self.outbox = ctx.Queue(maxsize=1), ctx.Queue(maxsize=2)
+        self.inbox, self.outbox = ctx.Queue(maxsize=1), ctx.Queue(maxsize=16)
         self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp")), daemon=True)
         self.worker.start()
 
@@ -100,9 +104,12 @@ class Supervisor:
 
     def snapshot(self, s: Session):
         buffer = continuous_end(s.installed, s.position)-s.position
+        job = self.busy if self.busy and self.busy["session"] == s.id and self.busy["epoch"] == s.epoch and self.busy["profile"] == s.profile else None
         return {"session_id": s.id, "seek_epoch": s.epoch, "profile_revision": 1, "snapshot_revision": s.revision,
-                "state": s.state, "stage": "inference" if self.busy and self.busy["session"] == s.id else "idle",
+                "state": s.state, "stage": job.get("stage", "extracting") if job else "idle",
+                "stage_elapsed_s": round(self.clock()-job.get("stage_at", job["started"]), 1) if job else 0,
                 "prepared_ranges": s.prepared, "installed_ranges": s.installed, "artifact": s.artifact,
+                "skipped_language_ranges": s.skipped_language,
                 "buffer_media_ms": buffer, "buffer_wall_ms": buffer/s.rate,
                 "language": s.language, "metrics": s.timings, "error": s.error,
                 "duration_ms": s.media.duration_ms, "target": s.settings.target,
@@ -117,8 +124,17 @@ class Supervisor:
                 if now-self.sessions[sid].last_seen > 45: del self.sessions[sid]
             if self.busy:
                 response = None
-                try: response = self.outbox.get_nowait()
-                except queue.Empty: pass
+                while True:
+                    try: message = self.outbox.get_nowait()
+                    except queue.Empty: break
+                    if message["job_id"] != self.busy["job_id"]: continue
+                    if "stage" not in message:
+                        response = message; break
+                    self.busy["stage"] = message["stage"]
+                    self.busy["stage_at"] = now
+                    current = self.sessions.get(self.busy["session"])
+                    if current and current.epoch == self.busy["epoch"] and current.profile == self.busy["profile"] and "language" in message:
+                        current.language = message["language"]
                 if response:
                     job = self.busy; self.busy = None; self.last_job = now
                     s = self.sessions.get(job["session"])
@@ -134,7 +150,14 @@ class Supervisor:
                             except CueError as exc: s.error = {"code": exc.code}; s.state = "error"
                     elif s and s.epoch == job["epoch"]:
                         failure = response.get("error", {"code": "SOURCE_CHANGED"})
-                        if failure["code"] in {"ALIGNMENT_FAILED","ASR_FAILED"} and not job.get("attempt") and job["range"][1]-job["range"][0] >= 8000:
+                        if failure["code"] == "LANGUAGE_UNCERTAIN" and not job.get("attempt"):
+                            a,b=job["range"]
+                            s.retry_window=[a,min(s.media.duration_ms,a+min(24000,max(20000,2*(b-a))))]
+                            s.state="preparing"
+                        elif failure["code"] == "LANGUAGE_UNCERTAIN":
+                            s.skipped_language = ranges_merge([*s.skipped_language, job["range"]])
+                            s.state="preparing"
+                        elif failure["code"] in {"ALIGNMENT_FAILED","ASR_FAILED"} and not job.get("attempt") and job["range"][1]-job["range"][0] >= 8000:
                             a,b=job["range"];s.retry_window=[a,a+(b-a)//2];s.state="preparing"
                         else:
                             s.error = failure; s.state = "error"
@@ -151,7 +174,7 @@ class Supervisor:
             try: self.publish(s)
             except CueError as exc: s.error = {"code": exc.code}; s.state = "error"; return
             retry = s.retry_window
-            window = retry or next_window(s.prepared, s.position, s.media.duration_ms, s.settings, s.rate)
+            window = retry or next_window(ranges_merge([*s.prepared, *s.skipped_language]), s.position, s.media.duration_ms, s.settings, s.rate)
             if window is None: s.state = "idle"; return
             self.start_worker()
             job = {"job_id": opaque(), "session": s.id, "epoch": s.epoch, "source_profile": s.source_profile,
@@ -184,15 +207,48 @@ class Supervisor:
         self.sessions = {sid: s for sid, s in self.sessions.items() if s.client != cid}
         self.requests = {key: sid for key, sid in self.requests.items() if key[0] != cid}
 
+    def remux_running(self) -> bool:
+        with self.lock:
+            return any(job["state"] == "running" for job in self.remux_jobs.values())
+
+    def start_remux(self, source: str, output: str) -> dict:
+        # Validate before returning a job ID; the worker repeats validation
+        # immediately before touching the file to catch intervening changes.
+        validate_destination(source, output)
+        if self.remux_running(): raise CueError("REMUX_ACTIVE")
+        self.remux_jobs = dict(list(self.remux_jobs.items())[-16:])
+        job_id = opaque()
+        job = {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None, "started": time.monotonic()}
+        self.remux_jobs[job_id] = job
+        def report(phase: str, percent: int | None):
+            with self.lock:
+                if job["state"] != "running": return
+                job["phase"] = phase
+                if percent is not None:
+                    job["progress_pct"] = max(job["progress_pct"] or 0, min(99, max(0, percent)))
+        def work():
+            try:
+                path = remux(source, output, report)
+                update = {"state": "complete", "phase": "complete", "progress_pct": 100, "path": path}
+            except CueError as exc:
+                update = {"state": "error", "phase": "error", "error": {"code": exc.code}}
+            except Exception:
+                update = {"state": "error", "phase": "error", "error": {"code": "REMUX_FAILED"}}
+            with self.lock:
+                job.update(update)
+        threading.Thread(target=work, name="cue-remux", daemon=False).start()
+        return {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None}
+
     def request(self, method: str, path: str, body: dict, client: str | None):
         with self.lock:
             if path == "/v1/health" and method == "GET":
-                return {"protocol_version": 1, "helper_version": "0.1.0", "worker_busy": self.busy is not None}
+                return {"protocol_version": 1, "helper_version": HELPER_VERSION, "worker_busy": self.busy is not None}
             if path == "/v1/clients" and method == "POST":
                 cid = opaque(); self.clients[cid] = self.clock(); return {"client_id": cid, "lease_seconds": 45}
             if path == "/v1/setup" and method == "GET":
                 return {"ready": (self.models/"gemma/gemma-4-E2B-it.litertlm").is_file() and (self.models/"aligner/model.safetensors").is_file(), "model_manifest": self.manifest_hash}
             if path == "/v1/shutdown" and method == "POST":
+                if self.remux_running(): raise CueError("REMUX_ACTIVE")
                 if self.clients: raise CueError("CLIENTS_ACTIVE")
                 self.stopping = True; return {"stopping": True}
             if client not in self.clients: raise CueError("CLIENT_REQUIRED")
@@ -200,6 +256,14 @@ class Supervisor:
             if path == "/v1/heartbeat" and method == "POST": return {"ok": True, "sessions": [s.id for s in self.sessions.values() if s.client == client]}
             if path == "/v1/client" and method == "DELETE": self.remove_client(client); return {"ok": True}
             if path == "/v1/cache/status" and method == "GET": return self.cache.status()
+            if path == "/v1/remux" and method == "POST":
+                source, output = body.get("source"), body.get("output")
+                if not isinstance(source, str) or not isinstance(output, str): raise CueError("INVALID_REQUEST")
+                return self.start_remux(source, output)
+            if path.startswith("/v1/remux/") and method == "GET":
+                job = self.remux_jobs.get(path.removeprefix("/v1/remux/"))
+                if not job: raise CueError("NOT_FOUND")
+                return {**job, "elapsed_s": round(time.monotonic()-job["started"], 1)}
             if path == "/v1/sessions" and method == "POST":
                 request_id = str(body.get("request_id", ""))
                 if not 1 <= len(request_id) <= 100: raise CueError("INVALID_REQUEST")
@@ -211,7 +275,9 @@ class Supervisor:
                 media = Media.open(body["path"], body.get("track", {}))
                 position = integer(body.get("position_ms", 0), upper=media.duration_ms)
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
-                                         settings.first_ms, settings.window_ms, settings.context_ms, "pipeline-v3"])
+                                         settings.first_ms, settings.window_ms, settings.context_ms,
+                                         "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
+                                         "sentence-cues-v3"])
                 profile = digest([source_profile, settings.target, "translate-v2"])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position)
                 self.cache.register(source_profile, media.signature, "original")
@@ -317,14 +383,14 @@ def serve(root: Path, models: Path):
     sup = Supervisor(root, models)
     server = Server(sup)
     connection = {"host": "127.0.0.1", "port": server.server_port, "token": sup.token,
-                  "instance_id": sup.instance, "protocol_version": 1, "helper_version": "0.1.0"}
+                  "instance_id": sup.instance, "protocol_version": 1, "helper_version": HELPER_VERSION}
     atomic_write(root/"connection.json", json.dumps(connection))
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     no_clients_at = time.monotonic()
     try:
         while not sup.stopping:
             sup.tick()
-            if sup.clients: no_clients_at = time.monotonic()
+            if sup.clients or sup.remux_running(): no_clients_at = time.monotonic()
             elif time.monotonic()-no_clients_at > 60: break
             time.sleep(.1)
     finally:

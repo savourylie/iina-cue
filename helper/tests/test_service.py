@@ -1,6 +1,7 @@
 import json
 import queue
 import threading
+import time
 import urllib.error
 import urllib.request
 import pytest
@@ -50,6 +51,32 @@ def test_delete_client_preserves_other_sessions(sup):
     sup.sessions['2'*32]=Session('2'*32,'b',s.media,Settings(),'s','p',0,last_seen=100)
     sup.remove_client('a')
     assert list(sup.sessions)==['2'*32]
+
+def test_remux_is_background_and_only_one_copy_runs(sup,monkeypatch,tmp_path):
+    source=tmp_path/'input.mkv';source.write_bytes(b'fixture')
+    output=tmp_path/'new.mkv'
+    release=threading.Event()
+    copying=threading.Event()
+    def copy(src,dest,progress):
+        assert src==str(source) and dest==str(output)
+        progress('copying',35);copying.set()
+        assert release.wait(2)
+        return dest
+    monkeypatch.setattr('cue.service.remux',copy)
+    started=sup.request('POST','/v1/remux',{'source':str(source),'output':str(output)},'a')
+    assert started['state']=='running'
+    assert copying.wait(2)
+    current=sup.request('GET',f"/v1/remux/{started['job_id']}",{},'a')
+    assert current['state']=='running' and current['phase']=='copying' and current['progress_pct']==35
+    with pytest.raises(CueError,match='REMUX_ACTIVE'):
+        sup.request('POST','/v1/remux',{'source':str(source),'output':str(output)},'a')
+    release.set()
+    for _ in range(50):
+        result=sup.request('GET',f"/v1/remux/{started['job_id']}",{},'a')
+        if result['state']=='complete':break
+        time.sleep(.01)
+    assert result['state']=='complete' and result['path']==str(output)
+    assert result['phase']=='complete' and result['progress_pct']==100
 
 def test_no_shutdown_with_active_clients(sup):
     with pytest.raises(CueError,match='CLIENTS_ACTIVE'):sup.request('POST','/v1/shutdown',{},None)
@@ -107,3 +134,32 @@ def test_alignment_failure_retries_once_with_shorter_window_and_more_context(sup
     sup.outbox.put({'job_id':retry['job_id'],'error':{'code':'ALIGNMENT_FAILED'}})
     sup.tick()
     assert s.error['code']=='ALIGNMENT_FAILED' and sup.inbox.empty()
+
+def test_uncertain_language_retries_with_longer_audio_then_keeps_coverage_hole(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.busy={'session':s.id,'job_id':'first','epoch':0,'profile':s.profile,'media_obj':s.media,
+              'source_profile':s.source_profile,'range':[0,10000],'attempt':0,'started':100}
+    sup.outbox.put({'job_id':'first','error':{'code':'LANGUAGE_UNCERTAIN'}})
+    sup.tick();retry=sup.inbox.get_nowait()
+    assert retry['range']==[0,20000] and retry['attempt']==1
+    sup.outbox.put({'job_id':retry['job_id'],'error':{'code':'LANGUAGE_UNCERTAIN'}})
+    sup.tick();following=sup.inbox.get_nowait()
+    assert s.skipped_language==[[0,20000]] and s.prepared==[]
+    assert following['range'][0]==20000
+    assert s.error is None
+
+def test_progress_reports_detected_language_only_for_current_epoch(sup):
+    s=next(iter(sup.sessions.values()))
+    sup.worker=type('LiveWorker',(),{'is_alive':lambda self:True})()
+    sup.busy={'session':s.id,'job_id':'job','epoch':0,'profile':s.profile,'started':100}
+    sup.outbox=queue.Queue()
+    sup.outbox.put({'job_id':'job','stage':'aligning','language':{'code':'el','status':'tentative'}})
+    sup.tick()
+    snapshot=sup.snapshot(s)
+    assert snapshot['stage']=='aligning' and snapshot['language']['code']=='el'
+    s.epoch=1
+    sup.outbox.put({'job_id':'job','stage':'translating','language':{'code':'en'}})
+    sup.tick()
+    assert s.language['code']=='el' and sup.snapshot(s)['stage']=='idle'

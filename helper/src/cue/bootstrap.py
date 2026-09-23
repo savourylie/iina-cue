@@ -6,11 +6,13 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from .core import CueError
 from .storage import private_dir
 
 PROJECT = Path(__file__).resolve().parents[3]
+HELPER_VERSION = "0.1.4"
 def runtime_root() -> Path:
     return Path(os.environ.get("CUE_HOME", str(PROJECT / ".runtime"))).resolve()
 def models_root() -> Path:
@@ -40,8 +42,22 @@ def ensure(root: Path):
     with os.fdopen(fd, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
-            conn = connection(root); call(conn, "/health"); return conn
-        except (CueError, OSError, ValueError): pass
+            conn = connection(root)
+            health = call(conn, "/health")
+        except (CueError, OSError, ValueError):
+            conn = None
+        if conn:
+            if health.get("helper_version") == HELPER_VERSION: return conn
+            try:
+                call(conn, "/shutdown", {})
+            except urllib.error.HTTPError as exc:
+                raise CueError("HELPER_RESTART_REQUIRED", "wait for remux or close other Cue windows before upgrading the helper") from exc
+            for _ in range(50):
+                try: call(conn, "/health")
+                except (CueError, OSError, ValueError): break
+                time.sleep(.1)
+            else:
+                raise CueError("HELPER_RESTART_REQUIRED", "old helper did not stop")
         log_path = root/"helper.log"
         if log_path.is_symlink(): raise CueError("UNSAFE_PATH")
         if log_path.exists() and log_path.stat().st_size > 5*1024*1024:
@@ -54,7 +70,8 @@ def ensure(root: Path):
         while time.monotonic() < until:
             if process.poll() is not None: raise CueError("HELPER_DISCONNECTED", "supervisor exited")
             try:
-                conn = connection(root); call(conn, "/health"); return conn
+                conn = connection(root)
+                if call(conn, "/health").get("helper_version") == HELPER_VERSION: return conn
             except (CueError, OSError, ValueError): time.sleep(.1)
         process.terminate()
         raise CueError("HELPER_DISCONNECTED", "bootstrap timeout")

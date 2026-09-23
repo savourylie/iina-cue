@@ -10,6 +10,7 @@ export interface Snapshot {
   prepared_ranges: number[][]; installed_ranges: number[][]; buffer_wall_ms: number;
   language: {code: string; status: string}; artifact: Artifact | null;
   error: {code: string} | null; ready: boolean; duration_ms: number;
+  stage_elapsed_s?: number; skipped_language_ranges?: number[][];
   metrics?: Record<string, unknown>;
 }
 export interface ChildGlobal {

@@ -1,11 +1,20 @@
 import json
 import pytest
-from cue.core import Cue, CueError, Settings, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
-from cue.core import coalesce_quantized_units
+from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
+from cue.core import coalesce_quantized_units, restore_transcript
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
     assert Settings(target='zh-CN').target == 'zh-CN'
     assert Settings(target='zh-TW').target == 'zh-TW'
+
+def test_all_pinned_aligner_languages_are_valid_sources():
+    assert SOURCE_LANGUAGES == {"zh":"Chinese","yue":"Cantonese","en":"English",
+                                "de":"German","es":"Spanish","fr":"French","it":"Italian",
+                                "pt":"Portuguese","ru":"Russian","ko":"Korean","ja":"Japanese"}
+    for source in SOURCE_LANGUAGES:
+        assert Settings(source=source).source == source
+    with pytest.raises(CueError,match='INVALID_SETTINGS'):
+        Settings(source='el')
 
 def test_quantized_zero_tokens_use_measured_group_boundaries():
     units=coalesce_quantized_units([Unit(0,100,'go'),Unit(100,100,'to'),Unit(160,400,'town')])
@@ -41,6 +50,71 @@ def test_alignment_text_and_original_timing():
 def test_repeated_words_have_distinct_ids():
     cues=assemble([Unit(0,200,'yes'),Unit(1000,1200,'yes')],0,0,2000,'p')
     assert len(cues)==2 and cues[0].id != cues[1].id
+
+def test_transcript_punctuation_splits_sentences_at_aligned_word_times():
+    words='We work with teammates and colleagues And now we can begin'.split()
+    units=[Unit(i*300,i*300+240,word) for i,word in enumerate(words)]
+    transcript='We work with teammates and colleagues. And now we can begin.'
+    validate_units(units,4000,transcript)
+    restored=restore_transcript(units,transcript)
+    assert restored is not None
+    cues=assemble(restored,0,0,4000,'p',verbatim=True)
+    assert [cue.text for cue in cues]==['We work with teammates and colleagues.','And now we can begin.']
+    assert [(cue.start_ms,cue.end_ms) for cue in cues]==[(0,1740),(1800,3240)]
+
+def test_sentence_break_keeps_quotes_and_abbreviations_together():
+    words=['Dr','Smith','said','Go','Now','we','start']
+    units=[Unit(i*350,i*350+260,word) for i,word in enumerate(words)]
+    transcript='Dr. Smith said, "Go!" Now we start.'
+    restored=restore_transcript(units,transcript)
+    assert restored is not None
+    cues=assemble(restored,0,0,3000,'p',verbatim=True)
+    assert [cue.text for cue in cues]==['Dr. Smith said, "Go!"','Now we start.']
+    assert cues[0].end_ms==1310 and cues[1].start_ms==1400
+
+def test_long_speech_uses_aligned_word_boundaries_without_filling_one_cue():
+    words='we are making a simple tool that lets people work with their teammates while everyone keeps track of what matters in the project'.split()
+    units=[Unit(i*270,i*270+210,word) for i,word in enumerate(words)]
+    transcript=' '.join(words)
+    restored=restore_transcript(units,transcript)
+    assert restored is not None
+    cues=assemble(restored,0,0,7000,'p',verbatim=True)
+    assert len(cues)>1
+    assert all(len(cue.text)<=64 and cue.end_ms-cue.start_ms<=4500 for cue in cues)
+    assert ' '.join(cue.text for cue in cues)==transcript
+    assert cues[0].end_ms in {unit.end_ms for unit in units}
+
+def test_clause_boundary_and_cjk_width_break_at_measured_units():
+    words=['We','have','already','made','a','clear','plan,','then','we','started','the','work']
+    units=[Unit(i*320,i*320+260,word) for i,word in enumerate(words)]
+    cues=assemble(units,0,0,4500,'p')
+    assert [cue.text for cue in cues]==['We have already made a clear plan,','then we started the work']
+    han=[Unit(i*100,i*100+80,'字') for i in range(40)]
+    cues=assemble(han,0,0,5000,'p')
+    assert len(cues)==2 and all(len(cue.text)<=32 for cue in cues)
+
+def test_no_time_is_invented_inside_one_aligner_unit():
+    units=[Unit(100,900,'Hello world This works')]
+    restored=restore_transcript(units,'Hello world. This works.')
+    assert restored is not None
+    cues=assemble(restored,0,0,1000,'p',verbatim=True)
+    assert [(c.start_ms,c.end_ms,c.text) for c in cues]==[(100,900,'Hello world. This works.')]
+
+def test_length_break_keeps_article_and_preposition_with_next_phrase():
+    words='We really wanted to make something useful for the people'.split()
+    units=[Unit(i*500,i*500+400,word) for i,word in enumerate(words)]
+    cues=assemble(units,0,0,5500,'p')
+    assert [cue.text for cue in cues]==['We really wanted to make something useful','for the people']
+    assert cues[0].end_ms==3400 and cues[1].start_ms==3500
+
+def test_tiny_sentence_joins_neighbor_without_extending_a_timestamp():
+    units=[Unit(0,900,'We'),Unit(950,1800,'planned.'),
+           Unit(1850,1930,'I think.'),Unit(1980,3000,'Now'),Unit(3050,3800,'we begin.')]
+    cues=assemble(units,0,0,4000,'p')
+    assert len(cues)==2
+    assert all(cue.end_ms-cue.start_ms>=700 for cue in cues)
+    assert cues[0].start_ms==0 and cues[0].end_ms==1930
+    assert cues[1].start_ms==1980 and cues[1].end_ms==3800
 
 @pytest.mark.parametrize('raw', ['[]','not JSON','[{"id":"x","text":"a"},{"id":"x","text":"b"}]','[{"id":"other","text":"a"}]','[{"id":"x","text":""}]','[{"id":"x","text":"a","start":1}]'])
 def test_bad_translations(raw):

@@ -3,7 +3,6 @@ declare const CUE_BOOTSTRAP_DEFAULT: string;
 let connection: Connection | undefined;
 let client: string | undefined;
 let starting: Promise<void> | undefined;
-let disposed = false;
 
 async function exchange(method: string, path: string, data: unknown = {}): Promise<any> {
   const c = connection;
@@ -16,7 +15,7 @@ async function exchange(method: string, path: string, data: unknown = {}): Promi
     if (response.data.instance_id !== c.instance_id) throw new Error("HELPER_DISCONNECTED");
     // A successful session snapshot may contain a background inference error
     // alongside usable installed coverage. It is not a transport failure.
-    if (response.data.error && !response.data.session_id) throw new Error(response.data.error.code);
+    if (response.data.error && !response.data.session_id && !response.data.job_id) throw new Error(response.data.error.code);
     return response.data;
   } catch (error: any) {
     const code = error?.data?.error?.code || error?.message || "HELPER_DISCONNECTED";
@@ -28,14 +27,17 @@ async function exchange(method: string, path: string, data: unknown = {}): Promi
 }
 
 async function ensure(): Promise<void> {
-  if (disposed) throw new Error("DISPOSED");
   if (connection && client) return;
   if (starting) return starting;
   starting = (async () => {
     const bootstrap = iina.preferences.get("bootstrap") || CUE_BOOTSTRAP_DEFAULT;
     if (typeof bootstrap !== "string" || !bootstrap.startsWith("/") || !iina.file.exists(bootstrap)) throw new Error("SETUP_REQUIRED");
     const result = await iina.utils.exec(bootstrap,["ensure"]);
-    if (result.status !== 0 || disposed) throw new Error("HELPER_DISCONNECTED");
+    if (result.status !== 0) {
+      let code = "HELPER_DISCONNECTED";
+      try { code = JSON.parse(result.stderr).error.code || code; } catch {}
+      throw new Error(code);
+    }
     const c = JSON.parse(result.stdout) as Connection;
     if (c.protocol_version !== 1 || c.host !== "127.0.0.1" || !Number.isInteger(c.port) || c.port<1 || c.port>65535 || !/^[a-f0-9]{64}$/.test(c.token)) throw new Error("PROTOCOL_MISMATCH");
     connection = c;
@@ -53,6 +55,11 @@ export async function rpc<T = any>(method: string, path: string, body: unknown =
   return exchange(method,path,body);
 }
 export function disposeClient(): void {
-  disposed = true;
-  if (connection && client) void exchange("DELETE","/client").catch(()=>{}).finally(()=>{connection=undefined;client=undefined;});
+  // Best-effort lease release that never bricks the plugin: the next rpc()
+  // reconnects on demand, so closing and reopening player windows just works.
+  // Server-side client/session leases remain the crash fallback.
+  if (!connection) return;
+  const drop = exchange("DELETE", "/client").catch(() => {});
+  connection = undefined; client = undefined;
+  void drop;
 }

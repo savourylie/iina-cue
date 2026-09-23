@@ -16,6 +16,8 @@ The GPU-only artifact at the same revision failed with `TF_LITE_AUDIO_ENCODER_HW
 
 One model-owning subprocess services all windows, with one bounded job in flight. Windows share neither mutable player state nor subtitle artifacts. First window 10 s, subsequent 16 s, 1 s context each side; a trailing 1 s draft and any straddling word are not marked complete. A seek fences publication but lets a bounded running job finish into reusable cache. Translation accepts up to 8 cues per JSON request; short request aliases restore stable IDs after validation and reuse source cue timings. High water stops new jobs, with at most one-window overshoot. Only actual benchmark results can establish whether these decisions outperform dora.
 
+Subtitle grouping restores the original ASR punctuation onto Qwen's aligned units after validating text coverage. Sentence ends create separate cues; long sentences prefer clause and pause boundaries, with a 64 display-column and 4.5-second ceiling where aligned unit boundaries permit. Breaks avoid leaving an article, preposition, or word fragment at the end of a cue. A very short measured cue may join its neighbor to prevent a flash, even across a sentence boundary; this happens only if the combined cue remains within the layout limits. These are conservative layout targets, not a claim of professional subtitle compliance: Cue has no shot-change analysis or manually authored wording, and it never invents timing inside one aligned unit. The source cache profile changes with this grouping rule, so older long cues remain stored but are not reused by new sessions.
+
 ## Primary references checked
 
 - [LiteRT Python API](https://developers.google.com/edge/litert-lm/python)

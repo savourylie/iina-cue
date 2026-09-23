@@ -1,6 +1,41 @@
 import json
-from cue.backend import Backend
-from cue.core import Cue
+import sys
+from types import SimpleNamespace
+from cue.backend import Backend, LANGUAGES
+from cue.core import Cue, CueError, SOURCE_LANGUAGES
+
+def test_backend_maps_every_allowed_source_to_the_pinned_aligner_name():
+    assert LANGUAGES is SOURCE_LANGUAGES
+
+def test_manual_source_guides_transcription_without_translation(tmp_path):
+    backend=Backend(tmp_path)
+    prompts=[]
+    backend.send=lambda prompt,audio: prompts.append(prompt) or 'Buenos días, ¿cómo estás?'
+    assert backend.transcribe(tmp_path/'sample.wav','es')=='Buenos días, ¿cómo estás?'
+    assert 'in Spanish into Spanish text' in prompts[0]
+    assert 'Do not translate' in prompts[0]
+    assert backend.language('anything','es')['code']=='es'
+
+def test_cold_language_detection_does_not_load_aligner(tmp_path,monkeypatch):
+    (tmp_path/'gemma').mkdir(); (tmp_path/'aligner').mkdir()
+    (tmp_path/'gemma/gemma-4-E2B-it.litertlm').touch()
+    (tmp_path/'aligner/model.safetensors').touch()
+    engine=SimpleNamespace(close=lambda:None)
+    gpu=SimpleNamespace(GPU=lambda:'gpu',CPU=lambda:'cpu')
+    monkeypatch.setitem(sys.modules,'litert_lm',SimpleNamespace(
+        set_min_log_severity=lambda severity:None,LogSeverity=SimpleNamespace(ERROR=1),
+        Engine=lambda *args,**kwargs:engine,Backend=gpu))
+    backend=Backend(tmp_path); backend.load()
+    assert backend.engine is engine and backend.aligner is None
+    language=backend.language('Καλημέρα σας, θέλω να μιλήσουμε για αυτή την ταινία.','auto')
+    assert language['code']=='el' and language['status']=='tentative'
+    try:
+        backend.align(tmp_path/'audio.wav','Καλημέρα',language['code'])
+    except CueError as exc:
+        assert exc.code=='ALIGNMENT_LANGUAGE_UNSUPPORTED'
+    else: raise AssertionError('Greek must not be given unsupported timestamps')
+    assert backend.aligner is None
+    backend.close()
 
 def test_short_translation_aliases_restore_stable_ids_and_measured_times(tmp_path):
     backend=Backend(tmp_path)

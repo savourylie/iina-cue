@@ -86,16 +86,29 @@ class Cache:
     def export(self, profile: str, duration: int, destination: Path, metadata: dict) -> Path:
         ranges, cues, _ = self.read(profile)
         complete = ranges == [[0, duration]]
+        if destination.suffix.lower() != ".srt": raise CueError("UNSAFE_PATH", "export path must end in .srt")
         name = destination.name
         if not complete and not name.endswith(".partial.srt"):
             name = destination.stem + ".partial.srt"
         dest = destination.with_name(name)
-        if not dest.parent.is_dir() or dest.is_symlink(): raise CueError("UNSAFE_PATH")
+        sidecar = dest.with_suffix(".json")
+        if not dest.parent.is_dir() or dest.is_symlink() or sidecar.is_symlink(): raise CueError("UNSAFE_PATH")
         # Exclusive creation never overwrites another subtitle or media file.
+        created_srt = created_sidecar = False
         try:
-            with dest.open("x", encoding="utf-8") as f: f.write(srt(cues))
-            with dest.with_suffix(".json").open("x", encoding="utf-8") as f:
+            content = srt(cues)
+            with dest.open("x", encoding="utf-8") as f:
+                created_srt = True
+                f.write(content)
+            with sidecar.open("x", encoding="utf-8") as f:
+                created_sidecar = True
                 json.dump({**metadata, "complete_movie": complete, "coverage": ranges}, f, ensure_ascii=False, indent=2)
         except FileExistsError as exc:
+            if created_srt: dest.unlink(missing_ok=True)
+            if created_sidecar: sidecar.unlink(missing_ok=True)
             raise CueError("OUTPUT_EXISTS") from exc
+        except Exception:
+            if created_srt: dest.unlink(missing_ok=True)
+            if created_sidecar: sidecar.unlink(missing_ok=True)
+            raise
         return dest

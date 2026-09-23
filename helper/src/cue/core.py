@@ -5,11 +5,18 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 
 class CueError(Exception):
     def __init__(self, code: str, detail: str = ""):
         super().__init__(detail or code)
         self.code = code
+
+# Exact source languages declared by the pinned Qwen3 ForcedAligner model.
+# Languages beyond the original four-language acceptance set are experimental.
+SOURCE_LANGUAGES = {"zh": "Chinese", "yue": "Cantonese", "en": "English",
+                    "de": "German", "es": "Spanish", "fr": "French", "it": "Italian",
+                    "pt": "Portuguese", "ru": "Russian", "ko": "Korean", "ja": "Japanese"}
 
 def digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -42,7 +49,7 @@ class Settings:
     context_ms: int = 1000
 
     def __post_init__(self):
-        if self.target not in {"original", "zh-TW", "zh-CN", "en", "ja", "ko"} or self.source not in {"auto", "en", "zh", "ja", "ko"}:
+        if self.target not in {"original", "zh-TW", "zh-CN", "en", "ja", "ko"} or (self.source != "auto" and self.source not in SOURCE_LANGUAGES):
             raise CueError("INVALID_SETTINGS")
         if not 0 < self.startup_ms <= self.high_ms or not 0 < self.first_ms <= 24000 or not 0 < self.window_ms <= 24000:
             raise CueError("INVALID_SETTINGS")
@@ -105,22 +112,123 @@ def validate_units(units: list[Unit], duration_ms: int, source: str) -> None:
     if normalize("".join(u.text for u in units)) != normalize(source):
         raise CueError("ALIGNMENT_FAILED", "incomplete text coverage")
 
-def assemble(units: list[Unit], zero_ms: int, core_start: int, core_end: int, source_key: str) -> list[Cue]:
+def restore_transcript(units: list[Unit], transcript: str) -> list[Unit] | None:
+    """Put ASR punctuation back on aligned words without changing their times.
+
+    Qwen commonly returns the spoken words without punctuation. The validated
+    alphanumeric sequence lets us assign each original transcript span to an
+    aligned unit. If a boundary cannot be mapped exactly, use the aligner's
+    text rather than guessing a word time or dropping speech.
+    """
+    positions = [i for i, char in enumerate(transcript)
+                 for folded in char.casefold() if folded.isalnum()]
+    lengths = [sum(char.isalnum() for char in unit.text.casefold()) for unit in units]
+    if not units or any(length == 0 for length in lengths) or sum(lengths) != len(positions):
+        return None
+    spans = []
+    offset = 0
+    for length in lengths:
+        spans.append((positions[offset], positions[offset + length - 1] + 1))
+        offset += length
+    if any(right > next_left for (_, right), (next_left, _) in zip(spans, spans[1:])):
+        return None
+    boundaries = []
+    for (_, right), (next_left, _) in zip(spans, spans[1:]):
+        gap = transcript[right:next_left]
+        split = len(gap.rstrip())
+        # A quote/bracket after whitespace opens the next phrase; a quote
+        # immediately after a word or punctuation closes the current one.
+        opener = re.search(r'\s+(?=["“‘(\[{]+$)', gap[:split])
+        if opener:
+            split = opener.start()
+        boundaries.append(right + split)
+    boundaries.append(len(transcript))
+    cursor = 0
+    restored = []
+    for unit, boundary in zip(units, boundaries):
+        restored.append(Unit(unit.start_ms, unit.end_ms, transcript[cursor:boundary], unit.quality_flags))
+        cursor = boundary
+    return restored
+
+def _subtitle_width(text: str) -> int:
+    return sum(2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1 for char in text)
+
+def _sentence_end(text: str) -> bool:
+    tail = text.rstrip().rstrip('\'"”’)]}】」』')
+    if not tail.endswith((".", "!", "?", "。", "！", "？")):
+        return False
+    if tail.endswith(".") and re.search(r"(?i)(?:\b(?:mr|mrs|ms|dr|prof|sr|jr|st|vs)|\b[A-Z])\.$", tail):
+        return False
+    return True
+
+def _clause_end(text: str) -> bool:
+    return text.rstrip().rstrip('\'"”’)]}】」』').endswith((",", ";", ":", "，", "、", "；", "："))
+
+def _weak_ending(text: str) -> bool:
+    if text.rstrip().endswith(("'", "’", "-", "‐")):
+        return True
+    words = re.findall(r"[A-Za-z]+", text)
+    return bool(words and words[-1].casefold() in {
+        "a", "an", "the", "and", "or", "but", "to", "of", "for", "with", "from",
+        "in", "on", "at", "by", "as", "is", "are", "was", "were", "have", "has",
+        "had", "will", "would", "can", "could", "should", "not", "i"})
+
+def assemble(units: list[Unit], zero_ms: int, core_start: int, core_end: int, source_key: str, *, verbatim: bool = False) -> list[Cue]:
     owned = [u for u in units if core_start <= zero_ms + (u.start_ms + u.end_ms) / 2 < core_end]
     groups: list[list[Unit]] = []
     current: list[Unit] = []
+    def rendered(group: list[Unit]) -> str:
+        if verbatim:
+            return "".join(unit.text for unit in group).strip()
+        text = " ".join(unit.text for unit in group)
+        return re.sub(r"(?<=[\u3000-\u9fff]) (?=[\u3000-\u9fff])", "", text).strip()
     for u in owned:
-        if current and (u.end_ms - current[0].start_ms > 5500 or u.start_ms - current[-1].end_ms > 600 or sum(len(x.text) for x in current) > 68):
+        if current and u.start_ms - current[-1].end_ms > 600:
             groups.append(current); current = []
+        while current and (u.end_ms - current[0].start_ms > 4500
+                           or _subtitle_width(rendered([*current, u])) > 64):
+            cut = len(current)
+            while cut > 1 and _weak_ending(rendered(current[:cut])):
+                earlier = current[:cut-1]
+                if _subtitle_width(rendered(earlier)) < 20 or earlier[-1].end_ms-earlier[0].start_ms < 800:
+                    break
+                cut -= 1
+            groups.append(current[:cut]); current = current[cut:]
         current.append(u)
-        if re.search(r"[.!?。！？]$", u.text):
+        text = rendered(current)
+        if _sentence_end(text) or (_clause_end(text) and
+                                   (_subtitle_width(text) >= 28 or current[-1].end_ms - current[0].start_ms >= 1800)):
             groups.append(current); current = []
     if current:
         groups.append(current)
+    # A very short measured phrase would flash on screen. Borrow reading time
+    # by joining an adjacent cue only when its already-measured outer word
+    # boundaries still fit the layout limits. No timestamp is extended.
+    i = 0
+    while i < len(groups):
+        group = groups[i]
+        if group[-1].end_ms - group[0].start_ms >= 700:
+            i += 1; continue
+        choices = []
+        for neighbor in (i-1, i+1):
+            if not 0 <= neighbor < len(groups):
+                continue
+            left, right = (groups[neighbor], group) if neighbor < i else (group, groups[neighbor])
+            gap = right[0].start_ms - left[-1].end_ms
+            combined = [*left, *right]
+            if gap > 600 or combined[-1].end_ms-combined[0].start_ms > 4500 or _subtitle_width(rendered(combined)) > 64:
+                continue
+            # Prefer a join within a sentence, then the smallest pause.
+            choices.append((_sentence_end(rendered(left)), gap, _subtitle_width(rendered(combined)), neighbor, combined))
+        if not choices:
+            i += 1; continue
+        _, _, _, neighbor, combined = min(choices, key=lambda choice: choice[:3])
+        low = min(i, neighbor)
+        groups[low:low+2] = [combined]
+        i = max(0, low-1)
     out = []
     for group in groups:
-        text = " ".join(u.text for u in group)
-        text = re.sub(r"(?<=[\u3000-\u9fff]) (?=[\u3000-\u9fff])", "", text)
+        text = rendered(group)
         start, end = zero_ms + group[0].start_ms, zero_ms + group[-1].end_ms
         # Ownership determines inclusion. Actual aligned times remain intact.
         out.append(Cue(digest([source_key, start, end, text])[:24], start, end, clean_text(text)))

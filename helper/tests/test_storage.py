@@ -10,6 +10,15 @@ def test_partial_export_and_no_overwrite(tmp_path):
     assert '"complete_movie": false' in dest.with_suffix('.json').read_text()
     with pytest.raises(CueError): cache.export('p',100000,tmp_path/'test.srt',{})
 
+def test_export_sidecar_collision_leaves_no_orphan_srt(tmp_path):
+    cache=Cache(tmp_path/'cache')
+    cache.put('p',0,1000,[Cue('id',0,500,'text')],{'code':'en'})
+    sidecar=tmp_path/'test.json';sidecar.write_text('keep me')
+    with pytest.raises(CueError,match='OUTPUT_EXISTS'):
+        cache.export('p',1000,tmp_path/'test.srt',{})
+    assert not (tmp_path/'test.srt').exists()
+    assert sidecar.read_text()=='keep me'
+
 def test_profiles_isolated_and_cache_survives_reopen(tmp_path):
     cache=Cache(tmp_path/'cache');cache.register('en','media','en');cache.register('zh','media','zh-TW')
     cache.put('en',0,1000,[Cue('a',0,500,'hello')],{'code':'en'})

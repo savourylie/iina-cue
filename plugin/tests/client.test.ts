@@ -12,7 +12,8 @@ test('concurrent player requests share bootstrap and stale helper replies are re
       assert.equal(options.headers['X-Cue-Client'],'client-one');
       assert.deepEqual(JSON.parse(options.data.payload),{request_id:'request'});
       return {data:{instance_id:stale?'helper-two':'helper-one',session_id:'session',error:background?{code:'ALIGNMENT_FAILED'}:null}};
-    },delete:async()=>({data:{instance_id:'helper-one'}})
+    },get:async()=>({data:{instance_id:'helper-one',job_id:'remux-job',state:'error',error:{code:'REMUX_FAILED'}}}),
+    delete:async()=>({data:{instance_id:'helper-one'}})
   }};
   const {rpc,disposeClient}=await import('../src/client');
   const results=await Promise.all([rpc('POST','/sessions',{request_id:'request'}),rpc('POST','/sessions',{request_id:'request'})]);
@@ -20,8 +21,13 @@ test('concurrent player requests share bootstrap and stale helper replies are re
   background=true;
   const snapshot=await rpc<any>('POST','/sessions',{request_id:'request'});
   assert.equal(snapshot.error.code,'ALIGNMENT_FAILED');
+  const failedRemux=await rpc<any>('GET','/remux/remux-job');
+  assert.equal(failedRemux.error.code,'REMUX_FAILED');
   stale=true;
   await assert.rejects(rpc('POST','/sessions',{request_id:'request'}),/HELPER_DISCONNECTED/);
+  stale=false;
+  // Dropping the lease never bricks the plugin: the next call reconnects.
   disposeClient();
-  await assert.rejects(rpc('GET','/setup'),/DISPOSED/);
+  const revived=await rpc<any>('POST','/sessions',{request_id:'request'});
+  assert.equal(revived.session_id,'session');assert.equal(boots,2);assert.equal(registrations,2);
 });
