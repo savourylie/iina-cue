@@ -11,3 +11,6 @@ benchmarks/fixtures/generated/
 benchmarks/results/
 plugin/dist/
 .DS_Store
+.impeccable/
+.playwright-mcp/
+.claude/skills/impeccable/scripts/bin/
