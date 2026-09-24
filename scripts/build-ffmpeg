@@ -1,0 +1,178 @@
+#!/bin/sh
+# Build static LGPL ffmpeg and ffprobe for arm64. The binaries link only
+# system libraries. Homebrew's GPL build is never copied.
+set -eu
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$CUE_PROJECT"
+
+if [ "$#" -ne 0 ]; then
+  echo "usage: scripts/build-ffmpeg" >&2
+  exit 2
+fi
+if [ "$(uname -m)" != "arm64" ]; then
+  echo "build-ffmpeg: Apple Silicon (arm64) only" >&2
+  exit 1
+fi
+for tool in curl shasum tar otool clang make; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "build-ffmpeg: $tool is required" >&2
+    exit 1
+  fi
+done
+
+FFMPEG_VERSION=7.1.1
+FFMPEG_URL=https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz
+# Hash of the ffmpeg.org tarball. There is no published .sha256 sidecar.
+FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+# Stable prefix compiled into the binary. Installation uses DESTDIR, so this
+# path is never created and is not a build-machine directory.
+CONFIGURE_FLAGS="--prefix=/cue-ffmpeg --disable-autodetect --disable-network --disable-doc --disable-ffplay --disable-debug --enable-static --disable-shared --enable-audiotoolbox --disable-gpl --disable-nonfree"
+EXPECTED_LICENSE="LGPL version 2.1 or later"
+
+CACHE="$CUE_PROJECT/.cache/ffmpeg"
+DIST="$CUE_PROJECT/dist"
+OUT="$DIST/ffmpeg-$FFMPEG_VERSION"
+TARBALL="$CACHE/ffmpeg-$FFMPEG_VERSION.tar.xz"
+WORK=""
+
+cleanup() {
+  status=$?
+  if [ "$status" -eq 0 ] && [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    rm -rf "$WORK"
+  elif [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    echo "build-ffmpeg: leaving failed build at $WORK" >&2
+  fi
+}
+trap cleanup EXIT
+
+hash_of() {
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
+check_system_libraries() {
+  bin=$1
+  libs=$WORK/libs
+  otool -L "$bin" | awk 'NR>1 { sub(/^[[:space:]]+/, ""); print $1 }' > "$libs"
+  while IFS= read -r lib; do
+    [ -n "$lib" ] || continue
+    case "$lib" in
+      /usr/lib/*|/System/Library/*) ;;
+      *)
+        echo "build-ffmpeg: $bin links non-system library $lib" >&2
+        exit 1
+        ;;
+    esac
+  done < "$libs"
+}
+
+check_decoders() {
+  bin=$1
+  decoders=$("$bin" -hide_banner -decoders)
+  missing=""
+  for name in aac ac3 eac3 dca truehd opus flac mp3; do
+    if ! printf '%s\n' "$decoders" | awk -v n="$name" '$2 == n { found = 1 } END { exit !found }'; then
+      missing="$missing $name"
+    fi
+  done
+  if [ -n "$missing" ]; then
+    echo "build-ffmpeg: missing decoders:$missing" >&2
+    exit 1
+  fi
+}
+
+mkdir -p "$CACHE" "$DIST"
+if [ -f "$TARBALL" ] && [ "$(hash_of "$TARBALL")" != "$FFMPEG_SHA256" ]; then
+  echo "build-ffmpeg: cached tarball hash mismatch; downloading again" >&2
+  rm -f "$TARBALL"
+fi
+if [ ! -f "$TARBALL" ]; then
+  echo "build-ffmpeg: downloading $FFMPEG_URL" >&2
+  curl -fL --retry 3 -o "$TARBALL.partial" "$FFMPEG_URL"
+  mv "$TARBALL.partial" "$TARBALL"
+fi
+actual=$(hash_of "$TARBALL")
+if [ "$actual" != "$FFMPEG_SHA256" ]; then
+  echo "build-ffmpeg: SHA-256 mismatch" >&2
+  echo "build-ffmpeg: expected $FFMPEG_SHA256" >&2
+  echo "build-ffmpeg: actual   $actual" >&2
+  exit 1
+fi
+
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/cue-ffmpeg.XXXXXX")
+tar -xJf "$TARBALL" -C "$WORK"
+SRC="$WORK/ffmpeg-$FFMPEG_VERSION"
+if [ ! -x "$SRC/configure" ]; then
+  echo "build-ffmpeg: $SRC has no configure" >&2
+  exit 1
+fi
+
+echo "build-ffmpeg: configuring $FFMPEG_VERSION" >&2
+(
+  cd "$SRC"
+  # shellcheck disable=SC2086
+  ./configure $CONFIGURE_FLAGS
+)
+license=$(sed -n 's/^#define FFMPEG_LICENSE "\(.*\)"$/\1/p' "$SRC/config.h")
+if [ "$license" != "$EXPECTED_LICENSE" ]; then
+  echo "build-ffmpeg: configure license is '$license'" >&2
+  exit 1
+fi
+grep -q '^#define CONFIG_GPL 0$' "$SRC/config.h"
+grep -q '^#define CONFIG_NONFREE 0$' "$SRC/config.h"
+
+jobs=$(sysctl -n hw.ncpu)
+echo "build-ffmpeg: compiling with $jobs jobs" >&2
+make -C "$SRC" -j"$jobs"
+make -C "$SRC" install DESTDIR="$WORK/dest"
+PREFIX="$WORK/dest/cue-ffmpeg"
+
+for bin in "$PREFIX/bin/ffmpeg" "$PREFIX/bin/ffprobe"; do
+  if [ ! -x "$bin" ]; then
+    echo "build-ffmpeg: missing $bin" >&2
+    exit 1
+  fi
+  check_system_libraries "$bin"
+done
+check_decoders "$PREFIX/bin/ffmpeg"
+
+rm -rf "$OUT"
+mkdir -p "$OUT/bin"
+cp -f "$PREFIX/bin/ffmpeg" "$PREFIX/bin/ffprobe" "$OUT/bin/"
+chmod 755 "$OUT/bin/ffmpeg" "$OUT/bin/ffprobe"
+cp -f "$SRC/COPYING.LGPLv2.1" "$OUT/COPYING.LGPLv2.1"
+cat > "$OUT/build-record.txt" <<EOF
+source_url=$FFMPEG_URL
+sha256=$FFMPEG_SHA256
+version=$FFMPEG_VERSION
+license=$license
+configure_flags=$CONFIGURE_FLAGS
+EOF
+
+check_system_libraries "$OUT/bin/ffmpeg"
+check_system_libraries "$OUT/bin/ffprobe"
+check_decoders "$OUT/bin/ffmpeg"
+
+version=$(sed -n 's/^HELPER_VERSION = "\([^"]*\)"$/\1/p' "$CUE_PROJECT/helper/src/cue/bootstrap.py")
+case "$version" in
+  ""|*[^0-9A-Za-z._-]*)
+    echo "build-ffmpeg: could not read HELPER_VERSION" >&2
+    exit 1
+    ;;
+esac
+runtime="$DIST/runtime-$version"
+if [ -d "$runtime" ]; then
+  mkdir -p "$runtime/bin"
+  cp -f "$OUT/bin/ffmpeg" "$OUT/bin/ffprobe" "$runtime/bin/"
+  cp -f "$OUT/build-record.txt" "$runtime/bin/ffmpeg-build-record.txt"
+  archive="$DIST/runtime-$version.tar.xz"
+  echo "build-ffmpeg: refreshing $archive" >&2
+  COPYFILE_DISABLE=1 tar -cJf "$archive.new" -C "$DIST" "runtime-$version"
+  mv "$archive.new" "$archive"
+  echo "build-ffmpeg: installed into $runtime/bin" >&2
+else
+  echo "build-ffmpeg: no runtime at $runtime; binaries are only in $OUT" >&2
+fi
+
+echo "ffmpeg: $OUT/bin/ffmpeg"
+echo "ffprobe: $OUT/bin/ffprobe"
+echo "record: $OUT/build-record.txt"

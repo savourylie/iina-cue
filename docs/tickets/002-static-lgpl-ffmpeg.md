@@ -29,3 +29,12 @@ The feasibility pass built FFmpeg 7.1.1 from the ffmpeg.org source tarball in 28
 ## Testing
 - Build, then run the media and remux tests with the LGPL binaries.
 - `ffmpeg -decoders` must list aac, ac3, eac3, dca, truehd, opus, flac and mp3.
+
+## As-Built Notes
+
+### 2026-09-24
+- `scripts/build-ffmpeg` downloads FFmpeg 7.1.1 from `https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz` and checks SHA-256 `733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1`. ffmpeg.org does not publish a `.sha256` file; the pin is the hash of that tarball. The script is arm64-only and never copies Homebrew.
+- Configure flags, also written to `dist/ffmpeg-7.1.1/build-record.txt`: `--prefix=/cue-ffmpeg --disable-autodetect --disable-network --disable-doc --disable-ffplay --disable-debug --enable-static --disable-shared --enable-audiotoolbox --disable-gpl --disable-nonfree`. `config.h` reports `LGPL version 2.1 or later`, with `CONFIG_GPL` and `CONFIG_NONFREE` set to 0. `--prefix=/cue-ffmpeg` is not created; `make install` uses `DESTDIR`, so the binaries do not embed this machine's temporary directory. `otool -L` shows only AudioToolbox, CoreAudio, CoreFoundation, CoreVideo, CoreMedia, and `libSystem`. Each binary is about 20 MB.
+- The same script copies `ffmpeg`, `ffprobe`, and the build record into `dist/runtime-<HELPER_VERSION>/bin/` when that runtime already exists, then refreshes its archive. `scripts/build-runtime` performs the same copy after its path scan, and still succeeds when FFmpeg has not been built. `licenses/` and `THIRD_PARTY_NOTICES.md` stay with #003. The LGPL text is only at `dist/ffmpeg-7.1.1/COPYING.LGPLv2.1`.
+- `binary()` uses `CUE_FFMPEG_BIN_DIR` when it is set, and does not fall back to Homebrew. Unset, the old search order remains. Installed-mode lookup is still #005. `doctor.py` still reports `/opt/homebrew/bin/ffmpeg`.
+- Media fixtures in `helper/tests/test_media.py` encode with `mpeg4 -bf 0` because this build has no libx264. `scripts/integration-smoke.py` and `scripts/make-speech-fixtures.py` still use libx264. No minimum macOS deployment target was chosen.
