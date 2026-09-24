@@ -1,6 +1,6 @@
 # Ticket Index
 
-> **Last updated**: 2026-09-24
+> **Last updated**: 2026-09-25
 
 Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malware warning. The source is the 2026-09-24 feasibility and notarization work in this project.
 
@@ -8,10 +8,10 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 4 |
+| ✅ Done | 5 |
 | 🔧 In Progress | 0 |
 | 📋 Pending | 3 |
-| 🚫 Blocked | 5 |
+| 🚫 Blocked | 4 |
 | ⏸️ Deferred | 0 |
 
 ## Runtime and release
@@ -28,9 +28,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
-| 005 | [Helper runs from an installed runtime](./005-helper-runs-from-installed-runtime.md) | `pending` | — | Bundled FFmpeg only; nothing executed from the plugin package |
-| 006 | [Setup API: model download and smoke test](./006-helper-setup-api-model-download.md) | `blocked` | #005 | Resumable, verified, consent-first |
-| 008 | [Plugin installs and updates the runtime](./008-plugin-installs-runtime.md) | `blocked` | #005, #007 | Downloads with curl or http.download, which leave no quarantine flag |
+| 005 | [Helper runs from an installed runtime](./005-helper-runs-from-installed-runtime.md) | `done` | — | Bundled FFmpeg only; nothing executed from the plugin package |
+| 006 | [Setup API: model download and smoke test](./006-helper-setup-api-model-download.md) | `pending` | #005 ✅ | Resumable, verified, consent-first |
+| 008 | [Plugin installs and updates the runtime](./008-plugin-installs-runtime.md) | `blocked` | #005 ✅, #007 | Downloads with curl or http.download, which leave no quarantine flag |
 | 009 | [Sidebar "Set up Cue" flow](./009-sidebar-set-up-cue-flow.md) | `blocked` | #006, #008 | Follows DESIGN.md; includes credits |
 
 ## Docs and verification

@@ -1,7 +1,7 @@
 # [TICKET-005] Let the helper run from an installed runtime
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: None
@@ -16,11 +16,11 @@ The helper currently assumes the project checkout:
 An installed Cue must instead run entirely from a per-user location and use only its bundled FFmpeg.
 
 ## Acceptance Criteria
-- [ ] In installed mode, cache, logs, connection file and models default to a per-user directory outside the plugin package, such as `~/Library/Application Support/Cue`. Development mode keeps working unchanged.
-- [ ] In installed mode, `binary("ffmpeg")` and `binary("ffprobe")` resolve only to the runtime's own binaries and never fall back to Homebrew or `PATH`.
-- [ ] The plugin starts the helper without executing any script or binary shipped inside the `.iinaplgz`. It either runs the notarized runtime Python directly, or runs a runtime-provided script through `/bin/sh`.
-- [ ] The plugin finds the installed runtime without a build-time absolute path to the developer's checkout, and reports `SETUP_REQUIRED` when the runtime is missing.
-- [ ] Existing helper and plugin tests pass, and new tests cover installed-mode path and FFmpeg resolution.
+- [x] In installed mode, cache, logs, connection file and models default to a per-user directory outside the plugin package, such as `~/Library/Application Support/Cue`. Development mode keeps working unchanged.
+- [x] In installed mode, `binary("ffmpeg")` and `binary("ffprobe")` resolve only to the runtime's own binaries and never fall back to Homebrew or `PATH`.
+- [x] The plugin starts the helper without executing any script or binary shipped inside the `.iinaplgz`. It either runs the notarized runtime Python directly, or runs a runtime-provided script through `/bin/sh`.
+- [x] The plugin finds the installed runtime without a build-time absolute path to the developer's checkout, and reports `SETUP_REQUIRED` when the runtime is missing.
+- [x] Existing helper and plugin tests pass, and new tests cover installed-mode path and FFmpeg resolution.
 
 ## References
 - `helper/src/cue/bootstrap.py` — `PROJECT`, `runtime_root()`, `models_root()` and `ensure()`.

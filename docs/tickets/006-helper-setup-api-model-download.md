@@ -1,10 +1,10 @@
 # [TICKET-006] Helper setup API: resumable, verified model download and smoke test
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #005
+- Requires: #005 ✅
 
 ## Description
 Models (3,564,002,544 bytes, about 4.2 GB on disk with the compile cache) are currently installed with `scripts/setup-models --accept-download` in Terminal. Once the runtime is installed, the helper must download and verify them itself, on the user's explicit consent in the sidebar. It must survive slow or interrupted connections. The spec reserves `GET /setup` and `POST /setup/actions` for this. It also requires a short-audio smoke test after install, because a successful import does not prove the models work.
