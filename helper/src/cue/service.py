@@ -71,6 +71,14 @@ class Supervisor:
         self.started = self.clock()
         self.last_job = self.clock()
         self.manifest_hash = digest(json.loads(model_manifest_path().read_text()))
+        self._setup = None
+
+    def setup_api(self):
+        if self._setup is None:
+            from . import bootstrap
+            from .setupflow import Setup
+            self._setup = Setup(self.models, bootstrap.model_manifest_path())
+        return self._setup
 
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
@@ -250,7 +258,9 @@ class Supervisor:
             if path == "/v1/clients" and method == "POST":
                 cid = opaque(); self.clients[cid] = self.clock(); return {"client_id": cid, "lease_seconds": 45}
             if path == "/v1/setup" and method == "GET":
-                return {"ready": (self.models/"gemma/gemma-4-E2B-it.litertlm").is_file() and (self.models/"aligner/model.safetensors").is_file(), "model_manifest": self.manifest_hash}
+                return self.setup_api().status()
+            if path == "/v1/setup/actions" and method == "POST":
+                return self.setup_api().action(body)
             if path == "/v1/shutdown" and method == "POST":
                 if self.remux_running(): raise CueError("REMUX_ACTIVE")
                 if self.clients: raise CueError("CLIENTS_ACTIVE")
@@ -380,6 +390,8 @@ class Handler(BaseHTTPRequestHandler):
             print(json.dumps({"event":"request_error","method":self.command,"action":self.path.rsplit('/',1)[-1],"code":exc.code}),flush=True)
             if code == 200: code = 404 if exc.code == "NOT_FOUND" else 400
             response = {"error": {"code": exc.code}}
+            if str(exc) and str(exc) != exc.code:
+                response["error"]["detail"] = str(exc)
         except (ValueError, KeyError, TypeError, OSError):
             code = 400; response = {"error": {"code": "INVALID_REQUEST"}}
         response["instance_id"] = sup.instance

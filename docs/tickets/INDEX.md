@@ -8,9 +8,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 5 |
+| ✅ Done | 6 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 3 |
+| 📋 Pending | 2 |
 | 🚫 Blocked | 4 |
 | ⏸️ Deferred | 0 |
 
@@ -29,7 +29,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
 | 005 | [Helper runs from an installed runtime](./005-helper-runs-from-installed-runtime.md) | `done` | — | Bundled FFmpeg only; nothing executed from the plugin package |
-| 006 | [Setup API: model download and smoke test](./006-helper-setup-api-model-download.md) | `pending` | #005 ✅ | Resumable, verified, consent-first |
+| 006 | [Setup API: model download and smoke test](./006-helper-setup-api-model-download.md) | `done` | #005 ✅ | Resumable, verified, consent-first |
 | 008 | [Plugin installs and updates the runtime](./008-plugin-installs-runtime.md) | `blocked` | #005 ✅, #007 | Downloads with curl or http.download, which leave no quarantine flag |
 | 009 | [Sidebar "Set up Cue" flow](./009-sidebar-set-up-cue-flow.md) | `blocked` | #006, #008 | Follows DESIGN.md; includes credits |
 
