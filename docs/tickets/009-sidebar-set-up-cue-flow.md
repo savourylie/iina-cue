@@ -1,10 +1,10 @@
 # [TICKET-009] Sidebar "Set up Cue" flow
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #006, #008
+- Requires: #006 ✅, #008 ✅
 
 ## Description
 A non-technical user's whole setup happens in the Cue sidebar:
