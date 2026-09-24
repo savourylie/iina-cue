@@ -32,3 +32,13 @@ The 2026-09-24 feasibility pass already proved the approach. A copy of uv's stan
 ## Testing
 - Build, move the output to `/tmp/Cue Runtime Test/runtime`, then run `env -i HOME=$HOME PATH=/usr/bin:/bin <runtime>/python/bin/python3.12 -m cue.cli benchmark ...` against a synthetic `say`-generated clip with `CUE_MODELS` pointing to existing models.
 - Compare the rendered cues with the same run from the project `.venv`; they must be identical.
+
+## As-Built Notes
+
+### 2026-09-24
+- `scripts/build-runtime` copies the uv-managed CPython (`uv python find 3.12 --no-project --managed-python`). Inside this checkout, `uv python find 3.12` returns the editable `.venv`, which is not relocatable. The project `.venv` and the managed prefix are left unchanged. Wheel downloads use `.cache/uv` and `UV_LINK_MODE=copy`.
+- Dependencies come from `uv export --frozen --no-dev --no-emit-project`. The default export starts with `-e .`, so the project is installed afterwards with `--no-deps` as a normal wheel. This uv rejects `--only-binary :all`; the script uses `--no-build` for the locked requirements. Environment markers are applied, so Windows-only `colorama` is not installed on macOS.
+- The output is `dist/runtime-<HELPER_VERSION>/` plus `dist/runtime-<HELPER_VERSION>.tar.xz`. `VERSION` is `HELPER_VERSION` from `bootstrap.py` (0.1.5), not the 0.1.0 package version. `lingua` is not slimmed, so detection stays `from_all_languages()`.
+- `_sysconfigdata` resolves its prefix from `sys.base_prefix`. `libpython3.12.dylib`'s install name is rewritten to `@loader_path/libpython3.12.dylib` and ad-hoc signed so the file no longer names the uv prefix; #004 replaces that signature. Bytecode paths are relative to the runtime root. Shebangs use the standalone Python relative launcher. Site-packages `test` and `tests` directories are removed. `licenses/` and FFmpeg are left to #003 and #002.
+- `bootstrap.py` is unchanged. Without `CUE_HOME`, benchmark scratch would be written under `python/lib` because `PROJECT` is derived from the installed package. Installed-mode paths remain #005. Verification sets `CUE_HOME` outside the tree.
+- Built size on this machine: `du -sh` 1.0G (`du -sk` 1051876), tar.xz 256M (259654916 bytes). That is larger than the 928 MB / 239 MB feasibility note; `lingua` is still 293 MB. The benchmark on this Mac still uses Homebrew FFmpeg.
