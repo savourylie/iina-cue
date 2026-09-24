@@ -1,10 +1,10 @@
 # [TICKET-007] Choose hosting for the runtime and publish a release manifest
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #004
+- Requires: #004 ✅
 
 ## Description
 The plugin needs a stable place to download the notarized runtime archive (about 240 MB), plus a small machine-readable manifest. The manifest says which runtime version goes with which plugin version, and gives the archive's URL, size and SHA-256.

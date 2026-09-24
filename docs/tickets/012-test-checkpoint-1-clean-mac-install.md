@@ -4,7 +4,7 @@
 `blocked`
 
 ## Dependencies
-- Requires: #004, #008, #009, #010, #011
+- Requires: #004 ✅, #008, #009, #010, #011
 
 ## Description
 This gate proves the whole path the way a real user meets it, which no single ticket covers:

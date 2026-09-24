@@ -1,7 +1,7 @@
 # [TICKET-004] Sign and notarize the runtime archive
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: #001 ✅, #002 ✅, #003 ✅
@@ -15,10 +15,10 @@ The 2026-09-24 trial signed all 250 Mach-O files in the runtime with "Developer 
 - produced subtitles identical to the unsigned runtime, so inference is unaffected.
 
 ## Acceptance Criteria
-- [ ] A release step signs every Mach-O in the runtime, libraries first and executables last. It uses the hardened runtime and a secure timestamp, and passes `codesign --verify --strict`.
-- [ ] It submits the runtime with `notarytool` through a keychain profile, waits for the result, saves Apple's log, and fails the release unless the status is Accepted.
-- [ ] It produces the final versioned archive plus a manifest with its version, size, SHA-256 and minimum macOS.
-- [ ] The notarized runtime passes a real benchmark with output identical to the unsigned build.
+- [x] A release step signs every Mach-O in the runtime, libraries first and executables last. It uses the hardened runtime and a secure timestamp, and passes `codesign --verify --strict`.
+- [x] It submits the runtime with `notarytool` through a keychain profile, waits for the result, saves Apple's log, and fails the release unless the status is Accepted.
+- [x] It produces the final versioned archive plus a manifest with its version, size, SHA-256 and minimum macOS.
+- [x] The notarized runtime passes a real benchmark with output identical to the unsigned build.
 
 ## References
 - `docs/runtime-decision.md` — runtime composition.
