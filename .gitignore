@@ -14,3 +14,4 @@ plugin/dist/
 .impeccable/
 .playwright-mcp/
 .claude/skills/impeccable/scripts/bin/
+.worktrees/
