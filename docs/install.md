@@ -56,7 +56,7 @@ To remove only the development link:
 /Applications/IINA.app/Contents/MacOS/iina-plugin unlink plugin
 ```
 
-Then reopen IINA. Do not delete dora, Hugging Face shared assets, other plugins, user movies or existing subtitles. The archive is unsigned; no signing or notarization was performed, and no Gatekeeper/SIP changes are needed or recommended.
+Then reopen IINA. Do not delete dora, Hugging Face shared assets, other plugins, user movies or existing subtitles. Unlinking this development plugin does not require Gatekeeper or SIP changes. A redistributable runtime is signed and notarized by `scripts/release-runtime`, not by this cleanup.
 
 During development, quit and reopen IINA after rebuilding. On IINA 1.4.4, Reload All Plugins produced duplicate sidebar tabs and closed IINA during testing. Normal installed use does not require reloading plugins.
 On restart, Cue replaces an idle older helper automatically. If another Cue window or remux is still using it, close that window or wait for the remux to finish, then retry.

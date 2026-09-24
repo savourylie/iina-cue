@@ -1,0 +1,678 @@
+#!/usr/bin/env python3
+"""Sign, notarize, and pack a built Cue helper runtime.
+
+Apple credentials stay in the keychain profile named by --profile
+(default cue-notary). This script never reads an Apple ID, an app-specific
+password, or an App Store Connect API key.
+
+Libraries are signed before executables. Every Mach-O gets the hardened
+runtime and a secure timestamp, and no entitlements. A zip of that tree is
+submitted to notarytool. The distributable archive is a tar.xz of the same
+tree, plus a manifest of version, size, SHA-256, and minimum macOS.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from dataclasses import dataclass
+from pathlib import Path
+import re
+import struct
+import subprocess
+import sys
+import time
+
+DEFAULT_IDENTITY = "Developer ID Application: Calvin Ku (92QTH3YBHM)"
+DEFAULT_PROFILE = "cue-notary"
+DEFAULT_TIMEOUT = "120m"
+
+MH_MAGIC = 0xFEEDFACE
+MH_CIGAM = 0xCEFAEDFE
+MH_MAGIC_64 = 0xFEEDFACF
+MH_CIGAM_64 = 0xCFFAEDFE
+FAT_MAGIC = 0xCAFEBABE
+FAT_CIGAM = 0xBEBAFECA
+CPU_TYPE_ARM64 = 0x0100000C
+MH_EXECUTE = 0x2
+MH_DYLIB = 0x6
+MH_DYLINKER = 0x7
+MH_BUNDLE = 0x8
+LC_VERSION_MIN_MACOSX = 0x24
+LC_BUILD_VERSION = 0x32
+PLATFORM_MACOS = 1
+
+REQUIRED_FILES = (
+    "VERSION",
+    "python/bin/python3.12",
+    "bin/ffmpeg",
+    "bin/ffprobe",
+    "licenses/THIRD_PARTY_NOTICES.md",
+    "licenses/index.txt",
+    "licenses/ffmpeg/COPYING.LGPLv2.1",
+    "licenses/ffmpeg/build-record.txt",
+)
+EXECUTABLES = ("python/bin/python3.12", "bin/ffmpeg", "bin/ffprobe")
+
+
+class ReleaseError(Exception):
+    """The release cannot be published."""
+
+
+@dataclass(frozen=True)
+class MachO:
+    path: Path
+    kind: str
+    minos: tuple[int, int, int]
+    minos_text: str
+
+
+@dataclass(frozen=True)
+class Artifacts:
+    archive: Path
+    manifest: Path
+    log: Path
+    zip: Path
+
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def helper_version(project: Path) -> str:
+    text = (project / "helper" / "src" / "cue" / "bootstrap.py").read_text()
+    match = re.search(r'^HELPER_VERSION = "([^"]+)"$', text, re.M)
+    if not match:
+        raise ReleaseError("could not read HELPER_VERSION from helper/src/cue/bootstrap.py")
+    version = match.group(1)
+    if not re.fullmatch(r"[0-9A-Za-z._-]+", version):
+        raise ReleaseError("HELPER_VERSION is not safe for a filename")
+    return version
+
+
+def require_developer_id(identity: str) -> str:
+    identity = identity.strip()
+    if not identity.startswith("Developer ID Application:"):
+        raise ReleaseError("identity must be a Developer ID Application certificate")
+    return identity
+
+
+def require_profile(profile: str) -> str:
+    profile = profile.strip()
+    if not profile or any(character.isspace() for character in profile) or profile.startswith("-"):
+        raise ReleaseError("keychain profile name is invalid")
+    return profile
+
+
+def require_timeout(value: str) -> str:
+    if not re.fullmatch(r"\d+[smh]?", value):
+        raise ReleaseError("timeout must look like 120m")
+    return value
+
+
+def timeout_seconds(value: str) -> int:
+    if value[-1].isdigit():
+        return int(value)
+    number = int(value[:-1])
+    return number * {"s": 1, "m": 60, "h": 3600}[value[-1]]
+
+
+def command_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["COPYFILE_DISABLE"] = "1"
+    return env
+
+
+def run(command: list[str], *, timeout: float | None = None) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=command_env(),
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ReleaseError(f"{command[0]} timed out") from error
+
+
+def decode_version(value: int) -> tuple[int, int, int]:
+    return ((value >> 16) & 0xFFFF, (value >> 8) & 0xFF, value & 0xFF)
+
+
+def format_version(version: tuple[int, int, int]) -> str:
+    major, minor, patch = version
+    if patch:
+        return f"{major}.{minor}.{patch}"
+    return f"{major}.{minor}"
+
+
+def read_u32(blob: bytes, offset: int, endian: str) -> int:
+    return struct.unpack_from(endian + "I", blob, offset)[0]
+
+
+def minimum_from_commands(commands: bytes, endian: str, ncmds: int) -> tuple[int, int, int]:
+    offset = 0
+    build_version = None
+    version_min = None
+    for _ in range(ncmds):
+        if offset + 8 > len(commands):
+            raise ReleaseError("truncated Mach-O load commands")
+        command = read_u32(commands, offset, endian)
+        size = read_u32(commands, offset + 4, endian)
+        if size < 8 or offset + size > len(commands):
+            raise ReleaseError("Mach-O load command size is invalid")
+        if command == LC_BUILD_VERSION and size >= 24:
+            platform = read_u32(commands, offset + 8, endian)
+            if platform == PLATFORM_MACOS:
+                build_version = decode_version(read_u32(commands, offset + 12, endian))
+        elif command == LC_VERSION_MIN_MACOSX and size >= 16:
+            version_min = decode_version(read_u32(commands, offset + 8, endian))
+        offset += size
+    chosen = build_version or version_min
+    if chosen is None or chosen[0] == 0:
+        raise ReleaseError("Mach-O file has no macOS minimum version")
+    return chosen
+
+
+def inspect_thin(handle, path: Path, offset: int) -> MachO:
+    handle.seek(offset)
+    header = handle.read(32)
+    if len(header) < 32:
+        raise ReleaseError(f"truncated Mach-O header: {path}")
+    magic = struct.unpack("<I", header[:4])[0]
+    if magic == MH_MAGIC_64:
+        endian = "<"
+    elif magic == MH_CIGAM_64:
+        endian = ">"
+    else:
+        raise ReleaseError(f"not a 64-bit Mach-O slice: {path}")
+    cputype, _subtype, filetype, ncmds, sizeofcmds, _flags, _reserved = struct.unpack(
+        endian + "IIIIIII", header[4:32]
+    )
+    if cputype != CPU_TYPE_ARM64:
+        raise ReleaseError(f"Mach-O file is not arm64: {path}")
+    if not 0 < ncmds < 10000 or not 0 < sizeofcmds <= 1_000_000:
+        raise ReleaseError(f"Mach-O load commands are unreadable: {path}")
+    commands = handle.read(sizeofcmds)
+    if len(commands) != sizeofcmds:
+        raise ReleaseError(f"truncated Mach-O load commands: {path}")
+    if filetype == MH_EXECUTE:
+        kind = "executable"
+    elif filetype in {MH_DYLIB, MH_BUNDLE, MH_DYLINKER}:
+        kind = "library"
+    else:
+        raise ReleaseError(f"unsupported Mach-O type {filetype}: {path}")
+    minimum = minimum_from_commands(commands, endian, ncmds)
+    return MachO(path, kind, minimum, format_version(minimum))
+
+
+def inspect_macho(path: Path) -> MachO | None:
+    with path.open("rb") as handle:
+        magic_bytes = handle.read(4)
+        if len(magic_bytes) < 4:
+            return None
+        magic_le = struct.unpack("<I", magic_bytes)[0]
+        magic_be = struct.unpack(">I", magic_bytes)[0]
+        if magic_le in {MH_MAGIC, MH_CIGAM}:
+            raise ReleaseError(f"32-bit Mach-O is not part of this runtime: {path}")
+        if magic_be in {FAT_MAGIC, FAT_CIGAM}:
+            endian = ">" if magic_be == FAT_MAGIC else "<"
+            count_bytes = handle.read(4)
+            if len(count_bytes) < 4:
+                raise ReleaseError(f"truncated fat header: {path}")
+            count = struct.unpack(endian + "I", count_bytes)[0]
+            if not 1 <= count <= 16:
+                raise ReleaseError(f"fat header is unreadable: {path}")
+            arm64_offset = None
+            for _ in range(count):
+                arch = handle.read(20)
+                if len(arch) < 20:
+                    raise ReleaseError(f"truncated fat arch: {path}")
+                cputype, _subtype, offset, _size, _align = struct.unpack(endian + "IIIII", arch)
+                if cputype == CPU_TYPE_ARM64:
+                    arm64_offset = offset
+                    break
+            if arm64_offset is None:
+                raise ReleaseError(f"fat Mach-O has no arm64 slice: {path}")
+            return inspect_thin(handle, path, arm64_offset)
+        if magic_le in {MH_MAGIC_64, MH_CIGAM_64}:
+            return inspect_thin(handle, path, 0)
+        return None
+
+
+def signing_order(items: list[MachO]) -> list[MachO]:
+    libraries = sorted((item for item in items if item.kind == "library"), key=lambda item: str(item.path))
+    executables = sorted((item for item in items if item.kind == "executable"), key=lambda item: str(item.path))
+    if len(libraries) + len(executables) != len(items):
+        raise ReleaseError("Mach-O kind is missing")
+    return libraries + executables
+
+
+def highest_minimum(items: list[MachO]) -> str:
+    if not items:
+        raise ReleaseError("no Mach-O files")
+    return max(items, key=lambda item: item.minos).minos_text
+
+
+def scan_runtime(root: Path) -> list[MachO]:
+    resolved_root = root.resolve()
+    found: list[MachO] = []
+    seen: set[tuple[int, int]] = set()
+    for path in sorted(root.rglob("*"), key=lambda item: str(item)):
+        if path.is_symlink():
+            target = path.resolve()
+            if resolved_root != target and resolved_root not in target.parents:
+                raise ReleaseError(f"symlink points outside the runtime: {path}")
+            continue
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        key = (stat.st_dev, stat.st_ino)
+        if key in seen:
+            continue
+        try:
+            info = inspect_macho(path)
+        except OSError as error:
+            raise ReleaseError(f"could not read {path}: {error}") from error
+        if info is None:
+            continue
+        seen.add(key)
+        found.append(info)
+    if not found:
+        raise ReleaseError(f"no Mach-O files in {root}")
+    return signing_order(found)
+
+
+def validate_layout(runtime: Path, version: str) -> None:
+    if runtime.is_symlink() or not runtime.is_dir():
+        raise ReleaseError(f"runtime is not a directory: {runtime}")
+    if runtime.name != f"runtime-{version}":
+        raise ReleaseError(f"runtime directory must be named runtime-{version}")
+    missing = []
+    for relative in REQUIRED_FILES:
+        path = runtime / relative
+        if path.is_symlink() or not path.is_file():
+            missing.append(relative)
+    if missing:
+        raise ReleaseError(
+            "runtime is missing " + ", ".join(missing) + "; build it with scripts/build-runtime"
+        )
+    recorded = (runtime / "VERSION").read_text().strip()
+    if recorded != version:
+        raise ReleaseError(f"VERSION file says {recorded}, HELPER_VERSION is {version}")
+
+
+def require_release_binaries(runtime: Path, items: list[MachO]) -> None:
+    by_path = {item.path.resolve(): item for item in items}
+    for relative in EXECUTABLES:
+        item = by_path.get((runtime / relative).resolve())
+        if item is None or item.kind != "executable":
+            raise ReleaseError(f"{relative} must be an arm64 Mach-O executable")
+    mlx = [
+        item
+        for item in items
+        if item.kind == "library" and item.path.suffix == ".so" and "mlx" in item.path.parts
+    ]
+    if not mlx:
+        raise ReleaseError("runtime has no MLX Mach-O library")
+
+
+def mlx_sample(items: list[MachO]) -> Path:
+    mlx = [
+        item
+        for item in items
+        if item.kind == "library" and item.path.suffix == ".so" and "mlx" in item.path.parts
+    ]
+    preferred = [item for item in mlx if item.path.name.startswith("core.")]
+    if not preferred and not mlx:
+        raise ReleaseError("runtime has no MLX Mach-O library")
+    return (preferred or mlx)[0].path
+
+
+def sign_command(identity: str, path: Path) -> list[str]:
+    return [
+        "codesign",
+        "--force",
+        "--sign",
+        identity,
+        "--options",
+        "runtime",
+        "--timestamp",
+        "--digest-algorithm",
+        "sha256",
+        str(path),
+    ]
+
+
+def verify_signature(path: Path, identity: str) -> None:
+    verified = run(["codesign", "--verify", "--strict", "--verbose=2", str(path)], timeout=60)
+    if verified.returncode != 0:
+        detail = (verified.stderr or verified.stdout).strip()
+        raise ReleaseError(f"codesign --verify --strict failed for {path}: {detail}")
+    displayed = run(["codesign", "-dv", "--verbose=2", str(path)], timeout=60)
+    text = displayed.stderr + displayed.stdout
+    if f"Authority={identity}" not in text:
+        raise ReleaseError(f"{path} is not signed by the Developer ID identity")
+    if "(runtime)" not in text:
+        raise ReleaseError(f"{path} does not have the hardened runtime")
+    if "Timestamp=none" in text or not re.search(r"Timestamp=\S", text):
+        raise ReleaseError(f"{path} has no secure timestamp")
+
+
+def sign_file(item: MachO, identity: str) -> None:
+    print(f"sign {item.kind} {item.path}", file=sys.stderr, flush=True)
+    signed = run(sign_command(identity, item.path), timeout=180)
+    if signed.returncode != 0:
+        detail = (signed.stderr or signed.stdout).strip()
+        raise ReleaseError(f"codesign failed for {item.path}: {detail}")
+    verify_signature(item.path, identity)
+
+
+def identity_installed(identity: str) -> bool:
+    listed = run(["security", "find-identity", "-v", "-p", "codesigning"], timeout=30)
+    if listed.returncode != 0:
+        raise ReleaseError("could not list codesigning identities")
+    return f'"{identity}"' in listed.stdout
+
+
+def artifact_paths(runtime: Path, version: str) -> Artifacts:
+    dist = runtime.parent
+    stem = f"runtime-{version}"
+    return Artifacts(
+        archive=dist / f"{stem}.tar.xz",
+        manifest=dist / f"{stem}.manifest.json",
+        log=dist / f"{stem}.notarization-log.json",
+        zip=dist / f"{stem}.notarization.zip",
+    )
+
+
+def zip_runtime(runtime: Path, destination: Path) -> None:
+    if destination.exists():
+        destination.unlink()
+    print(f"release-runtime: packing {destination.name} for notarization", file=sys.stderr, flush=True)
+    packed = run(
+        ["ditto", "-c", "-k", "--keepParent", "--norsrc", "--noqtn", "--noextattr", str(runtime), str(destination)],
+        timeout=1800,
+    )
+    if packed.returncode != 0 or not destination.is_file():
+        detail = (packed.stderr or packed.stdout).strip()
+        raise ReleaseError(f"could not zip the runtime: {detail}")
+
+
+def notary_submit_command(zip_path: Path, profile: str, timeout: str) -> list[str]:
+    return [
+        "xcrun",
+        "notarytool",
+        "submit",
+        str(zip_path),
+        "--keychain-profile",
+        profile,
+        "--wait",
+        "--timeout",
+        timeout,
+        "--output-format",
+        "json",
+    ]
+
+
+def parse_notary_result(text: str) -> dict:
+    text = text.strip()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end <= start:
+            raise ReleaseError("notarytool did not return JSON")
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError as error:
+            raise ReleaseError("notarytool did not return JSON") from error
+    if not isinstance(payload, dict):
+        raise ReleaseError("notarytool JSON is not an object")
+    return payload
+
+
+def require_accepted(payload: dict) -> str:
+    status = payload.get("status")
+    if status != "Accepted":
+        message = payload.get("message") or ""
+        raise ReleaseError(f"notarization status is {status}, not Accepted. {message}".strip())
+    submission = payload.get("id")
+    if not isinstance(submission, str) or not re.fullmatch(r"[0-9a-fA-F-]{36}", submission):
+        raise ReleaseError("notarization response has no submission id")
+    return submission
+
+
+def submit_zip(zip_path: Path, profile: str, timeout: str) -> str:
+    print("release-runtime: submitting to notarytool", file=sys.stderr, flush=True)
+    result = run(notary_submit_command(zip_path, profile, timeout), timeout=timeout_seconds(timeout) + 600)
+    if not result.stdout.strip():
+        detail = (result.stderr or "").strip()
+        raise ReleaseError(f"notarytool failed: {detail}")
+    payload = parse_notary_result(result.stdout)
+    try:
+        submission = require_accepted(payload)
+    except ReleaseError:
+        detail = (result.stderr or "").strip()
+        status = payload.get("status")
+        raise ReleaseError(f"notarization status is {status}, not Accepted. {detail}".strip()) from None
+    if result.returncode != 0:
+        raise ReleaseError(f"notarytool exited {result.returncode} after reporting Accepted")
+    return submission
+
+
+def write_notary_log(submission: str, profile: str, destination: Path) -> dict:
+    if destination.exists():
+        destination.unlink()
+    result = run(
+        ["xcrun", "notarytool", "log", submission, "--keychain-profile", profile, str(destination)],
+        timeout=180,
+    )
+    if result.returncode != 0 or not destination.is_file():
+        detail = (result.stderr or result.stdout).strip()
+        raise ReleaseError(f"could not save the notarization log: {detail}")
+    payload = json.loads(destination.read_text())
+    if not isinstance(payload, dict):
+        raise ReleaseError("notarization log is not a JSON object")
+    return payload
+
+
+def require_clean_log(payload: dict) -> list[dict]:
+    if payload.get("status") != "Accepted":
+        raise ReleaseError(f"notarization log status is {payload.get('status')}, not Accepted")
+    issues = payload.get("issues") or []
+    if not isinstance(issues, list):
+        raise ReleaseError("notarization log issues are unreadable")
+    errors = [issue for issue in issues if str(issue.get("severity", "")).lower() == "error"]
+    if errors:
+        messages = "; ".join(str(issue.get("message", "error")) for issue in errors[:5])
+        raise ReleaseError(f"notarization log lists errors: {messages}")
+    return [issue for issue in issues if str(issue.get("severity", "")).lower() == "warning"]
+
+
+def staple_one(path: Path) -> bool:
+    result = run(["xcrun", "stapler", "staple", str(path)], timeout=120)
+    if result.returncode == 0:
+        return True
+    detail = (result.stderr or result.stdout).strip()
+    print(f"release-runtime: not stapled: {path.name}: {detail}", file=sys.stderr, flush=True)
+    return False
+
+
+def staple_tree(items: list[MachO]) -> bool:
+    """Staple only when stapler accepts a loose executable.
+
+    A zip cannot carry a stapled ticket. Cue's installer downloads are not
+    quarantined; Gatekeeper still checks the online ticket when they are.
+    """
+    probe = next(item.path for item in items if item.kind == "executable")
+    if not staple_one(probe):
+        return False
+    for item in items:
+        if item.path == probe:
+            continue
+        if not staple_one(item.path):
+            raise ReleaseError(f"stapler accepted {probe.name} but rejected {item.path}")
+    return True
+
+
+def pack_archive(runtime: Path, archive: Path) -> Path:
+    partial = archive.with_name(archive.name + ".partial")
+    if partial.exists():
+        partial.unlink()
+    print(f"release-runtime: compressing {archive.name}", file=sys.stderr, flush=True)
+    packed = run(["tar", "-cJf", str(partial), "-C", str(runtime.parent), runtime.name], timeout=1800)
+    if packed.returncode != 0 or not partial.is_file():
+        detail = (packed.stderr or packed.stdout).strip()
+        raise ReleaseError(f"could not create the archive: {detail}")
+    return partial
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def manifest_document(
+    *,
+    version: str,
+    filename: str,
+    size: int,
+    sha256: str,
+    minimum_macos: str,
+    submission_id: str,
+    profile: str,
+    log_name: str,
+    stapled: bool,
+) -> dict:
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise ReleaseError("sha256 is not 64 hex characters")
+    if not isinstance(size, int) or size <= 0:
+        raise ReleaseError("archive size is invalid")
+    return {
+        "version": version,
+        "filename": filename,
+        "size": size,
+        "sha256": sha256,
+        "minimum_macos": minimum_macos,
+        "architecture": "arm64",
+        "notarization": {
+            "status": "Accepted",
+            "id": submission_id,
+            "profile": profile,
+            "log": log_name,
+            "stapled": stapled,
+        },
+    }
+
+
+def write_json(path: Path, payload: dict) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n")
+    os.replace(temporary, path)
+
+
+def gatekeeper_command(path: Path) -> list[str]:
+    return ["spctl", "-a", "-t", "open", "--context", "context:primary-signature", "-vv", str(path)]
+
+
+def assess_gatekeeper(path: Path) -> None:
+    last = ""
+    for attempt in range(30):
+        result = run(gatekeeper_command(path), timeout=60)
+        last = (result.stderr + result.stdout).strip()
+        if result.returncode == 0 and "Notarized Developer ID" in last:
+            print(f"release-runtime: {path.name}: Notarized Developer ID", file=sys.stderr, flush=True)
+            return
+        if attempt < 29:
+            time.sleep(10)
+    raise ReleaseError(f"Gatekeeper did not report Notarized Developer ID for {path}: {last}")
+
+
+def gatekeeper_paths(runtime: Path, items: list[MachO]) -> list[Path]:
+    return [runtime / "python/bin/python3.12", runtime / "bin/ffmpeg", mlx_sample(items)]
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="scripts/release-runtime")
+    parser.add_argument("--runtime", type=Path)
+    parser.add_argument("--profile", default=os.environ.get("CUE_NOTARY_PROFILE", DEFAULT_PROFILE))
+    parser.add_argument("--identity", default=os.environ.get("CUE_CODESIGN_IDENTITY", DEFAULT_IDENTITY))
+    parser.add_argument("--timeout", default=os.environ.get("CUE_NOTARY_TIMEOUT", DEFAULT_TIMEOUT))
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> None:
+    args = parse_args(argv)
+    project = project_root()
+    version = helper_version(project)
+    identity = require_developer_id(args.identity)
+    profile = require_profile(args.profile)
+    timeout = require_timeout(args.timeout)
+    runtime = (args.runtime if args.runtime is not None else project / "dist" / f"runtime-{version}").resolve()
+    validate_layout(runtime, version)
+    items = scan_runtime(runtime)
+    require_release_binaries(runtime, items)
+    minimum = highest_minimum(items)
+    libraries = sum(item.kind == "library" for item in items)
+    executables = sum(item.kind == "executable" for item in items)
+    print(
+        f"release-runtime: {libraries} libraries, {executables} executables, minimum macOS {minimum}",
+        file=sys.stderr,
+        flush=True,
+    )
+    if not identity_installed(identity):
+        raise ReleaseError(f"codesigning identity is not installed: {identity}")
+    for item in items:
+        sign_file(item, identity)
+    artifacts = artifact_paths(runtime, version)
+    zip_runtime(runtime, artifacts.zip)
+    submission = submit_zip(artifacts.zip, profile, timeout)
+    log_payload = write_notary_log(submission, profile, artifacts.log)
+    for warning in require_clean_log(log_payload):
+        print(f"release-runtime: notarization warning: {warning.get('message')}", file=sys.stderr, flush=True)
+    stapled = staple_tree(items)
+    if stapled:
+        for item in items:
+            verify_signature(item.path, identity)
+    partial = pack_archive(runtime, artifacts.archive)
+    digest = file_sha256(partial)
+    size = partial.stat().st_size
+    document = manifest_document(
+        version=version,
+        filename=artifacts.archive.name,
+        size=size,
+        sha256=digest,
+        minimum_macos=minimum,
+        submission_id=submission,
+        profile=profile,
+        log_name=artifacts.log.name,
+        stapled=stapled,
+    )
+    for path in gatekeeper_paths(runtime, items):
+        assess_gatekeeper(path)
+    write_json(artifacts.manifest, document)
+    os.replace(partial, artifacts.archive)
+    artifacts.zip.unlink(missing_ok=True)
+    print(f"archive: {artifacts.archive}")
+    print(f"manifest: {artifacts.manifest}")
+    print(f"sha256: {digest}")
+    print(f"size: {size}")
+    print(f"minimum_macos: {minimum}")
+    print(f"notarization: Accepted {submission}")
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except ReleaseError as error:
+        print(f"release-runtime: {error}", file=sys.stderr)
+        sys.exit(1)
