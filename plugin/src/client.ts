@@ -1,8 +1,18 @@
 import type {Connection} from "./types";
+import {planLaunch} from "./launch";
 declare const CUE_BOOTSTRAP_DEFAULT: string;
 let connection: Connection | undefined;
 let client: string | undefined;
 let starting: Promise<void> | undefined;
+
+function resolvePath(path: string): string | null {
+  // Call this on iina.utils. A detached Objective-C method throws
+  // "self type check failed" inside IINA.
+  const utils = iina.utils as {resolvePath?: (path: string) => string | null | undefined};
+  if (typeof utils.resolvePath !== "function") return null;
+  const resolved = utils.resolvePath(path);
+  return typeof resolved === "string" && resolved.startsWith("/") ? resolved : null;
+}
 
 async function exchange(method: string, path: string, data: unknown = {}): Promise<any> {
   const c = connection;
@@ -30,9 +40,14 @@ async function ensure(): Promise<void> {
   if (connection && client) return;
   if (starting) return starting;
   starting = (async () => {
-    const bootstrap = iina.preferences.get("bootstrap") || CUE_BOOTSTRAP_DEFAULT;
-    if (typeof bootstrap !== "string" || !bootstrap.startsWith("/") || !iina.file.exists(bootstrap)) throw new Error("SETUP_REQUIRED");
-    const result = await iina.utils.exec(bootstrap,["ensure"]);
+    const preference = iina.preferences.get("bootstrap");
+    const plan = planLaunch({
+      preference,
+      devBootstrap: CUE_BOOTSTRAP_DEFAULT,
+      exists: (path) => iina.file.exists(path),
+      resolve: resolvePath,
+    });
+    const result = await iina.utils.exec(plan.file, plan.args);
     if (result.status !== 0) {
       let code = "HELPER_DISCONNECTED";
       try { code = JSON.parse(result.stderr).error.code || code; } catch {}

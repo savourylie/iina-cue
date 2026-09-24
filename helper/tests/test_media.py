@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 from cue.core import CueError
-from cue.media import Media, binary, extract, local_media, probe, select_stream
+from cue.media import Media, binary, extract, installed_ffmpeg_record, local_media, probe, select_stream
 from cue.remux import _duration_seconds, _progress_percent, remux
 
 @pytest.fixture(scope='session')
@@ -121,6 +121,98 @@ def test_binary_override_does_not_fall_back(tmp_path,monkeypatch):
     monkeypatch.setenv('CUE_FFMPEG_BIN_DIR',str(bindir))
     assert binary('ffmpeg')==str(ffmpeg)
     with pytest.raises(CueError,match='ffprobe unavailable'):binary('ffprobe')
+
+def test_installed_mode_uses_only_the_bundled_binaries(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    ffmpeg=bindir/'ffmpeg'
+    ffmpeg.write_text('bundled ffmpeg\n')
+    ffmpeg.chmod(0o755)
+    monkeypatch.setenv('CUE_INSTALLED','1')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.delenv('CUE_FFMPEG_BIN_DIR',raising=False)
+    monkeypatch.setattr('cue.media.shutil.which',lambda name:'/usr/bin/not-cue-ffmpeg')
+    assert binary('ffmpeg')==str(ffmpeg)
+    assert '/opt/homebrew' not in binary('ffmpeg')
+    with pytest.raises(CueError,match='ffprobe unavailable'):binary('ffprobe')
+    record=installed_ffmpeg_record()
+    assert record=={'event':'ffmpeg','path':str(ffmpeg)}
+
+def test_installed_mode_rejects_a_symlinked_ffmpeg(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    real=tmp_path/'real-ffmpeg'
+    real.write_text('elsewhere\n')
+    (bindir/'ffmpeg').symlink_to(real)
+    monkeypatch.setenv('CUE_INSTALLED','1')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.delenv('CUE_FFMPEG_BIN_DIR',raising=False)
+    with pytest.raises(CueError,match='ffmpeg unavailable'):binary('ffmpeg')
+    assert installed_ffmpeg_record()=={'event':'ffmpeg','path':'unavailable'}
+
+def test_development_mode_does_not_record_an_installed_ffmpeg(monkeypatch):
+    monkeypatch.setenv('CUE_INSTALLED','0')
+    assert installed_ffmpeg_record() is None
+
+def test_installed_mode_ignores_override_homebrew_and_path(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    ffmpeg=bindir/'ffmpeg'
+    ffmpeg.write_text('bundled ffmpeg\n')
+    ffmpeg.chmod(0o755)
+    other=tmp_path/'other'
+    other.mkdir()
+    (other/'ffmpeg').write_text('override\n')
+    monkeypatch.setenv('CUE_INSTALLED','1')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.setenv('CUE_FFMPEG_BIN_DIR',str(other))
+    monkeypatch.setattr('cue.media.shutil.which',lambda name:'/usr/bin/not-cue-ffmpeg')
+    assert binary('ffmpeg')==str(ffmpeg)
+
+def test_installed_mode_rejects_a_non_executable_ffmpeg(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    ffmpeg=bindir/'ffmpeg'
+    ffmpeg.write_text('not executable\n')
+    ffmpeg.chmod(0o644)
+    monkeypatch.setenv('CUE_INSTALLED','1')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.delenv('CUE_FFMPEG_BIN_DIR',raising=False)
+    with pytest.raises(CueError,match='ffmpeg unavailable'):binary('ffmpeg')
+
+def test_development_mode_does_not_use_the_bundled_binary(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    bundled=bindir/'ffmpeg'
+    bundled.write_text('bundled ffmpeg\n')
+    bundled.chmod(0o755)
+    monkeypatch.setenv('CUE_INSTALLED','0')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.delenv('CUE_FFMPEG_BIN_DIR',raising=False)
+    try:
+        found=binary('ffmpeg')
+    except CueError:
+        found=None
+    assert found!=str(bundled)
+
+def test_binary_rejects_names_other_than_ffmpeg_and_ffprobe():
+    with pytest.raises(CueError,match='bash unavailable'):binary('bash')
+
+def test_doctor_reports_the_bundled_ffmpeg_in_installed_mode(tmp_path,monkeypatch):
+    bindir=tmp_path/'runtime'/'bin'
+    bindir.mkdir(parents=True)
+    ffmpeg=bindir/'ffmpeg'
+    ffmpeg.write_text('not executed\n')
+    ffmpeg.chmod(0o755)
+    monkeypatch.setenv('CUE_INSTALLED','1')
+    monkeypatch.setenv('CUE_SUPPORT',str(tmp_path))
+    monkeypatch.delenv('CUE_FFMPEG_BIN_DIR',raising=False)
+    from cue.doctor import doctor
+    def command(args):
+        if args[:2]==[str(ffmpeg),'-version']:return 'ffmpeg version bundled'
+        return None
+    monkeypatch.setattr('cue.doctor.command',command)
+    assert doctor(tmp_path/'models')['ffmpeg']=='ffmpeg version bundled'
 
 def test_remux_on_disk_without_hard_links_does_not_replace_racing_output(fixture,tmp_path,monkeypatch):
     output=tmp_path/'copy.mkv'

@@ -1,4 +1,6 @@
 #!/bin/sh
 set -eu
 CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# This checkout stays in development mode even when an installed Cue marker exists.
+export CUE_INSTALLED=0
 exec "$CUE_PROJECT/.venv/bin/python" -m cue.cli "$@"

@@ -5,7 +5,10 @@ test('concurrent player requests share bootstrap and stale helper replies are re
   const connection={host:'127.0.0.1',port:12345,token:'a'.repeat(64),protocol_version:1,instance_id:'helper-one'};
   let boots=0,registrations=0,stale=false,background=false;
   (globalThis as any).CUE_BOOTSTRAP_DEFAULT='/project/cue-helper';
-  (globalThis as any).iina={preferences:{get:()=>''},file:{exists:()=>true},utils:{exec:async()=>{boots++;return {status:0,stdout:JSON.stringify(connection)};}},http:{
+  (globalThis as any).iina={preferences:{get:()=>''},file:{exists:(path:string)=>path==='/project/cue-helper'},utils:{exec:async(file:string,args:string[])=>{
+    assert.equal(file,'/project/cue-helper');assert.deepEqual(args,['ensure']);
+    boots++;return {status:0,stdout:JSON.stringify(connection),stderr:''};
+  }},http:{
     post:async(url:string,options:any)=>{
       assert.equal(options.headers.Authorization,`Bearer ${connection.token}`);
       if(url.endsWith('/clients')){registrations++;return {data:{instance_id:'helper-one',client_id:'client-one'}};}

@@ -13,8 +13,8 @@ import threading
 import time
 from urllib.parse import parse_qs
 from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
-from .bootstrap import HELPER_VERSION
-from .media import Media
+from .bootstrap import HELPER_VERSION, model_manifest_path
+from .media import Media, installed_ffmpeg_record
 from .pipeline import worker_entry
 from .remux import remux, validate_destination
 from .storage import Cache, atomic_write, private_dir
@@ -70,7 +70,7 @@ class Supervisor:
         self.stopping = False
         self.started = self.clock()
         self.last_job = self.clock()
-        self.manifest_hash = digest(json.loads((Path(__file__).resolve().parents[3]/"models/manifest.json").read_text()))
+        self.manifest_hash = digest(json.loads(model_manifest_path().read_text()))
 
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
@@ -396,6 +396,8 @@ def serve(root: Path, models: Path):
     connection = {"host": "127.0.0.1", "port": server.server_port, "token": sup.token,
                   "instance_id": sup.instance, "protocol_version": 1, "helper_version": HELPER_VERSION}
     atomic_write(root/"connection.json", json.dumps(connection))
+    record = installed_ffmpeg_record()
+    if record: print(json.dumps(record), flush=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     no_clients_at = time.monotonic()
     try:

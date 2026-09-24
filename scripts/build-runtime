@@ -400,6 +400,14 @@ fi
 echo "build-runtime: checking that import writes nothing and prints no SyntaxWarning" >&2
 "$PY" -W error::SyntaxWarning "$HELPER" smoke
 "$PY" "$HELPER" newer-than "$STAGE" "$STAMP"
+
+# Scanned with the rest of the tree. FFmpeg is copied later: its /cue-ffmpeg
+# prefix is not a build-machine path.
+mkdir -p "$STAGE/bin"
+cp -f "$CUE_PROJECT/scripts/runtime-cue-helper" "$STAGE/bin/cue-helper"
+chmod 755 "$STAGE/bin/cue-helper"
+cp -f "$CUE_PROJECT/models/manifest.json" "$STAGE/manifest.json"
+
 "$PY" "$HELPER" scan "$STAGE" "$HOME" "$CUE_PROJECT" "$PREFIX" "$STAGE"
 
 # Binaries are copied after the path scan. Their /cue-ffmpeg prefix is not a

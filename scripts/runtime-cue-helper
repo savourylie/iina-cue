@@ -1,0 +1,12 @@
+#!/bin/sh
+# Launcher shipped inside the relocatable runtime, not inside the plugin.
+# The plugin runs it as: /bin/sh <runtime>/bin/cue-helper ensure
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export CUE_INSTALLED=1
+# IINA starts this script with HOME unset. The password database still knows it.
+if [ -z "${HOME:-}" ]; then
+  HOME=$("$ROOT/python/bin/python3.12" -c 'from pathlib import Path; print(Path.home())')
+  export HOME
+fi
+exec "$ROOT/python/bin/python3.12" -m cue.cli "$@"
