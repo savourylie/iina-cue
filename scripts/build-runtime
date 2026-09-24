@@ -1,0 +1,375 @@
+#!/bin/sh
+# Build a relocatable CPython runtime from the locked non-dev dependencies.
+# The project .venv is an editable install tied to this checkout; copying it
+# would not survive a move. `uv python find` inside the checkout returns that
+# venv, so this script asks for the uv-managed interpreter instead.
+set -eu
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$CUE_PROJECT"
+
+if [ "$#" -ne 0 ]; then
+  echo "usage: scripts/build-runtime" >&2
+  exit 2
+fi
+if [ "$(uname -m)" != "arm64" ]; then
+  echo "build-runtime: Apple Silicon (arm64) only" >&2
+  exit 1
+fi
+
+unset VIRTUAL_ENV || true
+unset UV_PROJECT_ENVIRONMENT || true
+export UV_CACHE_DIR="$CUE_PROJECT/.cache/uv"
+export UV_LINK_MODE=copy
+mkdir -p "$UV_CACHE_DIR"
+
+VERSION=$(sed -n 's/^HELPER_VERSION = "\([^"]*\)"$/\1/p' "$CUE_PROJECT/helper/src/cue/bootstrap.py")
+case "$VERSION" in
+  ""|*[^0-9A-Za-z._-]*)
+    echo "build-runtime: could not read HELPER_VERSION from helper/src/cue/bootstrap.py" >&2
+    exit 1
+    ;;
+esac
+
+DIST="$CUE_PROJECT/dist"
+OUT="$DIST/runtime-$VERSION"
+ARCHIVE="$DIST/runtime-$VERSION.tar.xz"
+mkdir -p "$DIST"
+
+STAGE=""
+REQS=""
+HELPER=""
+STAMP=""
+cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ] && [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
+    echo "build-runtime: leaving failed build at $STAGE" >&2
+  fi
+  if [ -n "$REQS" ]; then
+    rm -f "$REQS"
+  fi
+  if [ -n "$HELPER" ]; then
+    rm -f "$HELPER"
+  fi
+  if [ -n "$STAMP" ]; then
+    rm -f "$STAMP"
+  fi
+  true
+}
+trap cleanup EXIT
+
+VENV_CFG="$CUE_PROJECT/.venv/pyvenv.cfg"
+if [ -f "$VENV_CFG" ]; then
+  VENV_MARK=$(stat -f '%i %m %z' "$VENV_CFG")
+else
+  VENV_MARK=""
+fi
+
+INTERP=$(uv python find 3.12 --no-project --managed-python --no-python-downloads)
+INTERP=$(realpath "$INTERP")
+PREFIX=$(CDPATH= cd -- "$(dirname -- "$INTERP")/.." && pwd -P)
+case "$PREFIX" in
+  "$CUE_PROJECT"|"$CUE_PROJECT"/*)
+    echo "build-runtime: refusing project interpreter $INTERP" >&2
+    exit 1
+    ;;
+esac
+if [ ! -x "$PREFIX/bin/python3.12" ]; then
+  echo "build-runtime: $PREFIX has no python3.12" >&2
+  exit 1
+fi
+MANAGED_MARK="$PREFIX/lib/python3.12/EXTERNALLY-MANAGED"
+if [ ! -f "$MANAGED_MARK" ]; then
+  echo "build-runtime: $PREFIX is not the uv-managed CPython prefix" >&2
+  exit 1
+fi
+MANAGED_STAT=$(stat -f '%i %m %z' "$MANAGED_MARK")
+"$PREFIX/bin/python3.12" -c 'import platform,sys; raise SystemExit(0 if platform.machine()=="arm64" and sys.version_info[:2]==(3,12) else 1)'
+
+echo "build-runtime: copying $PREFIX" >&2
+STAGE=$(mktemp -d "$DIST/.runtime-build.XXXXXX")
+mkdir -p "$STAGE/python"
+cp -a "$PREFIX/." "$STAGE/python/"
+rm -f "$STAGE/python/lib/python3.12/EXTERNALLY-MANAGED"
+PY="$STAGE/python/bin/python3.12"
+
+HELPER=$(mktemp)
+cat > "$HELPER" <<'PY'
+import importlib.metadata
+import pathlib
+import shutil
+import sys
+
+header = r"""#!/bin/sh
+'''exec' "$(dirname -- "$(realpath -- "$0")")/python3.12" "$0" "$@"
+' '''
+"""
+
+
+def rewrite_sysconfig(path, old_prefix):
+    file = pathlib.Path(path)
+    text = file.read_text()
+    if "@@PREFIX@@" in text:
+        raise SystemExit("sysconfig already contains @@PREFIX@@")
+    if old_prefix not in text:
+        raise SystemExit(f"install prefix not found in {file}")
+    if "build_time_vars = {" not in text:
+        raise SystemExit(f"unexpected sysconfig layout in {file}")
+    text = text.replace(old_prefix, "@@PREFIX@@")
+    text = text.replace("build_time_vars = {", "_build_time_vars = {", 1)
+    file.write_text(
+        "import sys as _sys\n"
+        "_prefix = _sys.base_prefix\n\n"
+        "def _resolve(value):\n"
+        "    if isinstance(value, str):\n"
+        "        return value.replace('@@PREFIX@@', _prefix)\n"
+        "    return value\n\n"
+        + text
+        + "\nbuild_time_vars = {key: _resolve(value) for key, value in _build_time_vars.items()}\n"
+    )
+
+
+def strip_tests(site):
+    site = pathlib.Path(site)
+    victims = [path for path in site.rglob("*") if path.is_dir() and path.name in {"test", "tests"}]
+    victims.sort(key=lambda path: len(path.parts), reverse=True)
+    for path in victims:
+        if path.exists():
+            shutil.rmtree(path)
+    leftover = [str(path) for path in site.rglob("*") if path.is_dir() and path.name in {"test", "tests"}]
+    if leftover:
+        raise SystemExit("test directories remain:\n" + "\n".join(leftover[:20]))
+
+
+def drop_direct_urls(site):
+    for path in pathlib.Path(site).rglob("direct_url.json"):
+        path.unlink()
+
+
+def rewrite_shebangs(bin_dir, prefix):
+    for path in pathlib.Path(bin_dir).iterdir():
+        if not path.is_file() or path.is_symlink():
+            continue
+        data = path.read_bytes()
+        if not data.startswith(b"#!"):
+            continue
+        text = data.decode("utf-8")
+        first, newline, rest = text.partition("\n")
+        if prefix not in first:
+            continue
+        path.write_text(header + (rest if newline else ""))
+
+
+def verify_lock(reqs):
+    from packaging.markers import Marker
+    for raw in pathlib.Path(reqs).read_text().splitlines():
+        line = raw.split("\\", 1)[0].strip()
+        if not line or line.startswith("#") or "==" not in line:
+            continue
+        requirement, _, marker = line.partition(";")
+        if marker and not Marker(marker.strip()).evaluate():
+            continue
+        name, version = (part.strip() for part in requirement.split("==", 1))
+        installed = importlib.metadata.version(name)
+        if installed != version:
+            raise SystemExit(f"{name} {installed} != locked {version}")
+    try:
+        importlib.metadata.version("pytest")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        raise SystemExit("pytest is a dev dependency and must not be installed")
+    importlib.metadata.version("iina-cue")
+
+
+def verify_layout():
+    import cue
+    import cue.bootstrap
+    site = pathlib.Path(cue.__file__).resolve().parents[1]
+    root = pathlib.Path(sys.base_prefix).resolve()
+    if root not in pathlib.Path(cue.__file__).resolve().parents:
+        raise SystemExit(f"cue is outside the runtime: {cue.__file__}")
+    if list(site.rglob("direct_url.json")):
+        raise SystemExit("direct_url.json still records a build path")
+    editable = list(site.glob("*editable*"))
+    if editable:
+        raise SystemExit("editable path files remain: " + ", ".join(str(path) for path in editable))
+    for pth in site.glob("*.pth"):
+        for line in pth.read_text(errors="replace").splitlines():
+            entry = line.strip()
+            if entry.startswith("/"):
+                raise SystemExit(f"absolute path in {pth}: {entry}")
+    bindir = sysconfig_bindir()
+    expected = str(pathlib.Path(sys.base_prefix) / "bin")
+    if bindir != expected:
+        raise SystemExit(f"sysconfig BINDIR {bindir} != {expected}")
+    print(cue.bootstrap.HELPER_VERSION)
+
+
+def sysconfig_bindir():
+    import sysconfig
+    return sysconfig.get_config_var("BINDIR")
+
+
+def absolute_symlinks(root):
+    hits = []
+    for path in pathlib.Path(root).rglob("*"):
+        if path.is_symlink() and os_readlink(path).startswith("/"):
+            hits.append(f"{path} -> {os_readlink(path)}")
+    if hits:
+        raise SystemExit("absolute symlinks:\n" + "\n".join(hits[:20]))
+
+
+def os_readlink(path):
+    return str(path.readlink())
+
+
+def scan(root, needles):
+    encoded = [needle.encode() for needle in needles if needle]
+    hits = []
+    for path in pathlib.Path(root).rglob("*"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        if file_contains(path, encoded):
+            hits.append(str(path))
+            if len(hits) >= 20:
+                break
+    if hits:
+        raise SystemExit("build-machine paths remain:\n" + "\n".join(hits))
+
+
+def file_contains(path, needles):
+    keep = max(len(needle) for needle in needles) - 1
+    previous = b""
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                return False
+            window = previous + chunk
+            if any(needle in window for needle in needles):
+                return True
+            previous = window[-keep:] if keep else b""
+
+
+def newer_than(root, stamp):
+    threshold = pathlib.Path(stamp).stat().st_mtime_ns
+    hits = []
+    for path in pathlib.Path(root).rglob("*"):
+        if path.is_symlink():
+            continue
+        if path.stat().st_mtime_ns > threshold:
+            hits.append(str(path))
+            if len(hits) >= 20:
+                break
+    if hits:
+        raise SystemExit("first launch wrote into the runtime:\n" + "\n".join(hits))
+
+
+def smoke():
+    import os
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    import cue.cli
+    import lingua
+    import litert_lm
+    import mlx.core
+    import nagisa
+    import numpy
+    import scipy
+    import sklearn
+    import soundfile
+    import soynlp
+    import transformers
+    import mlx_audio
+    del cue.cli, lingua, litert_lm, mlx.core, nagisa, numpy, scipy, sklearn, soundfile, soynlp, transformers, mlx_audio
+
+
+commands = {
+    "rewrite-sysconfig": lambda: rewrite_sysconfig(sys.argv[2], sys.argv[3]),
+    "strip-tests": lambda: strip_tests(sys.argv[2]),
+    "drop-direct-urls": lambda: drop_direct_urls(sys.argv[2]),
+    "rewrite-shebangs": lambda: rewrite_shebangs(sys.argv[2], sys.argv[3]),
+    "verify-lock": lambda: verify_lock(sys.argv[2]),
+    "verify-layout": verify_layout,
+    "absolute-symlinks": lambda: absolute_symlinks(sys.argv[2]),
+    "scan": lambda: scan(sys.argv[2], sys.argv[3:]),
+    "newer-than": lambda: newer_than(sys.argv[2], sys.argv[3]),
+    "smoke": smoke,
+}
+commands[sys.argv[1]]()
+PY
+
+echo "build-runtime: making sysconfig follow the interpreter location" >&2
+"$PY" "$HELPER" rewrite-sysconfig \
+  "$STAGE/python/lib/python3.12/_sysconfigdata__darwin_darwin.py" \
+  "$PREFIX"
+# The managed build records an absolute install name. The loader already
+# uses @executable_path; drop the build-machine path and re-seal the ad-hoc signature.
+LIBPYTHON="$STAGE/python/lib/libpython3.12.dylib"
+install_name_tool -id @loader_path/libpython3.12.dylib "$LIBPYTHON"
+codesign --force --sign - "$LIBPYTHON" >/dev/null
+
+REQS=$(mktemp)
+echo "build-runtime: installing locked dependencies into the copy" >&2
+uv export --project "$CUE_PROJECT" --frozen --no-dev --no-emit-project --no-annotate --quiet -o "$REQS"
+uv pip install \
+  --python "$PY" \
+  --break-system-packages \
+  --require-hashes \
+  --no-build \
+  --no-python-downloads \
+  -r "$REQS"
+uv pip install \
+  --python "$PY" \
+  --break-system-packages \
+  --no-deps \
+  --no-python-downloads \
+  "$CUE_PROJECT"
+
+SITE="$STAGE/python/lib/python3.12/site-packages"
+"$PY" "$HELPER" verify-lock "$REQS"
+"$PY" "$HELPER" drop-direct-urls "$SITE"
+"$PY" "$HELPER" strip-tests "$SITE"
+"$PY" "$HELPER" rewrite-shebangs "$STAGE/python/bin" "$STAGE/python"
+echo "build-runtime: compiling bytecode" >&2
+# SyntaxWarnings in third-party sources are emitted only while compiling.
+# Bytecode compiled here is what the first launch loads, so those warnings
+# must not be promoted to errors during this pass.
+"$PY" -m compileall -q -f -j 0 -s "$STAGE" "$STAGE/python/lib/python3.12"
+"$PY" "$HELPER" absolute-symlinks "$STAGE"
+printf '%s\n' "$VERSION" > "$STAGE/VERSION"
+STAMP=$(mktemp)
+touch "$STAMP"
+INSTALLED=$("$PY" "$HELPER" verify-layout)
+if [ "$INSTALLED" != "$VERSION" ]; then
+  echo "build-runtime: installed HELPER_VERSION $INSTALLED != $VERSION" >&2
+  exit 1
+fi
+echo "build-runtime: checking that import writes nothing and prints no SyntaxWarning" >&2
+"$PY" -W error::SyntaxWarning "$HELPER" smoke
+"$PY" "$HELPER" newer-than "$STAGE" "$STAMP"
+"$PY" "$HELPER" scan "$STAGE" "$HOME" "$CUE_PROJECT" "$PREFIX" "$STAGE"
+
+rm -rf "$OUT"
+mv "$STAGE" "$OUT"
+STAGE=""
+rm -f "$ARCHIVE"
+echo "build-runtime: compressing $ARCHIVE" >&2
+COPYFILE_DISABLE=1 tar -cJf "$ARCHIVE" -C "$DIST" "runtime-$VERSION"
+
+if [ -n "$VENV_MARK" ] && [ "$(stat -f '%i %m %z' "$VENV_CFG")" != "$VENV_MARK" ]; then
+  echo "build-runtime: project .venv was modified" >&2
+  exit 1
+fi
+if [ "$(stat -f '%i %m %z' "$MANAGED_MARK")" != "$MANAGED_STAT" ]; then
+  echo "build-runtime: uv-managed Python was modified" >&2
+  exit 1
+fi
+
+RAW=$(du -sh "$OUT" | awk '{print $1}')
+ZIP=$(du -sh "$ARCHIVE" | awk '{print $1}')
+ZIP_BYTES=$(stat -f '%z' "$ARCHIVE")
+echo "runtime: $OUT"
+echo "uncompressed: $RAW"
+echo "compressed: $ZIP ($ZIP_BYTES bytes)"
+echo "archive: $ARCHIVE"
