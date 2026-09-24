@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {setupView} from '../src/setup-view';
 
 test('sidebar switch, error, and retry follow Cue status messages', () => {
   const html = readFileSync('plugin/sidebar.html', 'utf8');
@@ -141,4 +142,57 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   messages.get('cue-remux-status')!({text:'MKV copy cancelled.',state:'cancelled'});
   assert.equal(element('remux-stop').hidden, true);
   assert.equal(element('remux-bar').hidden, true);
+});
+
+test('first-run setup replaces the normal controls until the smoke test has passed', () => {
+  const html = readFileSync('plugin/sidebar.html', 'utf8');
+  const preferences = readFileSync('plugin/preferences.html', 'utf8');
+  const card = html.slice(html.indexOf('id="setup-card"'), html.indexOf('id="normal-controls"'));
+  assert.doesNotMatch(card, /aria-live/);
+  assert.equal([...html.matchAll(/aria-live="polite"/g)].length, 2);
+  assert.match(card, /<progress id="setup-progress"/);
+  assert.match(html, /Gemma 4 E2B \(Google, Apache 2.0\) and Qwen3-ForcedAligner \(Qwen team, Apache 2.0; MLX conversion by mlx-community\)/);
+  assert.match(card, /href="licenses\/"/);
+  assert.match(preferences, /id="dev-setup" hidden/);
+  assert.ok(preferences.indexOf('scripts/setup-dev') > preferences.indexOf('id="dev-setup" hidden'));
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  const elements = new Map<string, any>();
+  function element(id: string) {
+    if (!elements.has(id)) elements.set(id, {hidden: id === 'setup-card', textContent: '', value: 0, dataset: {}, listeners: new Map(), addEventListener(name: string, fn: any) {this.listeners.set(name, fn);}});
+    return elements.get(id);
+  }
+  const messages = new Map<string, (data: any) => void>();
+  const posted: [string, any][] = [];
+  vm.runInNewContext(script, {
+    setTimeout: () => 0, clearTimeout: () => {},
+    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}})},
+    iina: {onMessage: (name: string, fn: any) => messages.set(name, fn), postMessage: (name: string, data: any) => posted.push([name, data])},
+  });
+  const show = (phase: Parameters<typeof setupView>[0]['phase'], extra: Partial<Parameters<typeof setupView>[0]> = {}) => {
+    const view = setupView({phase, ...extra});
+    messages.get('cue-setup')!(view);
+    return view;
+  };
+  const download = show('download');
+  assert.equal(element('setup-card').hidden, false);
+  assert.equal(element('normal-controls').hidden, true);
+  assert.equal(download.ready, false);
+  assert.equal(posted.some(item => item[0] === 'start-setup'), false);
+  element('setup-primary').listeners.get('click')();
+  assert.equal(posted.at(-1)?.[0], 'start-setup');
+  for (const phase of ['unsupported', 'runtime', 'models', 'verifying', 'smoke', 'failed'] as const) {
+    const view = show(phase, {reason: 'macOS 27.0 or later is required.', bytesDone: 40, bytesTotal: 100, previous: phase});
+    assert.equal(view.showCard, true);
+    assert.equal(view.ready, false);
+    assert.equal(view.announce, null);
+  }
+  const models = show('models', {bytesDone: 40, bytesTotal: 100, previous: 'runtime'});
+  assert.equal(models.progress, 40);
+  assert.equal(element('setup-progress').value, 40);
+  assert.equal(element('setup-bytes').textContent, '40 / 100');
+  const done = show('done');
+  assert.equal(done.ready, true);
+  assert.equal(element('setup-card').hidden, true);
+  assert.equal(element('normal-controls').hidden, false);
 });

@@ -169,7 +169,12 @@ export const en = {
   "sidebar.saveDiagnostics": "Save diagnostics",
   "sidebar.developer": "Developer diagnostics",
   "sidebar.playerDiagnostic": "Player and audio track",
-  "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)"
+  "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)",
+  "sidebar.setupTitle": "Set up Cue",
+  "sidebar.setupIntro": "Cue downloads about 3.8 GB to this Mac. The helper comes from GitHub and the speech models come from Hugging Face. Everything runs on this Mac.",
+  "sidebar.setupDownload": "Download",
+  "sidebar.setupRetry": "Retry",
+  "sidebar.setupCredits": "Gemma 4 E2B (Google, Apache 2.0) and Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community)."
 } as const;
 
 export type StringKey = keyof typeof en;

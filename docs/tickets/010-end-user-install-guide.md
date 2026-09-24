@@ -1,10 +1,10 @@
 # [TICKET-010] End-user install guide and README
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #009
+- Requires: #009 ✅
 
 ## Description
 The public README and install docs currently describe a developer workflow. A non-technical user needs a short guide:
