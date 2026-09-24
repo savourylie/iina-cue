@@ -4,7 +4,7 @@
 `blocked`
 
 ## Dependencies
-- Requires: #001, #002
+- Requires: #001, #002 ✅
 
 ## Description
 Distributing the runtime redistributes every Python package and FFmpeg, so their licenses must travel with it. The project notices are also out of date: they point to the old Gemma terms and say FFmpeg is not bundled.
