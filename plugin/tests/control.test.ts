@@ -49,7 +49,7 @@ test('original output label follows detected language and preserves unknown stat
 test('source selector exposes every pinned Qwen alignment language',()=>{
   const html=readFileSync('plugin/sidebar.html','utf8');
   const source=html.match(/<select id="source"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? '';
-  const codes=[...source.matchAll(/<option value="([^"]+)">/g)].map(match=>match[1]);
+  const codes=[...source.matchAll(/<option value="([^"]+)"/g)].map(match=>match[1]);
   assert.deepEqual(new Set(codes),new Set(['auto','zh','yue','en','de','es','fr','it','pt','ru','ko','ja']));
 });
 test('stage status names the work and elapsed time without treating skipped audio as coverage',()=>{

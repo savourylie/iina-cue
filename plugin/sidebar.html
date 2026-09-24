@@ -84,94 +84,103 @@
   .remux-progress[data-state="complete"] #remux-status{color:var(--text-ready)}
   @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
-<h1>Cue subtitles</h1>
+<h1 data-i18n="sidebar.title">Cue subtitles</h1>
 <section>
-  <label class="switch-control" for="ai-enabled"><span>AI subtitles</span><input id="ai-enabled" type="checkbox" role="switch" aria-label="AI subtitles"><span class="switch-track" aria-hidden="true"></span></label>
+  <label class="switch-control" for="ai-enabled"><span data-i18n="sidebar.aiSubtitles">AI subtitles</span><input id="ai-enabled" type="checkbox" role="switch" aria-label="AI subtitles" data-i18n-attr="aria-label:sidebar.aiSubtitles"><span class="switch-track" aria-hidden="true"></span></label>
   <p id="status-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
   <div id="status" class="status" data-tone="off" hidden>
     <span class="status-dot" aria-hidden="true"></span>
     <div><p id="status-title" class="status-title"></p><p id="status-detail" class="status-detail"></p><p id="status-code" class="status-code"></p></div>
-    <button id="retry" class="status-action" type="button" hidden>Retry</button>
-    <button id="status-reveal" class="status-action" type="button" hidden>Show in Finder</button>
+    <button id="retry" class="status-action" type="button" hidden data-i18n="sidebar.retry">Retry</button>
+    <button id="status-reveal" class="status-action" type="button" hidden data-i18n="sidebar.showInFinder">Show in Finder</button>
     <div id="status-coverage" class="coverage" role="img" hidden>
       <div class="coverage-track"></div>
-      <div class="coverage-scale" aria-hidden="true"><span>Now</span><span id="coverage-end"></span></div>
+      <div class="coverage-scale" aria-hidden="true"><span data-i18n="sidebar.coverageNow">Now</span><span id="coverage-end"></span></div>
     </div>
   </div>
 </section>
 <section aria-labelledby="language-heading">
-<h2 id="language-heading">Language</h2>
+<h2 id="language-heading" data-i18n="sidebar.language">Language</h2>
 <div class="field">
-<label for="target">Subtitle language</label>
+<label for="target" data-i18n="sidebar.subtitleLanguage">Subtitle language</label>
 <select id="target">
-  <option value="original">Original language</option>
-  <option value="zh-TW">Traditional Chinese</option>
-  <option value="zh-CN">Simplified Chinese</option>
-  <option value="en">English</option>
-  <option value="ja">Japanese</option>
-  <option value="ko">Korean</option>
+  <option value="original" data-i18n="lang.original">Original language</option>
+  <option value="zh-TW" data-i18n="lang.zh-TW">Traditional Chinese</option>
+  <option value="zh-CN" data-i18n="lang.zh-CN">Simplified Chinese</option>
+  <option value="en" data-i18n="lang.en">English</option>
+  <option value="ja" data-i18n="lang.ja">Japanese</option>
+  <option value="ko" data-i18n="lang.ko">Korean</option>
 </select>
 </div>
 <div class="field">
-<label for="source">Source language</label>
+<label for="source" data-i18n="sidebar.sourceLanguage">Source language</label>
 <select id="source" aria-describedby="language-hint source-hint">
-  <option value="auto">Auto-detect</option>
-  <option value="en">English</option>
-  <option value="ja">Japanese</option>
-  <option value="zh">Chinese</option>
-  <option value="ko">Korean</option>
-  <optgroup label="Experimental">
-    <option value="yue">Cantonese</option>
-    <option value="fr">French</option>
-    <option value="de">German</option>
-    <option value="it">Italian</option>
-    <option value="pt">Portuguese</option>
-    <option value="ru">Russian</option>
-    <option value="es">Spanish</option>
+  <option value="auto" data-i18n="lang.auto">Auto-detect</option>
+  <option value="en" data-i18n="lang.en">English</option>
+  <option value="ja" data-i18n="lang.ja">Japanese</option>
+  <option value="zh" data-i18n="lang.zh">Chinese</option>
+  <option value="ko" data-i18n="lang.ko">Korean</option>
+  <optgroup label="Experimental" data-i18n-attr="label:sidebar.experimental">
+    <option value="yue" data-i18n="lang.yue">Cantonese</option>
+    <option value="fr" data-i18n="lang.fr">French</option>
+    <option value="de" data-i18n="lang.de">German</option>
+    <option value="it" data-i18n="lang.it">Italian</option>
+    <option value="pt" data-i18n="lang.pt">Portuguese</option>
+    <option value="ru" data-i18n="lang.ru">Russian</option>
+    <option value="es" data-i18n="lang.es">Spanish</option>
   </optgroup>
 </select>
 <p id="language-hint" class="field-hint" hidden></p>
-<p id="source-hint" class="field-hint" hidden>Experimental: timed by the local aligner, but not yet through Cue's transcription or translation quality checks.</p>
+<p id="source-hint" class="field-hint" hidden data-i18n="sidebar.experimentalHint">Experimental: timed by the local aligner, but not yet through Cue's transcription or translation quality checks.</p>
 </div>
 </section>
 <section aria-labelledby="appearance-heading">
-<h2 id="appearance-heading">Appearance</h2>
-<div class="size-heading"><label for="subtitle-size">Subtitle size</label><output id="subtitle-size-value" for="subtitle-size">55</output></div>
+<h2 id="appearance-heading" data-i18n="sidebar.appearance">Appearance</h2>
+<div class="size-heading"><label for="subtitle-size" data-i18n="sidebar.subtitleSize">Subtitle size</label><output id="subtitle-size-value" for="subtitle-size">55</output></div>
 <input id="subtitle-size" type="range" min="16" max="96" step="1" value="55">
-<label class="option"><input id="subtitle-box" type="checkbox">White text on a translucent black background</label>
+<label class="option"><input id="subtitle-box" type="checkbox"><span data-i18n="sidebar.subtitleBox">White text on a translucent black background</span></label>
 </section>
 <section aria-labelledby="playback-heading">
-<h2 id="playback-heading">Playback</h2>
-<label class="option"><input id="pause-until-ready" type="checkbox" aria-describedby="pause-hint"><span>Pause until captions are ready<span id="pause-hint" class="option-hint">Press play once captions are ready. Cue never resumes a pause you made.</span></span></label>
+<h2 id="playback-heading" data-i18n="sidebar.playback">Playback</h2>
+<label class="option"><input id="pause-until-ready" type="checkbox" aria-describedby="pause-hint"><span><span data-i18n="sidebar.pauseUntilReady">Pause until captions are ready</span><span id="pause-hint" class="option-hint" data-i18n="sidebar.pauseHint">Press play once captions are ready. Cue never resumes a pause you made.</span></span></label>
 </section>
 <details id="advanced" class="advanced">
-  <summary>Advanced</summary>
-  <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions">
-    <button type="button" data-action="remux">Save a copy as MKV (reset timestamps)…</button>
+  <summary data-i18n="sidebar.advanced">Advanced</summary>
+  <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions" data-i18n-attr="aria-label:sidebar.advancedActions">
+    <button type="button" data-action="remux" data-i18n="sidebar.remux">Save a copy as MKV (reset timestamps)…</button>
     <form id="remux-form" class="remux-form" hidden>
-      <label for="remux-name">New MKV filename</label>
+      <label for="remux-name" data-i18n="sidebar.newFilename">New MKV filename</label>
       <input id="remux-name" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-describedby="remux-error remux-path">
       <p id="remux-error" class="remux-error" hidden></p>
       <p id="remux-path" class="remux-save-path"></p>
-      <p class="remux-note">Original stays unchanged. Video, audio, and subtitles are copied; timed metadata and data tracks are omitted.</p>
-      <div class="remux-form-actions"><button type="submit">Save copy</button><button id="remux-cancel" type="button">Cancel</button></div>
+      <p class="remux-note" data-i18n="sidebar.remuxNote">Original stays unchanged. Video, audio, and subtitles are copied; timed metadata and data tracks are omitted.</p>
+      <div class="remux-form-actions"><button type="submit" data-i18n="sidebar.saveCopy">Save copy</button><button id="remux-cancel" type="button" data-i18n="sidebar.cancel">Cancel</button></div>
     </form>
     <div id="remux-progress" class="remux-progress" hidden>
       <div class="remux-progress-heading"><span id="remux-status" role="status" aria-live="polite"></span><output id="remux-percent" for="remux-bar"></output></div>
-      <progress id="remux-bar" max="100" aria-label="MKV copy progress"></progress>
-      <button id="remux-reveal" class="remux-reveal" type="button" hidden>Show in Finder</button>
-      <button id="remux-stop" class="remux-reveal" type="button" hidden>Cancel</button>
+      <progress id="remux-bar" max="100" aria-label="MKV copy progress" data-i18n-attr="aria-label:sidebar.remuxProgress"></progress>
+      <button id="remux-reveal" class="remux-reveal" type="button" hidden data-i18n="sidebar.showInFinder">Show in Finder</button>
+      <button id="remux-stop" class="remux-reveal" type="button" hidden data-i18n="sidebar.cancel">Cancel</button>
     </div>
-    <button type="button" data-action="export">Export generated subtitles…</button>
-    <button type="button" data-action="diagnostic">Save diagnostics</button>
+    <button type="button" data-action="export" data-i18n="sidebar.export">Export generated subtitles…</button>
+    <button type="button" data-action="diagnostic" data-i18n="sidebar.saveDiagnostics">Save diagnostics</button>
     <details class="developer">
-      <summary>Developer diagnostics</summary>
-      <button type="button" data-action="player-diagnostic">Player and audio track</button>
-      <button type="button" data-action="reload-diagnostic">100 subtitle reloads (test media)</button>
+      <summary data-i18n="sidebar.developer">Developer diagnostics</summary>
+      <button type="button" data-action="player-diagnostic" data-i18n="sidebar.playerDiagnostic">Player and audio track</button>
+      <button type="button" data-action="reload-diagnostic" data-i18n="sidebar.reloadDiagnostic">100 subtitle reloads (test media)</button>
     </details>
   </div>
 </details>
 <script>
+  // Strings arrive from the plugin (cue-strings); these English defaults cover
+  // the moment before that message and must match plugin/src/strings.ts.
+  let strings={'sidebar.saveTo':'Save to: {path}','sidebar.errorCode':'Error code: {code}','sidebar.coverageEnd':'+{seconds} s'};
+  function tr(key,params={}){return (strings[key]||key).replace(/\{(\w+)\}/g,(match,name)=>name in params?String(params[name]):match);}
+  function applyStrings(){
+    document.querySelectorAll('[data-i18n]').forEach(node=>{if(strings[node.dataset.i18n])node.textContent=strings[node.dataset.i18n];});
+    document.querySelectorAll('[data-i18n-attr]').forEach(node=>node.dataset.i18nAttr.split(';').forEach(pair=>{const [attr,key]=pair.split(':');if(strings[key])node.setAttribute(attr,strings[key]);}));
+  }
+  iina.onMessage('cue-strings',data=>{strings={...strings,...data};applyStrings();});
   let remuxState='idle';
   let remuxDraft=null;
   const remuxName=document.getElementById('remux-name');
@@ -179,7 +188,7 @@
     if(!remuxDraft)return;
     const name=(remuxName.value.trim()||remuxDraft.suggested).replace(/\.(mp4|mov|m4v|webm|ts)$/i,'.mkv');
     const filename=name.toLowerCase().endsWith('.mkv')?name:`${name}.mkv`;
-    document.getElementById('remux-path').textContent=`Save to: ${remuxDraft.folder.replace(/\/+$/,'')}/${filename}`;
+    document.getElementById('remux-path').textContent=tr('sidebar.saveTo',{path:`${remuxDraft.folder.replace(/\/+$/,'')}/${filename}`});
   }
   iina.onMessage('cue-remux-draft',data=>{
     const opening=!remuxDraft&&data?.active===true;
@@ -204,7 +213,7 @@
     box.hidden=!coverage;
     if(!coverage)return;
     box.setAttribute('aria-label',coverage.label);
-    setText('coverage-end',`+${Math.round(coverage.windowMs/1000)} s`);
+    setText('coverage-end',tr('sidebar.coverageEnd',{seconds:Math.round(coverage.windowMs/1000)}));
     const track=box.querySelector('.coverage-track');
     track.replaceChildren(...[['prepared',coverage.prepared],['installed',coverage.installed]].flatMap(([kind,ranges])=>ranges.map(([a,b])=>{
       const span=document.createElement('span');span.className=kind;
@@ -215,7 +224,7 @@
     const status=document.getElementById('status');
     status.hidden=data.tone==='off';
     status.dataset.tone=data.tone;
-    setText('status-code',data.code?`Error code: ${data.code}`:'');
+    setText('status-code',data.code?tr('sidebar.errorCode',{code:data.code}):'');
     setText('status-title',data.title||'');
     setText('status-detail',data.detail||'');
     document.getElementById('retry').hidden=data.retry!==true;

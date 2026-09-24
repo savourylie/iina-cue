@@ -1,6 +1,8 @@
 import {rpc, disposeClient} from "./client";
-import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, OFF_STATUS, originalLanguageChoice, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
+import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
+import {has, sidebarStrings, t} from "./strings";
+import type {StringKey} from "./strings";
 import {mediaSnapshot, number, paused, SubtitleRenderer, tracks} from "./player";
 import type {Snapshot} from "./types";
 import {rendererSmoke} from "./smoke";
@@ -17,7 +19,7 @@ let epoch = 0;
 let seq = 0;
 let busy = false;
 let selected = false;
-let latestStatus: CueStatus = OFF_STATUS;
+let latestStatus: CueStatus = offStatus();
 type RemuxStatus = {text: string; state: "idle" | "running" | "complete" | "error" | "cancelled"; progressPct?: number | null; cancellable?: boolean};
 let remuxStatus: RemuxStatus = {text: "", state: "idle"};
 let remuxJobId: string | undefined;
@@ -35,11 +37,9 @@ let lifecycle = 0;
 const events: [string, string][] = [];
 const trace: object[] = [];
 const targets = new Set(["original", "zh-TW", "zh-CN", "en", "ja", "ko"]);
-const sourceChoices = [["Auto-detect", "auto"], ["English", "en"], ["Japanese", "ja"],
-  ["Chinese", "zh"], ["Korean", "ko"], ["Cantonese (experimental)", "yue"],
-  ["French (experimental)", "fr"], ["German (experimental)", "de"],
-  ["Italian (experimental)", "it"], ["Portuguese (experimental)", "pt"],
-  ["Russian (experimental)", "ru"], ["Spanish (experimental)", "es"]];
+const experimental = (code: string) => t("lang.experimentalName", {name: languageName(code)});
+const sourceChoices = [[t("lang.auto"), "auto"], ...["en", "ja", "zh", "ko"].map(code => [languageName(code), code]),
+  ...["yue", "fr", "de", "it", "pt", "ru", "es"].map(code => [experimental(code), code])];
 const sources = new Set(sourceChoices.map(([, code]) => code));
 function target() {
   const value = iina.preferences.get("target");
@@ -82,7 +82,7 @@ function syncRemuxDraft() {
 }
 function showError(e: unknown) {
   const code = String(e).replace(/^Error: /, "");
-  const language = session?.language?.code && session.language.code !== "und" ? originalLanguageLabel(session.language.code).replace(" (original)", "") : undefined;
+  const language = session?.language?.code && session.language.code !== "und" ? languageName(session.language.code) : undefined;
   status(errorStatus(code, language), true);
   syncSettings();
 }
@@ -97,11 +97,11 @@ function syncSubtitleAppearance() {
   const own = renderer.path && ownedTrack(tracks(), renderer.path);
   if (enabled && own && String(own.id) === iina.mpv.getString("sid")) {
     if (iina.preferences.get("subtitleBox") === true) {
-      try { subtitleStyle.enable(); } catch (error) { traceEvent("style_error", {error:String(error)}); status({tone:"warning", title:"Background not applied", detail:"Captions still work."}, true); }
+      try { subtitleStyle.enable(); } catch (error) { traceEvent("style_error", {error:String(error)}); status({tone:"warning", title:t("status.backgroundFailed"), detail:t("status.captionsStillWork")}, true); }
     } else subtitleStyle.restore();
     const size = validSubtitleSize(iina.preferences.get("subtitleSize"));
     if (size !== undefined) {
-      try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:"Size not changed", detail:"Captions still work."}, true); }
+      try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:t("status.sizeFailed"), detail:t("status.captionsStillWork")}, true); }
     } else subtitleSize.restore();
   } else { subtitleStyle.restore(); subtitleSize.restore(); }
 }
@@ -111,7 +111,7 @@ async function stop(forRestart = false) {
   intent.reset(); subtitleStyle.restore(); subtitleSize.restore(); renderer.remove(); syncSettings();
   if (seekTimer) clearTimeout(seekTimer);
   awaitingSeek = false;
-  if (!forRestart) status(OFF_STATUS);
+  if (!forRestart) status(offStatus());
   if (previous) { try { await rpc("DELETE", `/sessions/${previous.session_id}`); } catch {} }
 }
 async function start() {
@@ -123,7 +123,7 @@ async function start() {
   const token = generation;
   try {
     const media = mediaSnapshot();
-    enabled = true; hold(); status({tone:"working", title:"Starting", detail:"Loading the local subtitle engine…"}, true);
+    enabled = true; hold(); status({tone:"working", title:t("status.starting"), detail:t("status.startingDetail")}, true);
     const created = await rpc<Snapshot>("POST", "/sessions", {...media,
       request_id: `${Date.now()}-${generation}`, settings: {target: target(), source: iina.preferences.get("source")}});
     if (generation !== token || !enabled) { await rpc("DELETE", `/sessions/${created.session_id}`); return; }
@@ -194,7 +194,7 @@ async function poll() {
       if (["CLIENT_REQUIRED","NOT_FOUND","HELPER_DISCONNECTED"].includes(code)) {
         // Native modal panels can suspend JS timers long enough for a lease
         // to expire. Rebuild the session at the actual current playback point.
-        status({tone:"working", title:"Reconnecting", detail:"Reconnecting to the local subtitle engine…"});
+        status({tone:"working", title:t("status.reconnecting"), detail:t("status.reconnectingDetail")});
         await start();
       } else {enabled = false; showError(e);}
     }
@@ -214,7 +214,7 @@ function setSubtitleSize(value: number, save: boolean) {
   if (save) { iina.preferences.set("subtitleSize", size); iina.preferences.sync(); syncSettings(); }
   const own = renderer.path && ownedTrack(tracks(), renderer.path);
   if (enabled && own && String(own.id) === iina.mpv.getString("sid")) {
-    try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:"Size not changed", detail:"Captions still work."}, true); }
+    try { subtitleSize.apply(size); } catch (error) { traceEvent("size_error", {error:String(error)}); status({tone:"warning", title:t("status.sizeFailed"), detail:t("status.captionsStillWork")}, true); }
   }
 }
 function toggle(key: "pauseUntilReady" | "subtitleBox", value: boolean) {
@@ -225,38 +225,38 @@ function toggle(key: "pauseUntilReady" | "subtitleBox", value: boolean) {
 }
 function menu(title: string, action: () => void) { iina.menu.addItem(iina.menu.item(title, action)); }
 function advancedItem(title: string, action: () => void) { advanced.addSubMenuItem(iina.menu.item(title, action)); }
-const advanced = iina.menu.item("Advanced");
+const advanced = iina.menu.item(t("menu.advanced"));
 
 async function exportSubtitles() {
   const active = session;
   const token = generation;
-  if (!active || !active.artifact?.cue_count) return status({tone:"warning", title:"Nothing to export yet", detail:"Cue has not generated captions for this video."}, true);
+  if (!active || !active.artifact?.cue_count) return status({tone:"warning", title:t("status.nothingToExport"), detail:t("status.nothingToExportDetail")}, true);
   let output: string | undefined;
-  try { output = await iina.utils.prompt("Enter an absolute SRT export path. Existing files are not overwritten; incomplete exports are marked partial."); }
+  try { output = await iina.utils.prompt(t("export.prompt")); }
   catch { return; }
   if (!output || token !== generation || session?.session_id !== active.session_id) return;
   try {
     const result = await rpc<{path: string}>("POST", `/sessions/${active.session_id}/export`, {output});
-    if (token === generation) { revealable.export = result.path; status({tone:"info", title:"Subtitles exported", detail:result.path, reveal:true}, true); }
+    if (token === generation) { revealable.export = result.path; status({tone:"info", title:t("status.exported"), detail:result.path, reveal:true}, true); }
   } catch (error) { if (token === generation) showActionError(error); }
 }
 async function remuxCurrentMedia() {
-  if (remuxJobId || remuxStarting) { iina.core.osd("An MKV copy is already being saved."); return; }
+  if (remuxJobId || remuxStarting) { iina.core.osd(t("remux.busy")); return; }
   const source = iina.mpv.getString("path");
-  if (!source || !source.startsWith("/")) return setRemuxStatus({text:"Open a local video before saving an MKV copy.",state:"error"}, true);
+  if (!source || !source.startsWith("/")) return setRemuxStatus({text:t("remux.noLocalVideo"),state:"error"}, true);
   const slash = source.lastIndexOf("/");
   const dot = source.lastIndexOf(".");
   const suggested = `${dot > slash ? source.slice(slash + 1, dot) : source.slice(slash + 1)}.cue-remux.mkv`;
   remuxStarting = true;
   try {
-    const folder = await iina.utils.chooseFile("Choose a folder for the MKV copy", {chooseDir:true});
+    const folder = await iina.utils.chooseFile(t("remux.chooseFolder"), {chooseDir:true});
     if (!folder) return;
-    if (iina.mpv.getString("path") !== source) return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
+    if (iina.mpv.getString("path") !== source) return setRemuxStatus({text:t("remux.videoChanged"),state:"error"}, true);
     remuxDraft = {source, folder, suggested};
     try { setupSidebar(); iina.sidebar.show(); } catch {}
     if (remuxStatus.state === "error" || remuxStatus.state === "cancelled") setRemuxStatus({text:"",state:"idle"});
     syncRemuxDraft();
-  } catch (error) { setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true); }
+  } catch (error) { setRemuxStatus({text:t("remux.couldNotStart", {reason:String(error).replace(/^Error: /, "")}),state:"error"}, true); }
   finally {remuxStarting = false;}
 }
 async function confirmRemux(response: string) {
@@ -265,28 +265,28 @@ async function confirmRemux(response: string) {
   const {source, folder, suggested} = draft;
   if (iina.mpv.getString("path") !== source) {
     remuxDraft = undefined; syncRemuxDraft();
-    return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
+    return setRemuxStatus({text:t("remux.videoChanged"),state:"error"}, true);
   }
   const checked = remuxFilename(response, suggested, folder, path => iina.file.exists(path));
   if (checked.error || !checked.output) { remuxDraft = {...draft, error: checked.error}; syncRemuxDraft(); return; }
   const output = checked.output;
   remuxStarting = true;
   remuxDraft = undefined; syncRemuxDraft();
-  setRemuxStatus({text:"Preparing the MKV copy…",state:"running"});
+  setRemuxStatus({text:t("remux.preparing"),state:"running"});
   try {
     const result = await rpc<{job_id: string}>("POST", "/remux", {source, output});
     remuxJobId = result.job_id;
-    setRemuxStatus({text:"Copying streams…",state:"running",cancellable:true});
+    setRemuxStatus({text:t("remux.copying"),state:"running",cancellable:true});
   } catch (error) {
     if (iina.mpv.getString("path") === source) {remuxDraft = draft; syncRemuxDraft();}
-    setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true);
+    setRemuxStatus({text:t("remux.couldNotStart", {reason:String(error).replace(/^Error: /, "")}),state:"error"}, true);
   } finally {remuxStarting = false;}
 }
 async function cancelRemuxJob() {
   const id = remuxJobId;
   if (!id || remuxCancelling) return;
   remuxCancelling = true;
-  setRemuxStatus({...remuxStatus, text:"Cancelling…", cancellable:false});
+  setRemuxStatus({...remuxStatus, text:t("remux.cancelling"), cancellable:false});
   try { await rpc("POST", `/remux/${id}/cancel`, {}); }
   catch (error) { remuxCancelling = false; showActionError(error); }
 }
@@ -298,28 +298,24 @@ async function pollRemux() {
     const job = await rpc<{state: string; phase?: string; progress_pct?: number | null; path?: string; error?: {code: string}}>("GET", `/remux/${id}`);
     if (remuxJobId !== id) return;
     if (job.state === "running") {
-      const text = remuxCancelling && job.phase !== "saving" ? "Cancelling…"
-        : job.phase === "verifying" ? "Verifying timestamps and tracks…"
-        : job.phase === "saving" ? "Saving the new video…"
-        : job.phase === "copying" ? "Copying streams…" : "Preparing the MKV copy…";
+      const text = t(remuxCancelling && job.phase !== "saving" ? "remux.cancelling"
+        : job.phase === "verifying" ? "remux.verifying"
+        : job.phase === "saving" ? "remux.saving"
+        : job.phase === "copying" ? "remux.copying" : "remux.preparing");
       // Once saving starts the helper commits the file, so cancelling is no longer offered.
       setRemuxStatus({text,state:"running",progressPct:job.progress_pct,cancellable:!remuxCancelling && job.phase !== "saving"});
     }
     else {
       remuxJobId = undefined; remuxCancelling = false;
-      if (job.state === "cancelled") setRemuxStatus({text:"MKV copy cancelled. The original file is unchanged and no copy was saved.",state:"cancelled"}, true);
-      else if (job.state === "complete") { revealable.remux = job.path; setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true); }
+      if (job.state === "cancelled") setRemuxStatus({text:t("remux.cancelled"),state:"cancelled"}, true);
+      else if (job.state === "complete") { revealable.remux = job.path; setRemuxStatus({text:t("remux.saved", {path:job.path ?? ""}),state:"complete",progressPct:100}, true); }
       else {
-        const problem = ({REMUX_FAILED:"Could not copy this video's tracks into the new MKV.",
-          REMUX_VERIFY_FAILED:"The new video's tracks or timestamps failed verification.",
-          SOURCE_CHANGED:"The original video changed during copying. Retry when it is stable.",
-          OUTPUT_EXISTS:"A file with this name appeared while copying. Choose another name."} as Record<string,string>)[job.error?.code || ""]
-          || "Could not create the new video.";
-        setRemuxStatus({text:`${problem} Original file is unchanged.`,state:"error"}, true);
+        const key = `remux.failed.${job.error?.code}`;
+        setRemuxStatus({text:t(has(key) ? key : "remux.failed.unknown"),state:"error"}, true);
       }
     }
   } catch (error) {
-    if (remuxJobId === id) {remuxJobId = undefined; remuxCancelling = false; setRemuxStatus({text:`MKV copy status unavailable (${String(error).replace(/^Error: /, "")}). Check the output location.`,state:"error"}, true);}
+    if (remuxJobId === id) {remuxJobId = undefined; remuxCancelling = false; setRemuxStatus({text:t("remux.statusUnavailable", {reason:String(error).replace(/^Error: /, "")}),state:"error"}, true);}
   } finally {remuxPolling = false;}
 }
 function saveDiagnostics() {
@@ -328,25 +324,25 @@ function saveDiagnostics() {
     prepared_ranges:session?.prepared_ranges,installed_ranges:session?.installed_ranges,ready:session?.ready,
     metrics:session?.metrics,error:session?.error,events:trace,audio:tracks().filter(t=>t.type==="audio").map(t=>({id:t.id,ff_index:t["ff-index"],selected:t.selected}))};
   iina.file.write("@data/cue-session-diagnostic.json",JSON.stringify(report,null,2));
-  iina.core.osd("Cue diagnostics saved without media paths, subtitle text, or credentials.");
+  iina.core.osd(t("diagnostics.saved"));
 }
 function playerAudioDiagnostics() {
   const data = {mpv: iina.mpv.getString("mpv-version"), audio: tracks().filter(t=>t.type==="audio").map(t=>({id:t.id,ff_index:t["ff-index"],selected:t.selected,codec:t.codec})), paused: paused()};
-  iina.console.log(JSON.stringify(data)); status({tone:"info", title:"Player and audio track", detail:JSON.stringify(data)}, true);
+  iina.console.log(JSON.stringify(data)); status({tone:"info", title:t("status.playerDiagnostic"), detail:JSON.stringify(data)}, true);
 }
 function reloadDiagnostics() { void stop().then(rendererSmoke).catch(showActionError); }
 
-advancedItem("Save a copy as MKV (reset timestamps)…", () => { void remuxCurrentMedia(); });
-advancedItem("Export generated subtitles…", () => { void exportSubtitles(); });
-advancedItem("Save diagnostics", saveDiagnostics);
-advancedItem("Diagnostics: player and audio track", playerAudioDiagnostics);
-advancedItem("Diagnostics: 100 subtitle reloads (test media)", reloadDiagnostics);
+advancedItem(t("menu.remux"), () => { void remuxCurrentMedia(); });
+advancedItem(t("menu.export"), () => { void exportSubtitles(); });
+advancedItem(t("menu.saveDiagnostics"), saveDiagnostics);
+advancedItem(t("menu.playerDiagnostic"), playerAudioDiagnostics);
+advancedItem(t("menu.reloadDiagnostic"), reloadDiagnostics);
 
-menu("Open Cue sidebar", () => {setupSidebar(); iina.sidebar.show(); refreshStatus();});
+menu(t("menu.openSidebar"), () => {setupSidebar(); iina.sidebar.show(); refreshStatus();});
 iina.menu.addItem(advanced);
-for (const [label, target] of [["Original language", "original"], ["Traditional Chinese", "zh-TW"], ["Simplified Chinese", "zh-CN"], ["English", "en"], ["Japanese", "ja"], ["Korean", "ko"]]) menu(`Output: ${label}`, () => setting("target", target));
-for (const [label, source] of sourceChoices) menu(`Source language: ${label}`, () => setting("source", source));
-menu("Prioritize this window", () => { if (session) void rpc("POST", `/sessions/${session.session_id}/actions`, {action: "prioritize"}).catch(showActionError); });
+for (const target of ["original", "zh-TW", "zh-CN", "en", "ja", "ko"]) menu(t("menu.output", {label: t(`lang.${target}` as StringKey)}), () => setting("target", target));
+for (const [label, source] of sourceChoices) menu(t("menu.source", {label}), () => setting("source", source));
+menu(t("menu.prioritize"), () => { if (session) void rpc("POST", `/sessions/${session.session_id}/actions`, {action: "prioritize"}).catch(showActionError); });
 
 function setupSidebar() {
   if (sidebarLoaded) return;
@@ -354,7 +350,7 @@ function setupSidebar() {
   // window-loaded or a user action; never abort timer/event registration.
   iina.sidebar.loadFile("sidebar.html");
   sidebarLoaded = true;
-  iina.sidebar.onMessage("ready", () => { refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
+  iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
     if (data.action === "set-enabled" && typeof data.value === "boolean") {
       if (data.value && !enabled) void start();
@@ -402,7 +398,7 @@ listen("mpv.audio-delay.changed", () => { if (enabled && number("audio-delay") !
 listen("mpv.sid.changed", () => {
   if (!enabled || !selected || renderer.changing || !renderer.path) return;
   const own = ownedTrack(tracks(), renderer.path);
-  if (!own || String(own.id) !== iina.mpv.getString("sid")) { void stop(); status({tone:"info", title:"Cue stopped", detail:"Your subtitle selection was kept."}, true); }
+  if (!own || String(own.id) !== iina.mpv.getString("sid")) { void stop(); status({tone:"info", title:t("status.stopped"), detail:t("status.selectionKept")}, true); }
 });
 listen("mpv.end-file", () => { remuxDraft = undefined; syncRemuxDraft(); void stop(); });
 listen("iina.file-loaded", () => {

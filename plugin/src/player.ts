@@ -1,3 +1,4 @@
+import {t} from "./strings";
 import type {Artifact, Track} from "./types";
 import {ownedTrack} from "./control";
 export const tracks = (): Track[] => iina.mpv.getNative("track-list") || [];
@@ -32,7 +33,7 @@ export class SubtitleRenderer {
     this.path = artifact.path;
     try {
       if (track) iina.mpv.command("sub-reload", [String(track.id)]);
-      else iina.mpv.command("sub-add", [artifact.path, select ? "select" : "auto", "Cue · AI subtitles", ""]);
+      else iina.mpv.command("sub-add", [artifact.path, select ? "select" : "auto", t("track.title"), ""]);
       const until = Date.now()+3000;
       while (Date.now() < until) {
         await new Promise<void>(resolve => setTimeout(resolve, 100));

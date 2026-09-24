@@ -77,7 +77,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   assert.equal(posted[posted.length-1][1].action, 'reveal-export');
   assert.match(html, /role="status" aria-live="polite"/);
   assert.doesNotMatch(html, /role="alert"/);
-  assert.match(html, /<summary>Advanced<\/summary>/);
+  assert.match(html, /<summary[^>]*>Advanced<\/summary>/);
   advancedButtons[2].listeners.get('click')!({});
   assert.equal(posted[posted.length-1][1].action, 'diagnostic');
 
