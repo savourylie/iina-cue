@@ -7,6 +7,15 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from .core import CueError
+from .media import binary
+
+def _ffmpeg_version() -> str:
+    try:
+        reported = command([binary("ffmpeg"), "-version"])
+    except CueError:
+        return "unavailable"
+    return (reported or "unavailable").splitlines()[0]
 
 def command(args):
     try:
@@ -31,7 +40,7 @@ def doctor(models: Path) -> dict:
             "gpu": [{"model": g.get("sppci_model"), "cores": g.get("sppci_cores")} for g in gpu],
             "python": sys.version.split()[0], "iina": version,
             "embedded_mpv": "not_run: inspect mpv-version through smoke plugin",
-            "ffmpeg": (command(["/opt/homebrew/bin/ffmpeg", "-version"]) or "unavailable").splitlines()[0],
+            "ffmpeg": _ffmpeg_version(),
             "packages": versions,
             "model_assets": {"gemma": (models/"gemma/gemma-4-E2B-it.litertlm").is_file(), "aligner": (models/"aligner/model.safetensors").is_file()},
             "free_disk_bytes": shutil.disk_usage(models.parent if models.parent.exists() else Path.cwd()).free,

@@ -7,11 +7,19 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+from .bootstrap import bundled_bin_dir, installed_mode
 from .core import CueError, digest
 
 def binary(name: str) -> str:
-    # Developer and test override. It does not change the default search.
-    # Installed-mode resolution is ticket 005.
+    if name not in {"ffmpeg", "ffprobe"}:
+        raise CueError("SETUP_REQUIRED", f"{name} unavailable")
+    # Installed Cue uses only its own binaries. No override, Homebrew, or PATH.
+    if installed_mode():
+        path = bundled_bin_dir() / name
+        if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK):
+            raise CueError("SETUP_REQUIRED", f"{name} unavailable")
+        return str(path)
+    # Developer override. It does not fall through to another directory.
     override = os.environ.get("CUE_FFMPEG_BIN_DIR", "").strip()
     if override:
         path = Path(override) / name
@@ -22,6 +30,15 @@ def binary(name: str) -> str:
         if path and Path(path).is_file():
             return path
     raise CueError("SETUP_REQUIRED", f"{name} unavailable")
+
+def installed_ffmpeg_record() -> dict | None:
+    if not installed_mode():
+        return None
+    try:
+        path = binary("ffmpeg")
+    except CueError:
+        path = "unavailable"
+    return {"event": "ffmpeg", "path": path}
 
 def local_media(path: str) -> Path:
     p = Path(path)

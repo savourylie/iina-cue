@@ -13,10 +13,74 @@ from .storage import private_dir
 
 PROJECT = Path(__file__).resolve().parents[3]
 HELPER_VERSION = "0.1.5"
+_INSTALLED_ON = {"1", "true", "yes"}
+_INSTALLED_OFF = {"0", "false", "no"}
+
+# IINA's utils.exec keeps only LC_ALL, so HOME is unset before later imports run.
+if not os.environ.get("HOME"):
+    os.environ["HOME"] = str(Path.home())
+
+def support_dir() -> Path:
+    override = os.environ.get("CUE_SUPPORT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path.home() / "Library" / "Application Support" / "Cue").resolve()
+
+def installed_mode() -> bool:
+    # The runtime launcher exports CUE_INSTALLED=1. scripts/cue-helper exports
+    # 0 so this checkout keeps using .runtime after an install marker exists.
+    # With the variable unset, a regular file at <support>/installed selects
+    # installed mode. The installer (#008) writes that file.
+    flag = os.environ.get("CUE_INSTALLED", "").strip().lower()
+    if flag in _INSTALLED_OFF:
+        return False
+    if flag in _INSTALLED_ON:
+        enabled = True
+    else:
+        marker = support_dir() / "installed"
+        if marker.is_symlink():
+            raise CueError("UNSAFE_PATH")
+        enabled = marker.is_file()
+    # IINA's utils.exec keeps only LC_ALL. Path.home() still resolves, and
+    # libraries and the supervised child need HOME in the environment.
+    if enabled and not os.environ.get("HOME"):
+        os.environ["HOME"] = str(Path.home())
+    return enabled
+
 def runtime_root() -> Path:
-    return Path(os.environ.get("CUE_HOME", str(PROJECT / ".runtime"))).resolve()
+    override = os.environ.get("CUE_HOME", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if installed_mode():
+        return support_dir()
+    return (PROJECT / ".runtime").resolve()
+
 def models_root() -> Path:
-    return Path(os.environ.get("CUE_MODELS", str(PROJECT / ".runtime/models"))).resolve()
+    override = os.environ.get("CUE_MODELS", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if installed_mode():
+        return support_dir() / "models"
+    return (PROJECT / ".runtime" / "models").resolve()
+
+def runtime_tree() -> Path:
+    root = support_dir() / "runtime"
+    if root.is_symlink() or (root / "bin").is_symlink():
+        raise CueError("UNSAFE_PATH")
+    return root
+
+def bundled_bin_dir() -> Path:
+    return runtime_tree() / "bin"
+
+def model_manifest_path() -> Path:
+    # Development keeps the checkout file so profile hashes do not change.
+    # An installed runtime carries its own copy; parents[3] is not the checkout.
+    if not installed_mode():
+        return (PROJECT / "models" / "manifest.json").resolve()
+    path = runtime_tree() / "manifest.json"
+    if path.is_symlink() or not path.is_file():
+        raise CueError("SETUP_REQUIRED", "model manifest unavailable")
+    return path.resolve()
 
 def connection(root: Path):
     path = root/"connection.json"
@@ -36,6 +100,8 @@ def call(conn: dict, path: str, body=None, client=None, method=None):
     return result
 
 def ensure(root: Path):
+    if installed_mode():
+        model_manifest_path()
     private_dir(root)
     lock_path = root/"bootstrap.lock"
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
