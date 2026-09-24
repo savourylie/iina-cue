@@ -180,7 +180,7 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   assert.equal(download.ready, false);
   assert.equal(posted.some(item => item[0] === 'start-setup'), false);
   element('setup-primary').listeners.get('click')();
-  assert.equal(posted.at(-1)?.[0], 'start-setup');
+  assert.equal(posted[posted.length - 1][0], 'start-setup');
   for (const phase of ['unsupported', 'runtime', 'models', 'verifying', 'smoke', 'failed'] as const) {
     const view = show(phase, {reason: 'macOS 27.0 or later is required.', bytesDone: 40, bytesTotal: 100, previous: phase});
     assert.equal(view.showCard, true);
