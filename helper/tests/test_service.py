@@ -57,7 +57,7 @@ def test_remux_is_background_and_only_one_copy_runs(sup,monkeypatch,tmp_path):
     output=tmp_path/'new.mkv'
     release=threading.Event()
     copying=threading.Event()
-    def copy(src,dest,progress):
+    def copy(src,dest,progress,cancel=None):
         assert src==str(source) and dest==str(output)
         progress('copying',35);copying.set()
         assert release.wait(2)
@@ -163,3 +163,26 @@ def test_progress_reports_detected_language_only_for_current_epoch(sup):
     sup.outbox.put({'job_id':'job','stage':'translating','language':{'code':'en'}})
     sup.tick()
     assert s.language['code']=='el' and sup.snapshot(s)['stage']=='idle'
+
+def test_remux_cancel_marks_job_cancelled_and_allows_a_new_copy(sup,monkeypatch,tmp_path):
+    source=tmp_path/'input.mkv';source.write_bytes(b'fixture')
+    output=tmp_path/'new.mkv'
+    copying=threading.Event()
+    def copy(src,dest,progress,cancel):
+        progress('copying',10);copying.set()
+        assert cancel.wait(2)
+        raise CueError('REMUX_CANCELLED')
+    monkeypatch.setattr('cue.service.remux',copy)
+    started=sup.request('POST','/v1/remux',{'source':str(source),'output':str(output)},'a')
+    assert copying.wait(2)
+    requested=sup.request('POST',f"/v1/remux/{started['job_id']}/cancel",{},'a')
+    assert requested['cancel_requested'] is True
+    for _ in range(100):
+        result=sup.request('GET',f"/v1/remux/{started['job_id']}",{},'a')
+        if result['state']!='running':break
+        time.sleep(.01)
+    assert result['state']=='cancelled' and 'error' not in result
+    assert not sup.remux_running()
+    again=sup.request('POST',f"/v1/remux/{started['job_id']}/cancel",{},'a')
+    assert again['cancel_requested'] is False
+    with pytest.raises(CueError,match='NOT_FOUND'):sup.request('POST','/v1/remux/missing/cancel',{},'a')

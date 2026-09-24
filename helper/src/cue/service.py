@@ -61,6 +61,7 @@ class Supervisor:
         self.sessions: dict[str, Session] = {}
         self.requests = {}
         self.remux_jobs: dict[str, dict] = {}
+        self.remux_cancels: dict[str, threading.Event] = {}
         self.active = None
         self.busy = None
         self.worker = None
@@ -220,6 +221,7 @@ class Supervisor:
         job_id = opaque()
         job = {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None, "started": time.monotonic()}
         self.remux_jobs[job_id] = job
+        cancel = self.remux_cancels[job_id] = threading.Event()
         def report(phase: str, percent: int | None):
             with self.lock:
                 if job["state"] != "running": return
@@ -228,14 +230,16 @@ class Supervisor:
                     job["progress_pct"] = max(job["progress_pct"] or 0, min(99, max(0, percent)))
         def work():
             try:
-                path = remux(source, output, report)
+                path = remux(source, output, report, cancel)
                 update = {"state": "complete", "phase": "complete", "progress_pct": 100, "path": path}
             except CueError as exc:
-                update = {"state": "error", "phase": "error", "error": {"code": exc.code}}
+                if exc.code == "REMUX_CANCELLED": update = {"state": "cancelled", "phase": "cancelled"}
+                else: update = {"state": "error", "phase": "error", "error": {"code": exc.code}}
             except Exception:
                 update = {"state": "error", "phase": "error", "error": {"code": "REMUX_FAILED"}}
             with self.lock:
                 job.update(update)
+                self.remux_cancels.pop(job_id, None)
         threading.Thread(target=work, name="cue-remux", daemon=False).start()
         return {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None}
 
@@ -260,6 +264,13 @@ class Supervisor:
                 source, output = body.get("source"), body.get("output")
                 if not isinstance(source, str) or not isinstance(output, str): raise CueError("INVALID_REQUEST")
                 return self.start_remux(source, output)
+            if path.startswith("/v1/remux/") and path.endswith("/cancel") and method == "POST":
+                job_id = path.removeprefix("/v1/remux/").removesuffix("/cancel")
+                job = self.remux_jobs.get(job_id)
+                if not job: raise CueError("NOT_FOUND")
+                # A job already committing its output ignores the request and completes.
+                if job["state"] == "running" and job_id in self.remux_cancels: self.remux_cancels[job_id].set()
+                return {**job, "cancel_requested": job["state"] == "running", "elapsed_s": round(time.monotonic()-job["started"], 1)}
             if path.startswith("/v1/remux/") and method == "GET":
                 job = self.remux_jobs.get(path.removeprefix("/v1/remux/"))
                 if not job: raise CueError("NOT_FOUND")

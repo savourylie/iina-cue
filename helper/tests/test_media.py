@@ -71,6 +71,30 @@ def test_remux_keeps_original_and_copies_every_stream(fixture,tmp_path):
     with pytest.raises(CueError,match='OUTPUT_EXISTS'):remux(str(fixture),str(output))
     with pytest.raises(CueError):remux(str(fixture),str(fixture))
 
+def test_remux_cancel_stops_ffmpeg_and_leaves_no_files(fixture,tmp_path,monkeypatch):
+    import threading,time
+    before=fixture.stat()
+    # A stand-in FFmpeg that would run for a minute proves cancellation terminates it.
+    slow=tmp_path/'slow-ffmpeg';slow.write_text('#!/bin/sh\nexec sleep 60\n');slow.chmod(0o755)
+    monkeypatch.setattr('cue.remux.binary',lambda name:str(slow) if name=='ffmpeg' else binary(name))
+    cancel=threading.Event()
+    output=tmp_path/'cancelled.mkv'
+    def progress(phase,percent):
+        if phase=='copying':cancel.set()
+    started=time.monotonic()
+    with pytest.raises(CueError,match='REMUX_CANCELLED'):remux(str(fixture),str(output),progress,cancel)
+    assert time.monotonic()-started<5
+    assert not output.exists()
+    assert not list(tmp_path.glob('.cue-remux-*'))
+    assert fixture.stat().st_size==before.st_size and fixture.stat().st_mtime_ns==before.st_mtime_ns
+
+def test_remux_cancel_before_start_writes_nothing(fixture,tmp_path):
+    import threading
+    cancel=threading.Event();cancel.set()
+    output=tmp_path/'never.mkv'
+    with pytest.raises(CueError,match='REMUX_CANCELLED'):remux(str(fixture),str(output),None,cancel)
+    assert not output.exists() and not list(tmp_path.glob('.cue-remux-*'))
+
 def test_remux_progress_uses_ffmpeg_microseconds_and_stays_below_completion():
     assert _progress_percent({'out_time_us':'2500000'},10)==25
     assert _progress_percent({'out_time_ms':'2500000'},10)==25

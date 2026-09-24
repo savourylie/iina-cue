@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from typing import Callable
 from .core import CueError
 from .media import binary, local_media, probe
@@ -57,8 +58,13 @@ def _progress_percent(fields: dict[str, str], duration: float | None) -> int | N
     if not math.isfinite(seconds): return None
     return max(0, min(99, int(seconds / duration * 100)))
 
-def remux(source: str, output: str, progress: RemuxProgress | None = None) -> str:
+def _check_cancel(cancel: threading.Event | None):
+    if cancel is not None and cancel.is_set(): raise CueError("REMUX_CANCELLED")
+
+def remux(source: str, output: str, progress: RemuxProgress | None = None, cancel: threading.Event | None = None) -> str:
+    """Cancellation is honored until the output is committed; after that the copy completes."""
     src, dest = validate_destination(source, output)
+    _check_cancel(cancel)
     before = src.stat()
     original = probe(src)
     copyable = [stream for stream in original["streams"] if stream.get("codec_type") != "data"]
@@ -101,13 +107,25 @@ def remux(source: str, output: str, progress: RemuxProgress | None = None) -> st
                             fields = {}
                 reader = threading.Thread(target=read_progress, name="cue-remux-progress", daemon=True)
                 reader.start()
-                try: returncode = run.wait(timeout=7200)
-                except subprocess.TimeoutExpired as exc:
-                    run.kill(); run.wait()
-                    raise CueError("REMUX_FAILED", "FFmpeg timed out") from exc
+                deadline = time.monotonic() + 7200
+                try:
+                    while True:
+                        try:
+                            returncode = run.wait(timeout=.25)
+                            break
+                        except subprocess.TimeoutExpired:
+                            if cancel is not None and cancel.is_set():
+                                run.terminate()
+                                try: run.wait(timeout=5)
+                                except subprocess.TimeoutExpired: run.kill(); run.wait()
+                                raise CueError("REMUX_CANCELLED")
+                            if time.monotonic() > deadline:
+                                run.kill(); run.wait()
+                                raise CueError("REMUX_FAILED", "FFmpeg timed out")
                 finally: reader.join(timeout=5)
             if returncode:
                 raise CueError("REMUX_FAILED", "FFmpeg could not copy every stream into the selected container")
+        _check_cancel(cancel)
         report("verifying", 99)
         after = src.stat()
         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
@@ -126,6 +144,7 @@ def remux(source: str, output: str, progress: RemuxProgress | None = None) -> st
             raise CueError("REMUX_VERIFY_FAILED", "output did not start near zero")
         if temp.stat().st_size == 0:
             raise CueError("REMUX_VERIFY_FAILED", "empty output")
+        _check_cancel(cancel)
         report("saving", 99)
         try:
             # Hard-linking is an exclusive final commit: it cannot replace a

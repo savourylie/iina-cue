@@ -24,7 +24,7 @@
   .switch-control input:checked + .switch-track{background:var(--accent);background:AccentColor}
   .switch-control input:checked + .switch-track::after{transform:translateX(14px)}
   .switch-control input:focus-visible + .switch-track{outline:2px solid var(--focus);outline:auto 3px -webkit-focus-ring-color;outline-offset:2px}
-  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-reveal[hidden],#status-coverage[hidden],#remux-error[hidden],#remux-reveal[hidden],#status-detail:empty,#status-code:empty,.field-hint[hidden]{display:none}
+  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-reveal[hidden],#status-coverage[hidden],#remux-error[hidden],#remux-reveal[hidden],#remux-stop[hidden],#status-detail:empty,#status-code:empty,.field-hint[hidden]{display:none}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .status{--tone:var(--tone-info);display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:4px 8px;margin-top:10px;padding:8px 10px;border-radius:7px;background:var(--fill);background:color-mix(in srgb,var(--tone) 9%,transparent)}
   .status[data-tone="working"]{--tone:var(--tone-working)}
@@ -160,6 +160,7 @@
       <div class="remux-progress-heading"><span id="remux-status" role="status" aria-live="polite"></span><output id="remux-percent" for="remux-bar"></output></div>
       <progress id="remux-bar" max="100" aria-label="MKV copy progress"></progress>
       <button id="remux-reveal" class="remux-reveal" type="button" hidden>Show in Finder</button>
+      <button id="remux-stop" class="remux-reveal" type="button" hidden>Cancel</button>
     </div>
     <button type="button" data-action="export">Export generated subtitles…</button>
     <button type="button" data-action="diagnostic">Save diagnostics</button>
@@ -237,6 +238,7 @@
     if(percent===null)bar.removeAttribute('value');else bar.value=percent;
     document.getElementById('remux-percent').textContent=bar.hidden||percent===null?'':`${percent}%`;
     document.getElementById('remux-reveal').hidden=data.state!=='complete';
+    document.getElementById('remux-stop').hidden=!(data.state==='running'&&data.cancellable===true);
   });
   iina.onMessage('cue-settings',data=>{
     const target=document.getElementById('target');
@@ -268,6 +270,7 @@
   remuxName.addEventListener('input',()=>{updateRemuxPath();clearTimeout(nameCheck);nameCheck=setTimeout(()=>iina.postMessage('action',{action:'check-remux-name',filename:remuxName.value}),250);});
   document.getElementById('status-reveal').addEventListener('click',()=>iina.postMessage('action',{action:'reveal-export'}));
   document.getElementById('remux-reveal').addEventListener('click',()=>iina.postMessage('action',{action:'reveal-remux'}));
+  document.getElementById('remux-stop').addEventListener('click',()=>iina.postMessage('action',{action:'stop-remux'}));
   remuxName.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();iina.postMessage('action',{action:'cancel-remux'});}});
   document.getElementById('remux-form').addEventListener('submit',event=>{event.preventDefault();iina.postMessage('action',{action:'confirm-remux',filename:remuxName.value});});
   document.getElementById('remux-cancel').addEventListener('click',()=>iina.postMessage('action',{action:'cancel-remux'}));

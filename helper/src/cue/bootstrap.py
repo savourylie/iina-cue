@@ -12,7 +12,7 @@ from .core import CueError
 from .storage import private_dir
 
 PROJECT = Path(__file__).resolve().parents[3]
-HELPER_VERSION = "0.1.4"
+HELPER_VERSION = "0.1.5"
 def runtime_root() -> Path:
     return Path(os.environ.get("CUE_HOME", str(PROJECT / ".runtime"))).resolve()
 def models_root() -> Path:

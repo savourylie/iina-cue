@@ -18,10 +18,11 @@ let seq = 0;
 let busy = false;
 let selected = false;
 let latestStatus: CueStatus = OFF_STATUS;
-type RemuxStatus = {text: string; state: "idle" | "running" | "complete" | "error"; progressPct?: number | null};
+type RemuxStatus = {text: string; state: "idle" | "running" | "complete" | "error" | "cancelled"; progressPct?: number | null; cancellable?: boolean};
 let remuxStatus: RemuxStatus = {text: "", state: "idle"};
 let remuxJobId: string | undefined;
 let remuxPolling = false;
+let remuxCancelling = false;
 let remuxStarting = false;
 let remuxDraft: {source: string; folder: string; suggested: string; error?: string} | undefined;
 // Show in Finder only ever reveals files Cue itself wrote, never a path sent by the page.
@@ -253,7 +254,7 @@ async function remuxCurrentMedia() {
     if (iina.mpv.getString("path") !== source) return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
     remuxDraft = {source, folder, suggested};
     try { setupSidebar(); iina.sidebar.show(); } catch {}
-    if (remuxStatus.state === "error") setRemuxStatus({text:"",state:"idle"});
+    if (remuxStatus.state === "error" || remuxStatus.state === "cancelled") setRemuxStatus({text:"",state:"idle"});
     syncRemuxDraft();
   } catch (error) { setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true); }
   finally {remuxStarting = false;}
@@ -275,11 +276,19 @@ async function confirmRemux(response: string) {
   try {
     const result = await rpc<{job_id: string}>("POST", "/remux", {source, output});
     remuxJobId = result.job_id;
-    setRemuxStatus({text:"Copying streams…",state:"running"});
+    setRemuxStatus({text:"Copying streams…",state:"running",cancellable:true});
   } catch (error) {
     if (iina.mpv.getString("path") === source) {remuxDraft = draft; syncRemuxDraft();}
     setRemuxStatus({text:`The MKV copy could not start (${String(error).replace(/^Error: /, "")}).`,state:"error"}, true);
   } finally {remuxStarting = false;}
+}
+async function cancelRemuxJob() {
+  const id = remuxJobId;
+  if (!id || remuxCancelling) return;
+  remuxCancelling = true;
+  setRemuxStatus({...remuxStatus, text:"Cancelling…", cancellable:false});
+  try { await rpc("POST", `/remux/${id}/cancel`, {}); }
+  catch (error) { remuxCancelling = false; showActionError(error); }
 }
 async function pollRemux() {
   if (!remuxJobId || remuxPolling) return;
@@ -289,14 +298,17 @@ async function pollRemux() {
     const job = await rpc<{state: string; phase?: string; progress_pct?: number | null; path?: string; error?: {code: string}}>("GET", `/remux/${id}`);
     if (remuxJobId !== id) return;
     if (job.state === "running") {
-      const text = job.phase === "verifying" ? "Verifying timestamps and tracks…"
+      const text = remuxCancelling && job.phase !== "saving" ? "Cancelling…"
+        : job.phase === "verifying" ? "Verifying timestamps and tracks…"
         : job.phase === "saving" ? "Saving the new video…"
         : job.phase === "copying" ? "Copying streams…" : "Preparing the MKV copy…";
-      setRemuxStatus({text,state:"running",progressPct:job.progress_pct});
+      // Once saving starts the helper commits the file, so cancelling is no longer offered.
+      setRemuxStatus({text,state:"running",progressPct:job.progress_pct,cancellable:!remuxCancelling && job.phase !== "saving"});
     }
     else {
-      remuxJobId = undefined;
-      if (job.state === "complete") { revealable.remux = job.path; setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true); }
+      remuxJobId = undefined; remuxCancelling = false;
+      if (job.state === "cancelled") setRemuxStatus({text:"MKV copy cancelled. The original file is unchanged and no copy was saved.",state:"cancelled"}, true);
+      else if (job.state === "complete") { revealable.remux = job.path; setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true); }
       else {
         const problem = ({REMUX_FAILED:"Could not copy this video's tracks into the new MKV.",
           REMUX_VERIFY_FAILED:"The new video's tracks or timestamps failed verification.",
@@ -307,7 +319,7 @@ async function pollRemux() {
       }
     }
   } catch (error) {
-    if (remuxJobId === id) {remuxJobId = undefined; setRemuxStatus({text:`MKV copy status unavailable (${String(error).replace(/^Error: /, "")}). Check the output location.`,state:"error"}, true);}
+    if (remuxJobId === id) {remuxJobId = undefined; remuxCancelling = false; setRemuxStatus({text:`MKV copy status unavailable (${String(error).replace(/^Error: /, "")}). Check the output location.`,state:"error"}, true);}
   } finally {remuxPolling = false;}
 }
 function saveDiagnostics() {
@@ -365,9 +377,10 @@ function setupSidebar() {
       const path = data.action === "reveal-remux" ? revealable.remux : revealable.export;
       if (path && iina.file.exists(path)) void iina.utils.exec("/usr/bin/open", ["-R", path]).catch(showActionError);
     }
+    else if (data.action === "stop-remux") void cancelRemuxJob();
     else if (data.action === "cancel-remux") {
       remuxDraft = undefined; syncRemuxDraft();
-      if (remuxStatus.state === "error") setRemuxStatus({text:"",state:"idle"});
+      if (remuxStatus.state === "error" || remuxStatus.state === "cancelled") setRemuxStatus({text:"",state:"idle"});
     }
     else if (data.action === "export") void exportSubtitles();
     else if (data.action === "diagnostic") saveDiagnostics();

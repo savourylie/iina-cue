@@ -116,7 +116,10 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   messages.get('cue-remux-draft')!({active:false});
   assert.equal(element('remux-form').hidden,true);
 
-  messages.get('cue-remux-status')!({text:'Copying streams…',state:'running',progressPct:42});
+  messages.get('cue-remux-status')!({text:'Copying streams…',state:'running',progressPct:42,cancellable:true});
+  assert.equal(element('remux-stop').hidden, false);
+  element('remux-stop').listeners.get('click')!({});
+  assert.equal(posted[posted.length-1][1].action, 'stop-remux');
   assert.equal(element('advanced').open, true);
   assert.equal(element('remux-progress').hidden, false);
   assert.equal(element('remux-bar').value, 42);
@@ -125,6 +128,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   assert.ok(Number.isNaN(element('remux-bar').value));
   assert.equal(element('remux-percent').textContent, '');
   messages.get('cue-remux-status')!({text:'Verifying timestamps and tracks…',state:'running',progressPct:99});
+  assert.equal(element('remux-stop').hidden, true);
   assert.equal(element('remux-bar').value, 99);
   messages.get('cue-remux-status')!({text:'Remux complete',state:'complete',progressPct:100});
   assert.equal(element('remux-bar').value, 100);
@@ -134,4 +138,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   messages.get('cue-remux-status')!({text:'Remux failed',state:'error'});
   assert.equal(element('remux-bar').hidden, true);
   assert.equal(element('remux-reveal').hidden, true);
+  messages.get('cue-remux-status')!({text:'MKV copy cancelled.',state:'cancelled'});
+  assert.equal(element('remux-stop').hidden, true);
+  assert.equal(element('remux-bar').hidden, true);
 });

@@ -10,6 +10,7 @@
 - **AUDIO_TRACK_MAPPING_AMBIGUOUS**: selected mpv track cannot be matched uniquely against FFprobe. Never use the mpv ID as the FFmpeg stream index. CLI benchmark `--stream` takes an explicit FFprobe stream index.
 - **AUDIO_DELAY_UNSUPPORTED**: preview does not support non-zero audio-delay. It does not rewrite the user's setting or sub-delay.
 - **CLIENTS_ACTIVE on shutdown**: stop the active AI session(s), then retry. The command will not kill unrelated clients or arbitrary Python/FFmpeg processes.
+- **REMUX_CANCELLED**: the MKV copy was cancelled before saving. Cue stopped FFmpeg and removed its temporary file; the original was not touched.
 - **REMUX_ACTIVE / REMUX_FAILED / REMUX_VERIFY_FAILED**: only one remux runs at a time. A failed FFmpeg stream copy or an output that does not preserve copied streams and start near zero is discarded; the original file remains intact. MPEG-TS files can contain `timed_id3` data streams that Matroska cannot store; Cue omits data streams and confirms that choice before remuxing. Other incompatible streams can still fail. If the helper or Mac stops during a remux, a hidden `.cue-remux-*` temporary file can remain in the chosen output folder.
 - **OUTPUT_EXISTS during remux or export**: Cue never replaces an existing output. Move or rename the old output before trying again.
 
