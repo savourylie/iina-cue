@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync} from 'node:fs';
+import {chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DEFAULT_RAM_BYTES, curlResumeArgs, installVerifiedArchive, maySwap, preflight, startInstall} from '../src/install-runtime';
@@ -43,10 +43,10 @@ test('a checksum mismatch and a failed unpack leave the working runtime in place
   const root = mkdtempSync(join(tmpdir(), 'cue-install-'));
   try {
     const payload = join(root, 'tree');
-    mkdirSync(join(payload, 'bin'), {recursive: true});
-    writeFileSync(join(payload, 'bin', 'ffmpeg'), 'ffmpeg');
+    mkdirSync(join(payload, 'runtime-0.1.5', 'bin'), {recursive: true});
+    writeFileSync(join(payload, 'runtime-0.1.5', 'bin', 'ffmpeg'), 'ffmpeg');
     const archive = join(root, 'runtime.tar');
-    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'bin']);
+    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'runtime-0.1.5']);
     const sha = createHash('sha256').update(readFileSync(archive)).digest('hex');
     const destination = join(root, 'runtime');
     mkdirSync(join(destination, 'bin'), {recursive: true});
@@ -64,11 +64,13 @@ test('a checksum mismatch and a failed unpack leave the working runtime in place
     assert.equal(busy.ok, false);
     if (!busy.ok) assert.equal(busy.code, 'HELPER_RESTART_REQUIRED');
     assert.equal(readFileSync(join(destination, 'bin', 'keep'), 'utf8'), 'working');
-    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'bin']);
+    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'runtime-0.1.5']);
     const goodSha = createHash('sha256').update(readFileSync(archive)).digest('hex');
     const installed = await installVerifiedArchive({archive, expectedSha256: goodSha, destination});
     assert.equal(installed.ok, true);
     assert.equal(readFileSync(join(destination, 'bin', 'ffmpeg'), 'utf8'), 'ffmpeg');
+    assert.equal(readFileSync(join(root, 'installed'), 'utf8'), '1\n');
+    assert.equal(existsSync(join(destination, 'runtime-0.1.5')), false);
   } finally {
     rmSync(root, {recursive: true, force: true});
   }
