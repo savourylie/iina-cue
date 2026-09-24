@@ -35,6 +35,29 @@ OUT="$DIST/runtime-$VERSION"
 ARCHIVE="$DIST/runtime-$VERSION.tar.xz"
 mkdir -p "$DIST"
 
+# #002 leaves the static build beside the runtime. An incomplete FFmpeg
+# directory is a failed build; a missing directory still allows a Python-only tree.
+resolve_ffmpeg_root() {
+  set -- "$DIST"/ffmpeg-*/bin/ffmpeg
+  if [ ! -e "$1" ]; then
+    return 0
+  fi
+  if [ "$#" -ne 1 ]; then
+    echo "build-runtime: multiple FFmpeg builds in $DIST; leave one ffmpeg-*" >&2
+    return 1
+  fi
+  bin_dir=$(dirname "$1")
+  root=$(dirname "$bin_dir")
+  if [ ! -x "$bin_dir/ffprobe" ] || [ ! -f "$root/build-record.txt" ] || [ ! -f "$root/COPYING.LGPLv2.1" ]; then
+    echo "build-runtime: $root is missing ffprobe, build-record.txt, or COPYING.LGPLv2.1" >&2
+    return 1
+  fi
+  printf '%s\n' "$root"
+}
+if ! FFMPEG_ROOT=$(resolve_ffmpeg_root); then
+  exit 1
+fi
+
 STAGE=""
 REQS=""
 HELPER=""
@@ -330,6 +353,19 @@ SITE="$STAGE/python/lib/python3.12/site-packages"
 "$PY" "$HELPER" verify-lock "$REQS"
 "$PY" "$HELPER" drop-direct-urls "$SITE"
 "$PY" "$HELPER" strip-tests "$SITE"
+echo "build-runtime: collecting license notices" >&2
+if [ -n "$FFMPEG_ROOT" ]; then
+  "$PY" "$CUE_PROJECT/scripts/collect_licenses.py" \
+    --prefix "$STAGE/python" \
+    --output "$STAGE/licenses" \
+    --project "$CUE_PROJECT" \
+    --ffmpeg-root "$FFMPEG_ROOT"
+else
+  "$PY" "$CUE_PROJECT/scripts/collect_licenses.py" \
+    --prefix "$STAGE/python" \
+    --output "$STAGE/licenses" \
+    --project "$CUE_PROJECT"
+fi
 "$PY" "$HELPER" rewrite-shebangs "$STAGE/python/bin" "$STAGE/python"
 echo "build-runtime: compiling bytecode" >&2
 # SyntaxWarnings in third-party sources are emitted only while compiling.
@@ -350,30 +386,17 @@ echo "build-runtime: checking that import writes nothing and prints no SyntaxWar
 "$PY" "$HELPER" newer-than "$STAGE" "$STAMP"
 "$PY" "$HELPER" scan "$STAGE" "$HOME" "$CUE_PROJECT" "$PREFIX" "$STAGE"
 
-# #002 may have produced dist/ffmpeg-<version>/. Include it when present.
-# Rebuilding the Python runtime must still succeed before FFmpeg exists.
-# Copied after the path scan. The FFmpeg prefix is /cue-ffmpeg, not a
-# build-machine path, and is not one of the needles above.
+# Binaries are copied after the path scan. Their /cue-ffmpeg prefix is not a
+# build-machine path. License text was already required when FFMPEG_ROOT is set.
 copy_ffmpeg() {
-  set -- "$DIST"/ffmpeg-*/bin/ffmpeg
-  if [ ! -e "$1" ]; then
+  if [ -z "$FFMPEG_ROOT" ]; then
     echo "build-runtime: no static FFmpeg under $DIST; runtime will not include ffmpeg" >&2
     return 0
   fi
-  if [ "$#" -ne 1 ]; then
-    echo "build-runtime: multiple FFmpeg builds in $DIST; leave one ffmpeg-*" >&2
-    return 1
-  fi
-  bin_dir=$(dirname "$1")
-  root=$(dirname "$bin_dir")
-  if [ ! -x "$bin_dir/ffprobe" ] || [ ! -f "$root/build-record.txt" ]; then
-    echo "build-runtime: $root is missing ffprobe or build-record.txt" >&2
-    return 1
-  fi
   mkdir -p "$STAGE/bin"
-  cp -f "$bin_dir/ffmpeg" "$bin_dir/ffprobe" "$STAGE/bin/"
-  cp -f "$root/build-record.txt" "$STAGE/bin/ffmpeg-build-record.txt"
-  echo "build-runtime: included FFmpeg from $root" >&2
+  cp -f "$FFMPEG_ROOT/bin/ffmpeg" "$FFMPEG_ROOT/bin/ffprobe" "$STAGE/bin/"
+  cp -f "$FFMPEG_ROOT/build-record.txt" "$STAGE/bin/ffmpeg-build-record.txt"
+  echo "build-runtime: included FFmpeg from $FFMPEG_ROOT" >&2
 }
 copy_ffmpeg
 
