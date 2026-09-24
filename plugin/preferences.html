@@ -9,13 +9,22 @@ label{display:block;margin:10px 0}
 input[type=text]{display:block;width:100%;box-sizing:border-box;margin-top:4px}
 code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
 .note{font-size:12px;opacity:.75}
+ol{margin:6px 0;padding-left:20px}
+li{margin:5px 0}
+li code{user-select:all}
 </style><main>
 <h1>Cue for IINA · Technical Preview</h1>
 <p>Local AI subtitles. Uses Gemma E2B and Qwen forced alignment; your video and captions stay on this Mac.</p>
 <label><input type="checkbox" data-pref-key="autoEnable"> Enable when a video lacks subtitles in the selected language</label>
-<p>Manual activation and original-language captions are the defaults. Playback continues while captions are prepared, and Cue attaches them when ready. In the sidebar, you can change the subtitle and source language, adjust subtitle size, pause until captions are ready, or switch the translucent black background. Cue never resumes your own pause. The Plugin → Cue menu offers the same language choices.</p>
+<p>Manual activation and original-language captions are the defaults. Languages, subtitle size, the background box and pausing live in the Cue sidebar; the Plugin → Cue menu offers the same language choices.</p>
 <h2>Setup</h2>
-<p>First-time setup: run <code>scripts/setup-dev</code>, review the sources, terms, and roughly 3.56 GB of model weights shown by <code>scripts/setup-models</code>, then approve the download. This development build does not yet have a Terminal-free installer.</p>
+<p>This development build is set up in Terminal, from the Cue project folder. Click a command to select it.</p>
+<ol>
+<li>Prepare the environment: <code>scripts/setup-dev</code></li>
+<li>Review the model sources, terms and roughly 3.56 GB download: <code>scripts/setup-models</code></li>
+<li>If you agree, download the models: <code>scripts/setup-models --accept-download</code></li>
+<li>Quit and reopen IINA.</li>
+</ol>
 <label>Absolute path to the helper launcher<input type="text" data-pref-key="bootstrap" placeholder="Leave blank to use the helper bundled with this build"></label>
 <p class="note">Permissions: read selected videos and write local captions, run a local helper, connect only to 127.0.0.1, and show status. No microphone, screen recording, cloud service, or telemetry.</p>
 </main></html>

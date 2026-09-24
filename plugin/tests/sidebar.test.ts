@@ -44,6 +44,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   assert.equal(element('status-title').textContent, 'Language not detected');
   assert.equal(element('status-detail').textContent, 'Choose the source language below, then retry.');
   assert.doesNotMatch(element('status-title').textContent + element('status-detail').textContent, /LANGUAGE_UNCERTAIN/);
+  assert.equal(element('status-code').textContent, 'Error code: LANGUAGE_UNCERTAIN');
   assert.equal(element('retry').hidden, false);
   assert.equal(element('status-announce').textContent, 'Language not detected. Choose the source language below, then retry.');
   element('retry').listeners.get('click')!({});
@@ -62,6 +63,7 @@ test('sidebar switch, error, and retry follow Cue status messages', () => {
   assert.equal(element('status').dataset.tone, 'working');
   assert.equal(element('retry').hidden, true);
   assert.equal(element('status-announce').textContent, 'Starting');
+  assert.equal(element('status-code').textContent, '');
   messages.get('cue-status')!({tone:'ready', title:'Captions ready', detail:'Loaded in the player for the next 48 s.', enabled:true,
     coverage:{windowMs:90000, installed:[[0,0.5]], prepared:[[0.6,0.8]], label:'Loaded in the player for the next 45 s; 18 s more prepared in the next 90 s.'}});
   assert.equal(element('status-announce').textContent, 'Captions ready');

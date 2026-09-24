@@ -27,11 +27,11 @@ export function originalLanguageChoice(code: string | undefined, status: string 
   const label = originalLanguageLabel(known ? code : undefined);
   const name = label.replace(" (original)", "");
   if (known && status === "tentative") {
-    const cantonese = code === "zh" ? " Auto-detect cannot tell Cantonese from Chinese; if this is Cantonese, choose it under Source language." : "";
+    const cantonese = code === "zh" ? " Auto-detect cannot tell Cantonese from Chinese; if this is Cantonese, choose it above." : "";
     return {label, hint: `Spoken language: ${name}, detected from the transcript and not yet verified.${cantonese}`};
   }
   if (known || !state.active) return {label, hint: ""};
-  if (state.unclear) return {label, hint: "Spoken language not detected yet. If you know it, choose it under Source language."};
+  if (state.unclear) return {label, hint: "Spoken language not detected yet. If you know it, choose it above."};
   return {label, hint: "Detecting the spoken language…"};
 }
 /** One sidebar status: the headline a glancing viewer needs, then the detail and recovery. */
@@ -60,7 +60,7 @@ const errorCopy: Record<string, [string, string]> = {
 export function errorStatus(code: string, languageName?: string): CueStatus {
   if (code === "ALIGNMENT_LANGUAGE_UNSUPPORTED" && languageName)
     return {tone: "error", title: "Language not supported", detail: `The speech was identified as ${languageName}. Cue cannot time subtitles in that language yet.`, retry: true, code};
-  const [title, detail] = errorCopy[code] ?? ["Captions stopped", "Something went wrong while preparing captions. Retry or keep playing."];
+  const [title, detail] = errorCopy[code] ?? ["Captions stopped", "Cue hit an unexpected problem while preparing captions. Retry, or keep playing and save diagnostics from Advanced."];
   return {tone: "error", title, detail, retry: true, code};
 }
 /** A failed plugin action (export, diagnostics) leaves prepared captions untouched. */
