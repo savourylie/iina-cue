@@ -252,15 +252,16 @@ class Supervisor:
         return {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None}
 
     def request(self, method: str, path: str, body: dict, client: str | None):
+        # Model identity is hashed outside the request lock and then remembered.
+        if path == "/v1/setup" and method == "GET":
+            return self.setup_api().status()
+        if path == "/v1/setup/actions" and method == "POST":
+            return self.setup_api().action(body)
         with self.lock:
             if path == "/v1/health" and method == "GET":
                 return {"protocol_version": 1, "helper_version": HELPER_VERSION, "worker_busy": self.busy is not None}
             if path == "/v1/clients" and method == "POST":
                 cid = opaque(); self.clients[cid] = self.clock(); return {"client_id": cid, "lease_seconds": 45}
-            if path == "/v1/setup" and method == "GET":
-                return self.setup_api().status()
-            if path == "/v1/setup/actions" and method == "POST":
-                return self.setup_api().action(body)
             if path == "/v1/shutdown" and method == "POST":
                 if self.remux_running(): raise CueError("REMUX_ACTIVE")
                 if self.clients: raise CueError("CLIENTS_ACTIVE")
