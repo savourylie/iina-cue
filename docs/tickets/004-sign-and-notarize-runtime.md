@@ -1,10 +1,10 @@
 # [TICKET-004] Sign and notarize the runtime archive
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #001 ✅, #002 ✅, #003
+- Requires: #001 ✅, #002 ✅, #003 ✅
 
 ## Description
 On a Mac with SIP enabled, Gatekeeper blocks any unsigned helper binary that carries a quarantine flag, showing "Apple could not verify … is free of malware". Notarization is therefore a required safety net. This applies even though Cue's own downloads are not quarantined.

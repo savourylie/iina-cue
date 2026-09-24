@@ -8,10 +8,10 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 2 |
+| ✅ Done | 3 |
 | 🔧 In Progress | 0 |
 | 📋 Pending | 3 |
-| 🚫 Blocked | 7 |
+| 🚫 Blocked | 6 |
 | ⏸️ Deferred | 0 |
 
 ## Runtime and release
@@ -20,8 +20,8 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | --- | --- | --- | --- | --- |
 | 001 | [Build a relocatable helper runtime](./001-build-relocatable-helper-runtime.md) | `done` | — | Built: 1.0G, or 256M as tar.xz |
 | 002 | [Build a static LGPL FFmpeg](./002-static-lgpl-ffmpeg.md) | `done` | — | FFmpeg 7.1.1 built in 28 s; media tests pass |
-| 003 | [License notices and THIRD_PARTY_NOTICES](./003-license-notices.md) | `pending` | #001 ✅, #002 ✅ | Gemma 4 is Apache 2.0; soynlp is LGPL-3.0 |
-| 004 | [Sign and notarize the runtime](./004-sign-and-notarize-runtime.md) | `blocked` | #001 ✅, #002 ✅, #003 | Trial Accepted on the first submission |
+| 003 | [License notices and THIRD_PARTY_NOTICES](./003-license-notices.md) | `done` | #001 ✅, #002 ✅ | licenses/ ships with the runtime |
+| 004 | [Sign and notarize the runtime](./004-sign-and-notarize-runtime.md) | `pending` | #001 ✅, #002 ✅, #003 ✅ | Trial Accepted on the first submission |
 | 007 | [Hosting and release manifest](./007-host-release-artifacts.md) | `blocked` | #004 | Needs the user's publishing decision |
 
 ## Helper and plugin

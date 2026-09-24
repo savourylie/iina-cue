@@ -1,7 +1,7 @@
 # [TICKET-003] Ship license notices with the runtime and update THIRD_PARTY_NOTICES
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: #001 ✅, #002 ✅
@@ -15,9 +15,9 @@ Findings from 2026-09-24:
 - **FFmpeg:** the self-built static FFmpeg is LGPL-2.1 or later.
 
 ## Acceptance Criteria
-- [ ] The runtime build produces a `licenses/` folder with every bundled package's license file, FFmpeg's license, source reference and build configuration, Python's license, and the model licenses.
-- [ ] The build fails when a bundled package has no recoverable license file, so a new dependency cannot ship without one.
-- [ ] `THIRD_PARTY_NOTICES.md` describes the bundled runtime, the Apache 2.0 terms for Gemma 4 and the Qwen aligner, and LGPL obligations for FFmpeg and soynlp.
+- [x] The runtime build produces a `licenses/` folder with every bundled package's license file, FFmpeg's license, source reference and build configuration, Python's license, and the model licenses.
+- [x] The build fails when a bundled package has no recoverable license file, so a new dependency cannot ship without one.
+- [x] `THIRD_PARTY_NOTICES.md` describes the bundled runtime, the Apache 2.0 terms for Gemma 4 and the Qwen aligner, and LGPL obligations for FFmpeg and soynlp.
 
 ## References
 - `THIRD_PARTY_NOTICES.md` — current, outdated notices.
