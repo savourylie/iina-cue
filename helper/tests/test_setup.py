@@ -200,6 +200,34 @@ def test_smoke_reports_failure_with_a_reason_without_models(monkeypatch, tmp_pat
     assert server.state.hits == []
 
 
+def test_setup_status_does_not_rehash_or_wait_for_the_request_lock(monkeypatch, tmp_path):
+    body = b"cached-weight"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest_for(body)))
+    weight = tmp_path / "models" / "gemma" / "model.bin"
+    weight.parent.mkdir(parents=True)
+    weight.write_bytes(body)
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    supervisor = Supervisor(tmp_path / "runtime", tmp_path / "models", clock=lambda: 100)
+    reads = []
+    real_open = type(weight).open
+
+    def counting_open(self, *args, **kwargs):
+        if self.name == "model.bin":
+            reads.append(1)
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(weight), "open", counting_open)
+    supervisor.lock.acquire()
+    try:
+        first = supervisor.request("GET", "/v1/setup", {}, None)
+        second = supervisor.request("GET", "/v1/setup", {}, None)
+    finally:
+        supervisor.lock.release()
+    assert first["files_ready"] is True and second["files_ready"] is True
+    assert reads == [1]
+
+
 def test_development_manifest_stays_the_pinned_file():
     text = (PROJECT / "models" / "manifest.json").read_text()
     assert "litert-community/gemma-4-E2B-it-litert-lm" in text
