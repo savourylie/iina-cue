@@ -1,10 +1,10 @@
 # [TICKET-008] Plugin installs, verifies and updates the runtime
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #005 ✅, #007
+- Requires: #005 ✅, #007 ✅
 
 ## Description
 Before the Python helper exists, only the plugin's JavaScript can fetch it. The plugin must check that the Mac can run Cue, then download the runtime archive into a per-user location, verify it, unpack it, and keep it matched to the plugin version.
