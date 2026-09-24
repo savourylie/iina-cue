@@ -1,10 +1,10 @@
 # [TICKET-011] Measure memory on an 8 GB Mac and set the minimum RAM
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #001
+- Requires: #001 ✅
 
 ## Description
 Cue's helper reached a peak memory footprint of 3.33 GB (kernel-reported, including Metal) and a maximum RSS of 2.0 GB. That was measured on a 36 GB M3 Max with a synthetic 18-second clip. IINA and video decoding also need memory. Whether an 8 GB Mac stays responsive during playback is unknown, and the answer decides the preflight threshold (#008) and the published requirement (#010).

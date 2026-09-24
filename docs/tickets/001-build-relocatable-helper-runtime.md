@@ -1,7 +1,7 @@
 # [TICKET-001] Build a relocatable helper runtime
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: None
@@ -12,12 +12,12 @@ General users must not install Python, uv, Node or Homebrew. Build a self-contai
 The 2026-09-24 feasibility pass already proved the approach. A copy of uv's standalone CPython 3.12.11, with `uv export --frozen --no-dev` requirements installed into it, was moved to a path containing spaces. From there it loaded MLX (Metal) and LiteRT in a clean environment and produced subtitles identical to the project `.venv`. The runtime was 928 MB, or 239 MB as `tar.xz`.
 
 ## Acceptance Criteria
-- [ ] One command builds the runtime from `uv.lock` into a versioned output directory without touching the project `.venv` or global Python.
-- [ ] The runtime contains standalone CPython 3.12, the locked non-dev dependencies and `helper/src/cue`, and records its own version.
-- [ ] Package `tests/` directories and other non-runtime payloads are removed. This avoids the notary warnings seen for joblib and scipy test archives.
-- [ ] `.pyc` files are compiled at build time, so first launch writes nothing into the runtime and prints no SyntaxWarnings.
-- [ ] Moved to a different path containing spaces, the runtime starts `cue.cli doctor` and a benchmark under `env -i`, with no reference to the build machine's paths.
-- [ ] The output reports the uncompressed and compressed sizes.
+- [x] One command builds the runtime from `uv.lock` into a versioned output directory without touching the project `.venv` or global Python.
+- [x] The runtime contains standalone CPython 3.12, the locked non-dev dependencies and `helper/src/cue`, and records its own version.
+- [x] Package `tests/` directories and other non-runtime payloads are removed. This avoids the notary warnings seen for joblib and scipy test archives.
+- [x] `.pyc` files are compiled at build time, so first launch writes nothing into the runtime and prints no SyntaxWarnings.
+- [x] Moved to a different path containing spaces, the runtime starts `cue.cli doctor` and a benchmark under `env -i`, with no reference to the build machine's paths.
+- [x] The output reports the uncompressed and compressed sizes.
 
 ## References
 - `pyproject.toml`, `uv.lock` — the dependency set to reproduce exactly.

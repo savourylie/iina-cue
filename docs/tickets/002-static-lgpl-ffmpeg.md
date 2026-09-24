@@ -1,7 +1,7 @@
 # [TICKET-002] Build a static LGPL FFmpeg for the runtime
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: None
@@ -12,10 +12,10 @@ Cue currently runs the machine's FFmpeg, which on the development Mac is Homebre
 The feasibility pass built FFmpeg 7.1.1 from the ffmpeg.org source tarball in 28 seconds, with `--disable-autodetect --disable-network --disable-doc --disable-ffplay --disable-debug --enable-static --disable-shared --enable-audiotoolbox`. The result reported "LGPL version 2.1 or later". Both binaries together were 41 MB, or 13 MB as `tar.xz`. Cue's `extract`, `probe` and `remux` succeeded on H.264, HEVC, VP9 and ProRes with AAC, AC3, E-AC3, Opus, FLAC, MP3 and PCM, including multiple audio tracks. The DTS and TrueHD decoders are present.
 
 ## Acceptance Criteria
-- [ ] A script downloads a pinned FFmpeg source release, checks its SHA-256, and builds static `ffmpeg` and `ffprobe` for arm64.
-- [ ] `configure` reports an LGPL license; `otool -L` shows only system libraries.
-- [ ] The exact source URL, hash and configure flags are recorded for license compliance.
-- [ ] Cue's media and remux tests pass when `cue.media.binary` resolves to these binaries.
+- [x] A script downloads a pinned FFmpeg source release, checks its SHA-256, and builds static `ffmpeg` and `ffprobe` for arm64.
+- [x] `configure` reports an LGPL license; `otool -L` shows only system libraries.
+- [x] The exact source URL, hash and configure flags are recorded for license compliance.
+- [x] Cue's media and remux tests pass when `cue.media.binary` resolves to these binaries.
 
 ## References
 - `helper/src/cue/media.py` — `binary()`, `probe()` and `extract()`.
