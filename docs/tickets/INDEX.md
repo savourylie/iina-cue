@@ -8,9 +8,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 9 |
+| ✅ Done | 10 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 2 |
+| 📋 Pending | 1 |
 | 🚫 Blocked | 1 |
 | ⏸️ Deferred | 0 |
 
@@ -37,9 +37,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
-| 010 | [End-user install guide](./010-end-user-install-guide.md) | `pending` | #009 ✅ | Explains IINA's permission warning |
+| 010 | [End-user install guide](./010-end-user-install-guide.md) | `done` | #009 ✅ | Explains IINA's permission warning |
 | 011 | [Minimum RAM on an 8 GB Mac](./011-minimum-ram-measurement.md) | `pending` | #001 ✅ | Needs an 8 GB Mac; defaults to 16 GB |
-| 012 | [**TEST: Checkpoint 1 — Clean install on a SIP-enabled Mac**](./012-test-checkpoint-1-clean-mac-install.md) | `blocked` | #004 ✅, #008, #009, #010, #011 | Gate: public release for general users |
+| 012 | [**TEST: Checkpoint 1 — Clean install on a SIP-enabled Mac**](./012-test-checkpoint-1-clean-mac-install.md) | `blocked` | #004 ✅, #008 ✅, #009 ✅, #010 ✅, #011 | Gate: public release for general users |
 
 ## Status Key
 
