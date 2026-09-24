@@ -1,6 +1,6 @@
 import {createHash} from "node:crypto";
 import {execFile} from "node:child_process";
-import {mkdir, readFile, rename, rm, stat} from "node:fs/promises";
+import {mkdir, readdir, readFile, rename, rm, stat, writeFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {promisify} from "node:util";
 
@@ -90,6 +90,7 @@ export async function installVerifiedArchive(options: {
   const flags = options.archive.endsWith(".tar.xz") || options.archive.endsWith(".txz") ? ["-xJf"] : ["-xf"];
   try {
     await exec("/usr/bin/tar", [...flags, options.archive, "-C", incoming]);
+    await flattenRuntimeRoot(incoming);
   } catch {
     await rm(incoming, {recursive: true, force: true});
     return {ok: false, code: "UNPACK_FAILED", reason: "The runtime archive could not be unpacked."};
@@ -99,6 +100,7 @@ export async function installVerifiedArchive(options: {
   try {
     if (await exists(options.destination)) await rename(options.destination, previous);
     await rename(incoming, options.destination);
+    await writeFile(join(dirname(options.destination), "installed"), "1\n");
     await rm(previous, {recursive: true, force: true});
   } catch {
     if (await exists(previous) && !(await exists(options.destination))) await rename(previous, options.destination);
@@ -106,6 +108,17 @@ export async function installVerifiedArchive(options: {
     return {ok: false, code: "UNPACK_FAILED", reason: "The runtime archive could not be unpacked."};
   }
   return {ok: true};
+}
+
+/** The published archive is runtime-<version>/bin, not bin/ at the root. */
+async function flattenRuntimeRoot(incoming: string): Promise<void> {
+  if (await exists(join(incoming, "bin"))) return;
+  const entries = await readdir(incoming);
+  if (entries.length !== 1) return;
+  const only = join(incoming, entries[0]);
+  if (!(await exists(join(only, "bin")))) return;
+  for (const name of await readdir(only)) await rename(join(only, name), join(incoming, name));
+  await rm(only, {recursive: true, force: true});
 }
 
 async function exists(path: string): Promise<boolean> {

@@ -55,6 +55,9 @@ def partial_path(dest: Path) -> Path:
     return path
 
 
+_verified: dict[tuple[str, int, int], bool] = {}
+
+
 def _digest_matches(path: Path, item: dict) -> bool:
     if path.is_symlink() or not path.is_file() or path.stat().st_size != item["bytes"]:
         return False
@@ -70,9 +73,23 @@ def _digest_matches(path: Path, item: dict) -> bool:
     return digest.hexdigest() == expected
 
 
+def _installed(path: Path, item: dict) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    info = path.stat()
+    if info.st_size != item["bytes"]:
+        return False
+    key = (str(path), info.st_mtime_ns, info.st_size)
+    known = _verified.get(key)
+    if known is None:
+        known = _digest_matches(path, item)
+        _verified[key] = known
+    return known
+
+
 def _have(models: Path, asset: dict, item: dict) -> tuple[str, int]:
     dest = destination(models, asset, item)
-    if _digest_matches(dest, item):
+    if _installed(dest, item):
         return "installed", item["bytes"]
     partial = partial_path(dest)
     if partial.is_file() and not partial.is_symlink():
