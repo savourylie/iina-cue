@@ -8,20 +8,20 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 1 |
+| ✅ Done | 2 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 2 |
-| 🚫 Blocked | 9 |
+| 📋 Pending | 3 |
+| 🚫 Blocked | 7 |
 | ⏸️ Deferred | 0 |
 
 ## Runtime and release
 
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
-| 001 | [Build a relocatable helper runtime](./001-build-relocatable-helper-runtime.md) | `pending` | — | Approach proven: 928 MB, or 239 MB as tar.xz |
+| 001 | [Build a relocatable helper runtime](./001-build-relocatable-helper-runtime.md) | `done` | — | Built: 1.0G, or 256M as tar.xz |
 | 002 | [Build a static LGPL FFmpeg](./002-static-lgpl-ffmpeg.md) | `done` | — | FFmpeg 7.1.1 built in 28 s; media tests pass |
-| 003 | [License notices and THIRD_PARTY_NOTICES](./003-license-notices.md) | `blocked` | #001, #002 ✅ | Gemma 4 is Apache 2.0; soynlp is LGPL-3.0 |
-| 004 | [Sign and notarize the runtime](./004-sign-and-notarize-runtime.md) | `blocked` | #001, #002 ✅, #003 | Trial Accepted on the first submission |
+| 003 | [License notices and THIRD_PARTY_NOTICES](./003-license-notices.md) | `pending` | #001 ✅, #002 ✅ | Gemma 4 is Apache 2.0; soynlp is LGPL-3.0 |
+| 004 | [Sign and notarize the runtime](./004-sign-and-notarize-runtime.md) | `blocked` | #001 ✅, #002 ✅, #003 | Trial Accepted on the first submission |
 | 007 | [Hosting and release manifest](./007-host-release-artifacts.md) | `blocked` | #004 | Needs the user's publishing decision |
 
 ## Helper and plugin
@@ -38,7 +38,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
 | 010 | [End-user install guide](./010-end-user-install-guide.md) | `blocked` | #009 | Explains IINA's permission warning |
-| 011 | [Minimum RAM on an 8 GB Mac](./011-minimum-ram-measurement.md) | `blocked` | #001 | Needs an 8 GB Mac; defaults to 16 GB |
+| 011 | [Minimum RAM on an 8 GB Mac](./011-minimum-ram-measurement.md) | `pending` | #001 ✅ | Needs an 8 GB Mac; defaults to 16 GB |
 | 012 | [**TEST: Checkpoint 1 — Clean install on a SIP-enabled Mac**](./012-test-checkpoint-1-clean-mac-install.md) | `blocked` | #004, #008, #009, #010, #011 | Gate: public release for general users |
 
 ## Status Key
