@@ -350,6 +350,33 @@ echo "build-runtime: checking that import writes nothing and prints no SyntaxWar
 "$PY" "$HELPER" newer-than "$STAGE" "$STAMP"
 "$PY" "$HELPER" scan "$STAGE" "$HOME" "$CUE_PROJECT" "$PREFIX" "$STAGE"
 
+# #002 may have produced dist/ffmpeg-<version>/. Include it when present.
+# Rebuilding the Python runtime must still succeed before FFmpeg exists.
+# Copied after the path scan. The FFmpeg prefix is /cue-ffmpeg, not a
+# build-machine path, and is not one of the needles above.
+copy_ffmpeg() {
+  set -- "$DIST"/ffmpeg-*/bin/ffmpeg
+  if [ ! -e "$1" ]; then
+    echo "build-runtime: no static FFmpeg under $DIST; runtime will not include ffmpeg" >&2
+    return 0
+  fi
+  if [ "$#" -ne 1 ]; then
+    echo "build-runtime: multiple FFmpeg builds in $DIST; leave one ffmpeg-*" >&2
+    return 1
+  fi
+  bin_dir=$(dirname "$1")
+  root=$(dirname "$bin_dir")
+  if [ ! -x "$bin_dir/ffprobe" ] || [ ! -f "$root/build-record.txt" ]; then
+    echo "build-runtime: $root is missing ffprobe or build-record.txt" >&2
+    return 1
+  fi
+  mkdir -p "$STAGE/bin"
+  cp -f "$bin_dir/ffmpeg" "$bin_dir/ffprobe" "$STAGE/bin/"
+  cp -f "$root/build-record.txt" "$STAGE/bin/ffmpeg-build-record.txt"
+  echo "build-runtime: included FFmpeg from $root" >&2
+}
+copy_ffmpeg
+
 rm -rf "$OUT"
 mv "$STAGE" "$OUT"
 STAGE=""

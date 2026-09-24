@@ -10,6 +10,14 @@ import subprocess
 from .core import CueError, digest
 
 def binary(name: str) -> str:
+    # Developer and test override. It does not change the default search.
+    # Installed-mode resolution is ticket 005.
+    override = os.environ.get("CUE_FFMPEG_BIN_DIR", "").strip()
+    if override:
+        path = Path(override) / name
+        if path.is_file():
+            return str(path)
+        raise CueError("SETUP_REQUIRED", f"{name} unavailable")
     for path in (f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}", shutil.which(name)):
         if path and Path(path).is_file():
             return path

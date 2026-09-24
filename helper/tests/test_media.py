@@ -12,7 +12,7 @@ from cue.remux import _duration_seconds, _progress_percent, remux
 def fixture(tmp_path_factory):
     root=tmp_path_factory.mktemp('media')
     path=root/'多音軌 $test; "quote".mkv'
-    subprocess.run([binary('ffmpeg'),'-v','error','-f','lavfi','-i','color=black:s=64x64:r=10:d=4','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=4','-f','lavfi','-i','sine=frequency=880:sample_rate=16000:duration=4','-map','0:v','-map','1:a','-map','2:a','-c:v','libx264','-c:a','pcm_s16le','-metadata:s:a:0','language=eng','-metadata:s:a:1','language=jpn','-y',str(path)],check=True)
+    subprocess.run([binary('ffmpeg'),'-v','error','-f','lavfi','-i','color=black:s=64x64:r=10:d=4','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=4','-f','lavfi','-i','sine=frequency=880:sample_rate=16000:duration=4','-map','0:v','-map','1:a','-map','2:a','-c:v','mpeg4','-bf','0','-c:a','pcm_s16le','-metadata:s:a:0','language=eng','-metadata:s:a:1','language=jpn','-y',str(path)],check=True)
     return path
 
 def test_track_mapping_uses_ff_index_not_mpv_id(fixture,tmp_path):
@@ -32,7 +32,7 @@ def test_external_and_nonlocal_rejected(fixture):
 
 def test_late_audio_is_padded(tmp_path):
     path=tmp_path/'late.mkv'
-    subprocess.run([binary('ffmpeg'),'-v','error','-f','lavfi','-i','color=black:s=64x64:r=10:d=4','-itsoffset','1','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=3','-map','0:v','-map','1:a','-c:v','libx264','-c:a','pcm_s16le','-y',str(path)],check=True)
+    subprocess.run([binary('ffmpeg'),'-v','error','-f','lavfi','-i','color=black:s=64x64:r=10:d=4','-itsoffset','1','-f','lavfi','-i','sine=frequency=440:sample_rate=16000:duration=3','-map','0:v','-map','1:a','-c:v','mpeg4','-bf','0','-c:a','pcm_s16le','-y',str(path)],check=True)
     media=Media.open(str(path),{});dest=tmp_path/'out.wav';extract(media,0,2000,dest)
     data,sr=sf.read(dest)
     assert np.max(np.abs(data[:15000]))==0
@@ -112,6 +112,15 @@ def test_remux_shifts_nonzero_origin_to_zero(tmp_path):
     output=tmp_path/'offset fixed.mkv'
     remux(str(source),str(output))
     assert abs(float(probe(output)['streams'][0]['start_time']))<.1
+
+def test_binary_override_does_not_fall_back(tmp_path,monkeypatch):
+    bindir=tmp_path/'bin'
+    bindir.mkdir()
+    ffmpeg=bindir/'ffmpeg'
+    ffmpeg.write_text('not a real ffmpeg\n')
+    monkeypatch.setenv('CUE_FFMPEG_BIN_DIR',str(bindir))
+    assert binary('ffmpeg')==str(ffmpeg)
+    with pytest.raises(CueError,match='ffprobe unavailable'):binary('ffprobe')
 
 def test_remux_on_disk_without_hard_links_does_not_replace_racing_output(fixture,tmp_path,monkeypatch):
     output=tmp_path/'copy.mkv'
