@@ -9,13 +9,13 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
-parser.add_argument("--accept-download", action="store_true", help="Consent after reviewing sources, sizes, and the Gemma license")
+parser.add_argument("--accept-download", action="store_true", help="Consent after reviewing sources, sizes, and THIRD_PARTY_NOTICES.md")
 args = parser.parse_args()
 manifest = json.loads((ROOT/"models/manifest.json").read_text())
 total = sum(f["bytes"] for a in manifest["assets"] for f in a["files"])
 print(f"Download: {total:,} bytes. Allow 6 GB free for assets and runtime. No microphone or administrator permission.")
 for a in manifest["assets"]: print(f"Source: https://huggingface.co/{a['repository']}/tree/{a['revision']}")
-print("Gemma terms: https://ai.google.dev/gemma/terms ; runtime/model notices: THIRD_PARTY_NOTICES.md")
+print("Pinned model cards declare Apache 2.0. Read THIRD_PARTY_NOTICES.md before consenting. The notices are not legal advice.")
 if not args.accept_download: raise SystemExit("Review the plan, then rerun with --accept-download to consent.")
 if shutil.disk_usage(ROOT).free < total*1.2: raise SystemExit("Insufficient disk space")
 for a in manifest["assets"]:

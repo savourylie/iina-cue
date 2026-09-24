@@ -1,0 +1,8 @@
+Repository: mlx-community/Qwen3-ForcedAligner-0.6B-4bit
+Revision: 2f652af86ae0c73fe189b9429225c908ce4bf020
+Model card license field: apache-2.0
+Gated: no
+This revision's file list has no LICENSE file.
+The README says the weights were converted from Qwen/Qwen3-ForcedAligner-0.6B.
+The LICENSE file beside this note is the Apache License, Version 2.0, which that field names.
+This note is not legal advice.
