@@ -1,5 +1,5 @@
 import {rpc, disposeClient} from "./client";
-import {acceptSnapshot, actionErrorStatus, errorStatus, OFF_STATUS, originalLanguageChoice, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, statusText, targetSubtitleExists} from "./control";
+import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, OFF_STATUS, originalLanguageChoice, originalLanguageLabel, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
 import {mediaSnapshot, number, paused, SubtitleRenderer, tracks} from "./player";
 import type {Snapshot} from "./types";
@@ -23,7 +23,9 @@ let remuxStatus: RemuxStatus = {text: "", state: "idle"};
 let remuxJobId: string | undefined;
 let remuxPolling = false;
 let remuxStarting = false;
-let remuxDraft: {source: string; folder: string; suggested: string} | undefined;
+let remuxDraft: {source: string; folder: string; suggested: string; error?: string} | undefined;
+// Show in Finder only ever reveals files Cue itself wrote, never a path sent by the page.
+const revealable: {remux?: string; export?: string} = {};
 let lastStage = "";
 let seekTimer: ReturnType<typeof setTimeout> | undefined;
 let awaitingSeek = false;
@@ -74,7 +76,7 @@ function setRemuxStatus(update: RemuxStatus, osd = false) {
 }
 function syncRemuxDraft() {
   if (sidebarLoaded) iina.sidebar.postMessage("cue-remux-draft", remuxDraft
-    ? {active:true, folder:remuxDraft.folder, suggested:remuxDraft.suggested}
+    ? {active:true, folder:remuxDraft.folder, suggested:remuxDraft.suggested, error:remuxDraft.error ?? ""}
     : {active:false});
 }
 function showError(e: unknown) {
@@ -164,12 +166,15 @@ async function consume(snapshot: Snapshot, token: number) {
   if (session.ready) {
     const wasHolding = intent.holding;
     intent.ready();
-    status(readyStatus(session.buffer_wall_ms, paused(), wasHolding), wasHolding);
+    status({...readyStatus(session.buffer_wall_ms, paused(), wasHolding), coverage: coverage(session)}, wasHolding);
   } else {
     if (session.buffer_wall_ms <= 1000) hold();
-    const stage = preparationStatus(session);
+    const stage = {...preparationStatus(session), coverage: coverage(session)};
     status(stage, session.stage !== lastStage); lastStage = session.stage;
   }
+}
+function coverage(s: Snapshot) {
+  return coverageStrip(s.prepared_ranges ?? [], s.installed_ranges ?? [], Math.max(0, Math.round(number("time-pos")*1000)));
 }
 async function poll() {
   if (!enabled || !session || busy || awaitingSeek) return;
@@ -231,7 +236,7 @@ async function exportSubtitles() {
   if (!output || token !== generation || session?.session_id !== active.session_id) return;
   try {
     const result = await rpc<{path: string}>("POST", `/sessions/${active.session_id}/export`, {output});
-    if (token === generation) status({tone:"info", title:"Subtitles exported", detail:result.path}, true);
+    if (token === generation) { revealable.export = result.path; status({tone:"info", title:"Subtitles exported", detail:result.path, reveal:true}, true); }
   } catch (error) { if (token === generation) showActionError(error); }
 }
 async function remuxCurrentMedia() {
@@ -261,13 +266,9 @@ async function confirmRemux(response: string) {
     remuxDraft = undefined; syncRemuxDraft();
     return setRemuxStatus({text:"The open video changed. Choose Save a copy as MKV again for the current video.",state:"error"}, true);
   }
-  const name = (response.trim() || suggested).replace(/\.(mp4|mov|m4v|webm|ts)$/i, ".mkv");
-  const filename = name.toLowerCase().endsWith(".mkv") ? name : `${name}.mkv`;
-  if (name === "." || name === ".." || name.startsWith(".") || name.endsWith(".") || filename.length > 240 || /[/\\\u0000-\u001f]/.test(name)) {
-    return setRemuxStatus({text:"Choose a plain filename ending in .mkv (or omit the extension).",state:"error"}, true);
-  }
-  const output = `${folder.replace(/\/+$/, "")}/${filename}`;
-  if (iina.file.exists(output)) return setRemuxStatus({text:"That output file already exists. Choose another name.",state:"error"}, true);
+  const checked = remuxFilename(response, suggested, folder, path => iina.file.exists(path));
+  if (checked.error || !checked.output) { remuxDraft = {...draft, error: checked.error}; syncRemuxDraft(); return; }
+  const output = checked.output;
   remuxStarting = true;
   remuxDraft = undefined; syncRemuxDraft();
   setRemuxStatus({text:"Preparing the MKV copy…",state:"running"});
@@ -295,7 +296,7 @@ async function pollRemux() {
     }
     else {
       remuxJobId = undefined;
-      if (job.state === "complete") setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true);
+      if (job.state === "complete") { revealable.remux = job.path; setRemuxStatus({text:`MKV copy saved: ${job.path}`,state:"complete",progressPct:100}, true); }
       else {
         const problem = ({REMUX_FAILED:"Could not copy this video's tracks into the new MKV.",
           REMUX_VERIFY_FAILED:"The new video's tracks or timestamps failed verification.",
@@ -356,6 +357,14 @@ function setupSidebar() {
     else if (data.action === "set-subtitle-size" && typeof data.value === "number") setSubtitleSize(data.value, true);
     else if (data.action === "remux") void remuxCurrentMedia();
     else if (data.action === "confirm-remux" && typeof data.filename === "string") void confirmRemux(data.filename);
+    else if (data.action === "check-remux-name" && typeof data.filename === "string" && remuxDraft) {
+      const error = remuxFilename(data.filename, remuxDraft.suggested, remuxDraft.folder, path => iina.file.exists(path)).error;
+      if (error !== remuxDraft.error) { remuxDraft = {...remuxDraft, error}; syncRemuxDraft(); }
+    }
+    else if ((data.action === "reveal-remux" || data.action === "reveal-export")) {
+      const path = data.action === "reveal-remux" ? revealable.remux : revealable.export;
+      if (path && iina.file.exists(path)) void iina.utils.exec("/usr/bin/open", ["-R", path]).catch(showActionError);
+    }
     else if (data.action === "cancel-remux") {
       remuxDraft = undefined; syncRemuxDraft();
       if (remuxStatus.state === "error") setRemuxStatus({text:"",state:"idle"});

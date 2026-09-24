@@ -36,7 +36,9 @@ export function originalLanguageChoice(code: string | undefined, status: string 
 }
 /** One sidebar status: the headline a glancing viewer needs, then the detail and recovery. */
 export type StatusTone = "off" | "working" | "ready" | "info" | "warning" | "error";
-export type CueStatus = {tone: StatusTone; title: string; detail?: string; retry?: boolean; code?: string};
+/** Coverage in the window after the playhead, as 0–1 fractions of that window. */
+export type Coverage = {windowMs: number; installed: number[][]; prepared: number[][]; label: string};
+export type CueStatus = {tone: StatusTone; title: string; detail?: string; retry?: boolean; reveal?: boolean; code?: string; coverage?: Coverage};
 export const OFF_STATUS: CueStatus = {tone: "off", title: "AI subtitles are off"};
 export function statusText(s: CueStatus): string { return s.detail ? `${s.title}. ${s.detail}` : s.title; }
 
@@ -67,12 +69,44 @@ export function actionErrorStatus(code: string): CueStatus {
   return {tone: "warning", title, detail, code};
 }
 export function readyStatus(aheadMs: number, isPaused: boolean, cueHeldPlayback: boolean): CueStatus {
-  const ahead = `${(aheadMs/1000).toFixed(0)} s prepared ahead.`;
+  // buffer_wall_ms is measured on player-acknowledged ranges, so it is "loaded", not merely prepared.
+  const ahead = `Loaded in the player for the next ${(aheadMs/1000).toFixed(0)} s.`;
   const pause = !isPaused ? "" : cueHeldPlayback ? " Press play to continue." : " Video remains paused.";
   return {tone: "ready", title: "Captions ready", detail: ahead + pause};
 }
 export function partialFailureStatus(aheadMs: number): CueStatus {
   return {tone: "warning", title: "Later captions failed", detail: `${(aheadMs/1000).toFixed(0)} s of captions remain available. Keep playing or retry.`, retry: true};
+}
+function clip(ranges: number[][], from: number, to: number): number[][] {
+  return ranges.map(([a, b]) => [Math.max(a, from), Math.min(b, to)]).filter(([a, b]) => b > a).sort((x, y) => x[0]-y[0]);
+}
+function subtract(ranges: number[][], minus: number[][]): number[][] {
+  let out = ranges;
+  for (const [ma, mb] of minus) out = out.flatMap(([a, b]) => [[a, Math.min(b, ma)], [Math.max(a, mb), b]].filter(([x, y]) => y > x));
+  return out;
+}
+const seconds = (ms: number) => `${Math.round(ms/1000)} s`;
+/** Where captions exist just ahead of the playhead; holes stay holes. */
+export function coverageStrip(prepared: number[][], installed: number[][], positionMs: number, windowMs = 90000): Coverage {
+  const end = positionMs + windowMs;
+  const loaded = clip(installed, positionMs, end);
+  const preparedOnly = subtract(clip(prepared, positionMs, end), loaded);
+  const frac = (r: number[][]) => r.map(([a, b]) => [(a-positionMs)/windowMs, (b-positionMs)/windowMs]);
+  const loadedNow = loaded.length && loaded[0][0] <= positionMs ? loaded[0][1]-positionMs : 0;
+  const preparedMs = preparedOnly.reduce((t, [a, b]) => t + b-a, 0);
+  const parts = [loadedNow ? `Loaded in the player for the next ${seconds(loadedNow)}` : "Nothing loaded at the playhead yet"];
+  if (preparedMs) parts.push(`${seconds(preparedMs)} more prepared in the next ${seconds(windowMs)}`);
+  return {windowMs, installed: frac(loaded), prepared: frac(preparedOnly), label: `${parts.join("; ")}.`};
+}
+/** Checks a user-typed MKV filename before any file is written. */
+export function remuxFilename(response: string, suggested: string, folder: string, exists: (path: string) => boolean): {output?: string; error?: string} {
+  const name = (response.trim() || suggested).replace(/\.(mp4|mov|m4v|webm|ts)$/i, ".mkv");
+  const filename = name.toLowerCase().endsWith(".mkv") ? name : `${name}.mkv`;
+  if (name === "." || name === ".." || name.startsWith(".") || name.endsWith(".") || filename.length > 240 || /[/\\\u0000-\u001f]/.test(name))
+    return {error: "Use a plain filename, without folders, ending in .mkv (or no extension)."};
+  const output = `${folder.replace(/\/+$/, "")}/${filename}`;
+  if (exists(output)) return {output, error: "A file with this name already exists. Cue never replaces files; choose another name."};
+  return {output};
 }
 export function preparationStatus(snapshot: Pick<Snapshot, "stage" | "stage_elapsed_s" | "skipped_language_ranges">): CueStatus {
   const seconds = snapshot.stage_elapsed_s && snapshot.stage_elapsed_s >= 5 ? ` · ${Math.floor(snapshot.stage_elapsed_s)} s` : "";

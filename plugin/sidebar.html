@@ -24,8 +24,9 @@
   .switch-control input:checked + .switch-track{background:var(--accent);background:AccentColor}
   .switch-control input:checked + .switch-track::after{transform:translateX(14px)}
   .switch-control input:focus-visible + .switch-track{outline:2px solid var(--focus);outline:auto 3px -webkit-focus-ring-color;outline-offset:2px}
-  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-detail:empty,.field-hint[hidden]{display:none}
-  .status{--tone:var(--tone-info);display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:4px 8px;margin-top:10px;padding:8px 10px;border-radius:7px;background:var(--fill);background:color-mix(in srgb,var(--tone) 9%,transparent)}
+  #status[hidden],#remux-form[hidden],#remux-progress[hidden],#remux-bar[hidden],#retry[hidden],#status-reveal[hidden],#status-coverage[hidden],#remux-error[hidden],#remux-reveal[hidden],#status-detail:empty,.field-hint[hidden]{display:none}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .status{--tone:var(--tone-info);display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:4px 8px;margin-top:10px;padding:8px 10px;border-radius:7px;background:var(--fill);background:color-mix(in srgb,var(--tone) 9%,transparent)}
   .status[data-tone="working"]{--tone:var(--tone-working)}
   .status[data-tone="ready"]{--tone:var(--tone-ready)}
   .status[data-tone="warning"]{--tone:var(--tone-warning)}
@@ -35,7 +36,13 @@
   @keyframes status-pulse{50%{opacity:.35}}
   .status-title{margin:0;font-weight:600}
   .status-detail{margin:1px 0 0;font-size:12px;line-height:1.4;opacity:.8;overflow-wrap:break-word}
-  .status-retry{align-self:center;white-space:nowrap}
+  .status-action{grid-column:2;justify-self:start;margin-top:2px;white-space:nowrap}
+  .coverage{grid-column:2/-1;margin-top:5px}
+  .coverage-track{position:relative;height:6px;border-radius:3px;background:rgb(128 128 128 / .18);overflow:hidden}
+  .coverage-track span{position:absolute;top:0;bottom:0;border-radius:3px}
+  .coverage-track .installed{background:var(--tone)}
+  .coverage-track .prepared{background:var(--tone);opacity:.35}
+  .coverage-scale{display:flex;justify-content:space-between;margin-top:2px;font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
   .field{margin-top:12px}
   .field label{margin-bottom:4px}
   select{display:block;width:100%}
@@ -62,6 +69,9 @@
   .remux-form input{box-sizing:border-box;width:100%}
   .remux-save-path,.remux-note{margin:0;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
   .remux-note{opacity:.75}
+  .remux-error{margin:0;font-size:12px;line-height:1.4;color:var(--text-error)}
+  .remux-form input[aria-invalid="true"]{outline:1px solid var(--text-error);outline-offset:0}
+  .remux-reveal{margin-top:8px}
   .remux-form-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:2px}
   .remux-form-actions button[type="submit"]{order:2}
   .remux-progress{padding:4px 8px 8px;font-size:12px}
@@ -71,17 +81,20 @@
   #remux-bar{display:block;width:100%;margin-top:6px;accent-color:AccentColor}
   .remux-progress[data-state="error"] #remux-status{color:var(--text-error)}
   .remux-progress[data-state="complete"] #remux-status{color:var(--text-ready)}
-  @media(max-width:280px){.status{grid-template-columns:auto minmax(0,1fr)}.status-retry{grid-column:2;justify-self:start}}
   @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
 <h1>Cue subtitles</h1>
 <section>
   <label class="switch-control" for="ai-enabled"><span>AI subtitles</span><input id="ai-enabled" type="checkbox" role="switch" aria-label="AI subtitles"><span class="switch-track" aria-hidden="true"></span></label>
-  <div role="status" aria-live="polite" aria-atomic="true">
-    <div id="status" class="status" data-tone="off" hidden>
-      <span class="status-dot" aria-hidden="true"></span>
-      <div><p id="status-title" class="status-title"></p><p id="status-detail" class="status-detail"></p></div>
-      <button id="retry" class="status-retry" type="button" hidden>Retry</button>
+  <p id="status-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+  <div id="status" class="status" data-tone="off" hidden>
+    <span class="status-dot" aria-hidden="true"></span>
+    <div><p id="status-title" class="status-title"></p><p id="status-detail" class="status-detail"></p></div>
+    <button id="retry" class="status-action" type="button" hidden>Retry</button>
+    <button id="status-reveal" class="status-action" type="button" hidden>Show in Finder</button>
+    <div id="status-coverage" class="coverage" role="img" hidden>
+      <div class="coverage-track"></div>
+      <div class="coverage-scale" aria-hidden="true"><span>Now</span><span id="coverage-end"></span></div>
     </div>
   </div>
 </section>
@@ -136,7 +149,8 @@
     <button type="button" data-action="remux">Save a copy as MKV (reset timestamps)…</button>
     <form id="remux-form" class="remux-form" hidden>
       <label for="remux-name">New MKV filename</label>
-      <input id="remux-name" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-describedby="remux-path">
+      <input id="remux-name" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" aria-describedby="remux-error remux-path">
+      <p id="remux-error" class="remux-error" hidden></p>
       <p id="remux-path" class="remux-save-path"></p>
       <p class="remux-note">Original stays unchanged. Video, audio, and subtitles are copied; timed metadata and data tracks are omitted.</p>
       <div class="remux-form-actions"><button type="submit">Save copy</button><button id="remux-cancel" type="button">Cancel</button></div>
@@ -144,6 +158,7 @@
     <div id="remux-progress" class="remux-progress" hidden>
       <div class="remux-progress-heading"><span id="remux-status" role="status" aria-live="polite"></span><output id="remux-percent" for="remux-bar"></output></div>
       <progress id="remux-bar" max="100" aria-label="MKV copy progress"></progress>
+      <button id="remux-reveal" class="remux-reveal" type="button" hidden>Show in Finder</button>
     </div>
     <button type="button" data-action="export">Export generated subtitles…</button>
     <button type="button" data-action="diagnostic">Save diagnostics</button>
@@ -165,10 +180,16 @@
     document.getElementById('remux-path').textContent=`Save to: ${remuxDraft.folder.replace(/\/+$/,'')}/${filename}`;
   }
   iina.onMessage('cue-remux-draft',data=>{
+    const opening=!remuxDraft&&data?.active===true;
     remuxDraft=data?.active===true?data:null;
     const form=document.getElementById('remux-form');
     form.hidden=!remuxDraft;
-    if(remuxDraft){
+    const error=remuxDraft?.error||'';
+    const errorNode=document.getElementById('remux-error');
+    errorNode.textContent=error;errorNode.hidden=!error;
+    remuxName.setAttribute('aria-invalid',error?'true':'false');
+    document.querySelector('#remux-form button[type="submit"]').disabled=!!error;
+    if(opening){
       document.getElementById('advanced').open=true;
       remuxName.value=remuxDraft.suggested;
       updateRemuxPath();
@@ -176,16 +197,31 @@
     }
   });
   function setText(id,text){const node=document.getElementById(id);if(node.textContent!==text)node.textContent=text;}
+  function drawCoverage(coverage){
+    const box=document.getElementById('status-coverage');
+    box.hidden=!coverage;
+    if(!coverage)return;
+    box.setAttribute('aria-label',coverage.label);
+    setText('coverage-end',`+${Math.round(coverage.windowMs/1000)} s`);
+    const track=box.querySelector('.coverage-track');
+    track.replaceChildren(...[['prepared',coverage.prepared],['installed',coverage.installed]].flatMap(([kind,ranges])=>ranges.map(([a,b])=>{
+      const span=document.createElement('span');span.className=kind;
+      span.style.left=`${(a*100).toFixed(2)}%`;span.style.width=`${((b-a)*100).toFixed(2)}%`;return span;})));
+  }
   iina.onMessage('cue-status',data=>{
     document.getElementById('ai-enabled').checked=data.enabled===true;
     const status=document.getElementById('status');
     status.hidden=data.tone==='off';
     status.dataset.tone=data.tone;
     status.title=data.code?`Error code: ${data.code}`:'';
-    // Unchanged text is not rewritten, so the live region speaks only on real changes.
     setText('status-title',data.title||'');
     setText('status-detail',data.detail||'');
     document.getElementById('retry').hidden=data.retry!==true;
+    document.getElementById('status-reveal').hidden=data.reveal!==true;
+    // Only the headline is announced, plus the recovery for warnings and errors;
+    // the ticking seconds and coverage stay visual so polls are not read aloud.
+    setText('status-announce',data.tone==='off'?'':data.tone==='warning'||data.tone==='error'?[data.title,data.detail].filter(Boolean).join('. '):data.title||'');
+    drawCoverage(data.coverage);
   });
   iina.onMessage('cue-remux-status',data=>{
     if(data.state!=='idle'&&data.state!==remuxState)document.getElementById('advanced').open=true;
@@ -199,6 +235,7 @@
     bar.hidden=data.state!=='running'&&data.state!=='complete';
     if(percent===null)bar.removeAttribute('value');else bar.value=percent;
     document.getElementById('remux-percent').textContent=bar.hidden||percent===null?'':`${percent}%`;
+    document.getElementById('remux-reveal').hidden=data.state!=='complete';
   });
   iina.onMessage('cue-settings',data=>{
     const target=document.getElementById('target');
@@ -226,7 +263,10 @@
   document.getElementById('subtitle-box').addEventListener('change',event=>iina.postMessage('action',{action:'set-subtitle-box',value:event.target.checked}));
   document.getElementById('ai-enabled').addEventListener('change',event=>iina.postMessage('action',{action:'set-enabled',value:event.target.checked}));
   document.getElementById('retry').addEventListener('click',()=>iina.postMessage('action',{action:'retry'}));
-  remuxName.addEventListener('input',updateRemuxPath);
+  let nameCheck;
+  remuxName.addEventListener('input',()=>{updateRemuxPath();clearTimeout(nameCheck);nameCheck=setTimeout(()=>iina.postMessage('action',{action:'check-remux-name',filename:remuxName.value}),250);});
+  document.getElementById('status-reveal').addEventListener('click',()=>iina.postMessage('action',{action:'reveal-export'}));
+  document.getElementById('remux-reveal').addEventListener('click',()=>iina.postMessage('action',{action:'reveal-remux'}));
   remuxName.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();iina.postMessage('action',{action:'cancel-remux'});}});
   document.getElementById('remux-form').addEventListener('submit',event=>{event.preventDefault();iina.postMessage('action',{action:'confirm-remux',filename:remuxName.value});});
   document.getElementById('remux-cancel').addEventListener('click',()=>iina.postMessage('action',{action:'cancel-remux'}));

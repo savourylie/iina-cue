@@ -59,11 +59,17 @@ test('native entry registers polling before a player window exists and survives 
   assert.equal(checkedOutput,'/private/tmp/movie.cue-remux.mkv');
   sidebarMessages.get('action')!({action:'confirm-remux',filename:'fixed-copy.mp4'});
   assert.equal(checkedOutput,'/private/tmp/fixed-copy.mkv');
+  const lastDraft=()=>[...posted].reverse().find(([name])=>name==='cue-remux-draft')?.[1];
+  // Filename problems stay inline in the form instead of becoming a failed MKV copy.
+  assert.equal(lastDraft().active,true);
+  assert.match(lastDraft().error,/already exists/);
   sidebarMessages.get('action')!({action:'confirm-remux',filename:'../bad'});
   assert.equal(checkedOutput,'/private/tmp/fixed-copy.mkv');
+  assert.match(lastDraft().error,/plain filename/);
+  sidebarMessages.get('action')!({action:'check-remux-name',filename:'another'});
+  assert.equal(checkedOutput,'/private/tmp/another.mkv');
+  assert.match(lastDraft().error,/already exists/);
+  assert.ok(!posted.some(([name,data])=>name==='cue-remux-status'&&data.state==='error'));
   sidebarMessages.get('action')!({action:'cancel-remux'});
-  assert.equal([...posted].reverse().find(([name])=>name==='cue-remux-draft')?.[1].active,false);
-  const remuxStatus=[...posted].reverse().find(([name])=>name==='cue-remux-status')?.[1];
-  assert.equal(remuxStatus.state,'idle');
-  assert.equal(remuxStatus.text,'');
+  assert.equal(lastDraft().active,false);
 });

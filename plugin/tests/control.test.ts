@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {acceptSnapshot,actionErrorStatus,errorStatus,originalLanguageChoice,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
+import {acceptSnapshot,actionErrorStatus,coverageStrip,remuxFilename,errorStatus,originalLanguageChoice,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
 test('prepared reply from old epoch or helper never accepted',()=>{
   const reply={session_id:'s',seek_epoch:1,instance_id:'new'};
   assert.equal(acceptSnapshot(reply,'s',1,'new'),true);
@@ -68,7 +68,7 @@ test('status copy keeps error codes out of the headline and pause ownership in t
   assert.doesNotMatch(statusText(unknown),/HELPER_UNAVAILABLE/);
   assert.match(errorStatus('ALIGNMENT_LANGUAGE_UNSUPPORTED','Greek').detail!,/identified as Greek/);
   assert.equal(actionErrorStatus('OUTPUT_EXISTS').tone,'warning');
-  assert.equal(readyStatus(48200,false,false).detail,'48 s prepared ahead.');
+  assert.equal(readyStatus(48200,false,false).detail,'Loaded in the player for the next 48 s.');
   assert.match(readyStatus(48200,true,true).detail!,/Press play to continue\.$/);
   assert.match(readyStatus(48200,true,false).detail!,/Video remains paused\.$/);
   const partial=partialFailureStatus(30000);
@@ -80,4 +80,21 @@ test('user paused playback is not held or resumed',()=>{
 test('user play bypasses repeated holds until a new seek/session',()=>{
   const p=new PlaybackIntent();assert.equal(p.hold(false),true);p.userPlay();assert.equal(p.hold(false),false);
   p.reset();assert.equal(p.hold(false),true);
+});
+test('coverage strip shows loaded, prepared-only and holes after the playhead',()=>{
+  const c=coverageStrip([[0,30000],[60000,90000]],[[0,20000]],10000,90000);
+  assert.deepEqual(c.installed,[[0,10000/90000]]);
+  assert.deepEqual(c.prepared,[[10000/90000,20000/90000],[50000/90000,80000/90000]]);
+  assert.equal(c.label,'Loaded in the player for the next 10 s; 40 s more prepared in the next 90 s.');
+  const hole=coverageStrip([[30000,60000]],[],0,90000);
+  assert.deepEqual(hole.installed,[]);
+  assert.match(hole.label,/^Nothing loaded at the playhead yet; 30 s more prepared/);
+});
+test('MKV filename check rejects folders and existing files before writing',()=>{
+  const none=()=>false;
+  assert.deepEqual(remuxFilename('','movie.cue-remux.mkv','/tmp/',none),{output:'/tmp/movie.cue-remux.mkv'});
+  assert.equal(remuxFilename('copy.mp4','x.mkv','/tmp',none).output,'/tmp/copy.mkv');
+  assert.match(remuxFilename('../escape','x.mkv','/tmp',none).error!,/plain filename/);
+  assert.match(remuxFilename('.hidden','x.mkv','/tmp',none).error!,/plain filename/);
+  assert.match(remuxFilename('taken','x.mkv','/tmp',path=>path==='/tmp/taken.mkv').error!,/already exists/);
 });
