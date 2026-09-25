@@ -373,18 +373,24 @@ SITE="$STAGE/python/lib/python3.12/site-packages"
 "$PY" "$HELPER" verify-lock "$REQS"
 "$PY" "$HELPER" drop-direct-urls "$SITE"
 "$PY" "$HELPER" strip-tests "$SITE"
+# The helper refuses to prepare captions without the voice activity model, so
+# every runtime carries the pinned copy. fetch-vad checks all three hashes.
+echo "build-runtime: adding the Silero VAD model" >&2
+"$PY" "$CUE_PROJECT/scripts/fetch-vad" "$STAGE/vad"
 echo "build-runtime: collecting license notices" >&2
 if [ -n "$FFMPEG_ROOT" ]; then
   "$PY" "$CUE_PROJECT/scripts/collect_licenses.py" \
     --prefix "$STAGE/python" \
     --output "$STAGE/licenses" \
     --project "$CUE_PROJECT" \
-    --ffmpeg-root "$FFMPEG_ROOT"
+    --ffmpeg-root "$FFMPEG_ROOT" \
+    --vad-root "$STAGE/vad"
 else
   "$PY" "$CUE_PROJECT/scripts/collect_licenses.py" \
     --prefix "$STAGE/python" \
     --output "$STAGE/licenses" \
-    --project "$CUE_PROJECT"
+    --project "$CUE_PROJECT" \
+    --vad-root "$STAGE/vad"
 fi
 "$PY" "$HELPER" rewrite-shebangs "$STAGE/python/bin" "$STAGE/python"
 echo "build-runtime: compiling bytecode" >&2

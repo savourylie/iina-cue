@@ -25,6 +25,7 @@ FIRST_PARTY = {"iina-cue"}
 OVERRIDES = {
     "cython": ("3.3.0", (("apache-2.0.txt", "LICENSE"),)),
     "dynet38": ("2.2", (("apache-2.0.txt", "LICENSE"),)),
+    "flatbuffers": ("25.12.19", (("apache-2.0.txt", "LICENSE"),)),
     "litert-lm-api": ("0.17.1", (("apache-2.0.txt", "LICENSE"),)),
     "sentencepiece": ("0.2.2", (("apache-2.0.txt", "LICENSE"),)),
     "soynlp": ("0.0.493", (("soynlp/LICENSE", "LICENSE"), ("gpl-3.0.txt", "COPYING"))),
@@ -225,7 +226,21 @@ def copy_ffmpeg(ffmpeg_root: Path, output: Path) -> None:
     copy_bytes(record_path, destination / "build-record.txt")
 
 
-def collect(prefix: Path, output: Path, project: Path, ffmpeg_root: Path | None) -> list[Packed]:
+def copy_vad(vad_root: Path, output: Path) -> None:
+    license_path = vad_root / "LICENSE"
+    source = vad_root / "SOURCE.txt"
+    require_text(license_path, "MIT License")
+    require_text(license_path, "Silero Team")
+    require_text(source, "silero_vad-6.2.3-py3-none-any.whl")
+    require_text(source, "sha256=")
+    destination = output / "models" / "silero-vad"
+    destination.mkdir(parents=True)
+    copy_bytes(license_path, destination / "LICENSE")
+    copy_bytes(source, destination / "SOURCE.txt")
+
+
+def collect(prefix: Path, output: Path, project: Path, ffmpeg_root: Path | None,
+            vad_root: Path | None = None) -> list[Packed]:
     project = project.resolve()
     prefix = prefix.resolve()
     overrides = project / "third_party" / "license-overrides"
@@ -247,6 +262,8 @@ def collect(prefix: Path, output: Path, project: Path, ffmpeg_root: Path | None)
     copy_models(project, output, apache)
     if ffmpeg_root is not None:
         copy_ffmpeg(ffmpeg_root, output)
+    if vad_root is not None:
+        copy_vad(vad_root, output)
 
     packed: list[Packed] = []
     seen: set[str] = set()
@@ -318,8 +335,9 @@ def main(argv: list[str]) -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--ffmpeg-root", type=Path)
+    parser.add_argument("--vad-root", type=Path)
     args = parser.parse_args(argv)
-    collect(args.prefix, args.output, args.project, args.ffmpeg_root)
+    collect(args.prefix, args.output, args.project, args.ffmpeg_root, args.vad_root)
 
 
 if __name__ == "__main__":

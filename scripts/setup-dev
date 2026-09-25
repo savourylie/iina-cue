@@ -5,5 +5,7 @@ cd "$CUE_PROJECT"
 UV_CACHE_DIR="$CUE_PROJECT/.cache/uv" uv sync --frozen --python 3.12
 npm ci --cache "$CUE_PROJECT/.cache/npm"
 npm run build
+# About 11 MB from PyPI; only the pinned Silero VAD model and its license are kept.
+"$CUE_PROJECT/.venv/bin/python" "$CUE_PROJECT/scripts/fetch-vad" "$CUE_PROJECT/.runtime/vad"
 "$CUE_PROJECT/scripts/doctor"
 echo 'No models downloaded. Review scripts/setup-models before downloading.'

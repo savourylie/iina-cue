@@ -7,12 +7,22 @@ from pathlib import Path
 from .backend import Backend
 from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, assemble, validate_units, reconcile_boundary, restore_transcript
 from .media import Media, extract
+from .vad import SileroVad
 
 class Pipeline:
-    def __init__(self, models: Path, temp: Path):
+    def __init__(self, models: Path, temp: Path, vad_model: Path | None = None):
         self.backend = Backend(models)
+        # Loaded on first use and kept for the life of the worker.
+        self.vad = None
+        self.vad_model = vad_model
         self.temp = temp
         self.temp.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    def has_speech(self, audio) -> tuple[bool, dict]:
+        if self.vad is None:
+            from .bootstrap import vad_model_path
+            self.vad = SileroVad(self.vad_model or vad_model_path())
+        return self.vad.has_speech(audio)
 
     def run(self, job: dict, progress=None) -> dict:
         import numpy as np
@@ -31,13 +41,21 @@ class Pipeline:
             audio, sr = sf.read(wav, dtype="float32")
             if sr != 16000 or len(audio) != mapping["sample_count"]:
                 raise CueError("MEDIA_UNSUPPORTED", "PCM sample mapping mismatch")
-            # Only exact digital silence may bypass inference without a speech classifier.
-            # Music/quiet speech never gets declared silent based on a loudness threshold.
+            # Exact digital silence needs no classifier. Anything else goes to Silero VAD,
+            # never to a loudness threshold, so quiet speech and speech under music stay.
+            # A window with a cached transcript already had speech.
             silence = bool(np.count_nonzero(audio) == 0)
+            no_speech = silence
             language = {"code": "und", "status": "unknown", "method": "digital_silence"}
+            if not silence and job.get("cached_source") is None:
+                t = time.monotonic(); speech, detail = self.has_speech(audio); timings["vad_s"] = time.monotonic()-t
+                timings.update(detail)
+                if not speech:
+                    no_speech = True
+                    language = {"code": "und", "status": "unknown", "method": "voice_activity"}
             source = []
             committed_end = end
-            if not silence:
+            if not no_speech:
                 report("loading_model")
                 t = time.monotonic(); self.backend.load(); timings["load_s"] = time.monotonic()-t
                 cached = job.get("cached_source")
@@ -99,7 +117,7 @@ class Pipeline:
             timings["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             return {"source": [asdict(c) for c in source], "rendered": [asdict(c) for c in rendered],
                     "language": language, "timings": timings, "mapping": mapping, "committed_range": [start,committed_end],
-                    "coverage_kind": "verified_no_speech" if silence else "complete"}
+                    "coverage_kind": "verified_no_speech" if no_speech else "complete"}
 
 def worker_entry(inbox, outbox, models: str, temp: str):
     pipeline = Pipeline(Path(models), Path(temp))

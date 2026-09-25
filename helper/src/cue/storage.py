@@ -59,7 +59,11 @@ class Cache:
     def read(self, profile: str) -> tuple[list[list[int]], list[Cue], dict]:
         ranges, cues, language = [], {}, {"code": "und", "status": "unknown"}
         for start, end, payload in self.db.execute("SELECT start,end,payload FROM chunks WHERE profile=? ORDER BY start", (profile,)):
-            data = json.loads(payload); ranges.append([start, end]); language = data["language"]
+            data = json.loads(payload); ranges.append([start, end])
+            # A stretch without speech says nothing about the spoken language;
+            # it must not erase the language found in the speech around it.
+            if data["language"].get("code") != "und" or language.get("code") == "und":
+                language = data["language"]
             for row in data["cues"]: cues[row["id"]] = Cue(**row)
         ordered = sorted(cues.values(), key=lambda c: (c.start_ms, c.end_ms))
         # Time+text overlap dedupe only; conflicting boundaries remain an error.

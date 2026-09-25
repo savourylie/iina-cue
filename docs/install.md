@@ -73,4 +73,8 @@ scripts/test
 /Applications/IINA.app/Contents/MacOS/iina-plugin link "$PWD/plugin"
 ```
 
+`scripts/setup-dev` also puts the Silero VAD model (2.3 MB, MIT) in `.runtime/vad`. It downloads the pinned silero-vad 6.2.3 wheel from PyPI (about 11 MB), checks its SHA-256, and keeps only the model and its license; `scripts/fetch-vad .runtime/vad` does the same step alone. Without that model the helper refuses to prepare captions and reports `SETUP_REQUIRED`.
+
+If `~/Library/Application Support/Cue/installed` exists, the linked plugin starts that installed runtime instead of this checkout. To run this checkout's helper anyway, set Cue's `bootstrap` preference to the absolute path of `scripts/cue-helper`.
+
 Run the model download only after reviewing the terms and confirming enough disk space. Restart IINA, then enable Cue in IINA Settings → Plugins. The development link and built helper path belong to this new checkout; do not copy the old Mac's `.venv`, `.runtime`, model files, cache, generated fixtures, benchmark results or archive. They are intentionally excluded from Git. Do not install the archive and development link at the same time because they share one plugin identifier.

@@ -31,7 +31,7 @@ def make_prefix(tmp, packages):
     return prefix
 
 
-def run(prefix, output, ffmpeg=None):
+def run(prefix, output, ffmpeg=None, vad=None):
     command = [
         sys.executable,
         str(SCRIPT),
@@ -44,6 +44,8 @@ def run(prefix, output, ffmpeg=None):
     ]
     if ffmpeg is not None:
         command.extend(["--ffmpeg-root", str(ffmpeg)])
+    if vad is not None:
+        command.extend(["--vad-root", str(vad)])
     return subprocess.run(command, check=False, capture_output=True, text=True)
 
 
@@ -159,3 +161,26 @@ def test_notices_name_apache_gemma_qwen_and_lgpl_obligations():
     assert "LGPL-2.1 section 6" in notice
     assert "does not ship the FFmpeg source tree" in notice
     assert "UNKNOWN" in notice
+
+
+def test_silero_vad_license_and_source_are_copied_and_checked(tmp_path):
+    prefix = make_prefix(tmp_path, [("widget", "1", "widget license\n")])
+    vad = tmp_path / "vad"
+    vad.mkdir()
+    (vad / "LICENSE").write_text("MIT License\n\nCopyright (c) 2020-present Silero Team\n")
+    (vad / "SOURCE.txt").write_text("source=https://files.pythonhosted.org/x/silero_vad-6.2.3-py3-none-any.whl\nsha256=1a153a22\n")
+    output = tmp_path / "licenses"
+    result = run(prefix, output, vad=vad)
+    assert result.returncode == 0, result.stderr
+    assert "Silero Team" in (output / "models" / "silero-vad" / "LICENSE").read_text()
+    assert "silero_vad-6.2.3" in (output / "models" / "silero-vad" / "SOURCE.txt").read_text()
+    (vad / "LICENSE").write_text("Some other license\n")
+    rejected = run(prefix, tmp_path / "rejected" / "licenses", vad=vad)
+    assert rejected.returncode != 0
+
+
+def test_notices_name_the_silero_vad_model_and_its_hashes():
+    from cue.vad import VAD_MODEL_SHA256, VAD_WHEEL_SHA256
+    notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
+    assert VAD_MODEL_SHA256 in notice and VAD_WHEEL_SHA256 in notice
+    assert "Silero Team" in notice and "onnxruntime" in notice
