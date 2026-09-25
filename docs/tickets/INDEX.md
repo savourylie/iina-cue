@@ -10,7 +10,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | --- | --- |
 | ✅ Done | 11 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 5 |
+| 📋 Pending | 6 |
 | 🚫 Blocked | 2 |
 | ⏸️ Deferred | 0 |
 
@@ -38,6 +38,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | 016 | [Plugin replaces an outdated runtime](./016-plugin-updates-outdated-runtime.md) | `pending` | #008 ✅ | #008's newer-runtime swap was never implemented |
 | 017 | [One failed window never stops captions](./017-captions-survive-failed-windows.md) | `pending` | — | Constrained translation JSON, no kana in Chinese, failed windows become holes |
 | 018 | [Optional larger models in Advanced](./018-optional-larger-models.md) | `pending` | #006 ✅, #009 ✅ | Gemma 4 E4B (3.66 GB) and 12B (6.88 GB); E2B stays default |
+| 019 | [Keep the aligned part of a window when alignment collapses](./019-keep-aligned-prefix.md) | `pending` | — | One unplaceable word no longer discards a 16 s window |
 
 ## Docs and verification
 
