@@ -44,6 +44,14 @@ The setup card lives in the same single column as the sidebar, at 240 px and 360
 ### 2026-09-25
 - The setup card replaces the normal controls until the phase is `done`, which requires the smoke test to have passed. A repeated poll of the same phase does not write the polite announcer. The progress element is a native `<progress>` and is not a live region. Saved byte counts render as the resume point. Terminal steps on the preferences page are in a hidden development block. IINA itself was not driven.
 
+### 2026-09-25 (wiring)
+- The first PR had the card but nothing drove it: `main.ts` never called the helper's setup API. `setup-controller.ts` now drives the whole flow from the sidebar's `ready` and `start-setup` messages.
+- Preflight reads this Mac with `/usr/sbin/sysctl` (`hw.optional.arm64`, `hw.memsize`), `/usr/bin/sw_vers` and `/bin/df -Pk ~/Library`, and IINA's version with `iina.core.getVersion()`. A fact that cannot be read is left unknown and is not checked. The first draft passed fixed values for all of these. After the helper answers, free space and missing bytes come from the helper.
+- The runtime is downloaded only while the helper cannot answer. Retry after a stopped model download sends `resume` and does not download the runtime again. A second press while setup runs is ignored.
+- The controller polls `GET /v1/setup` every second while the helper reports `downloading` or `smoking`. The smoke test starts only after `files_ready`. The first draft sent `smoke` right after `start` and always failed.
+- The IINA bundle imports no `node:` module. The Node-only unpack helper moved to `install-archive.ts`, which tests use.
+- IINA itself was still not driven. This Mac already has a working Cue install, and the clean-Mac run belongs to TICKET-012.
+
 ## Testing
 - Sidebar tests for each setup state and for the announcer.
 - Stubbed browser preview at 240 px and 360 px in light and dark.
