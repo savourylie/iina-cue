@@ -232,3 +232,15 @@ def test_development_manifest_stays_the_pinned_file():
     text = (PROJECT / "models" / "manifest.json").read_text()
     assert "litert-community/gemma-4-E2B-it-litert-lm" in text
     assert "mlx-community/Qwen3-ForcedAligner-0.6B-4bit" in text
+
+
+def test_a_download_left_by_a_stopped_helper_reports_interrupted(monkeypatch, tmp_path):
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest_for(BODY)))
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / ".setup-progress.json").write_text(json.dumps({"phase": "downloading", "file": "gemma/model.bin"}))
+    supervisor = Supervisor(tmp_path / "runtime", models, clock=lambda: 100)
+    body = supervisor.request("GET", "/v1/setup", {}, None)
+    assert body["progress"]["phase"] == "interrupted"
