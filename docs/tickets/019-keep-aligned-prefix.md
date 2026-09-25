@@ -51,6 +51,11 @@ This ticket keeps the aligned part of the window before the collapse. The next w
 - Mutation checks: ignoring the cut fails 2 pipeline tests, and removing the 2 s minimum fails 1.
 - Cost: an instrumented rerun of the `ja` session gave identical results: 165 captions, 115 of 133 lines, and the same 7 holes. It ran 85 jobs, which sent 1,242 s of audio for 798 s of film, 56% more than the film. That is the rest after each cut, the retries, and context. The jobs took 507 s in total, with a median of 4.3 s per window. That is about 1.6 times faster than playback on this M1 Ultra. Whole-session wall time varied between runs: 354 s for TICKET-017, and 766 s and 508 s for two runs of this ticket with identical output. The slowest job, 32.5 s at 316–332 s, took 7.7 s when run alone, so the outlier is not in the window itself. Whether a slower Mac keeps up is not measured yet. It belongs with the memory and speed measurements for TICKET-011 and TICKET-018.
 
+### 2026-09-26 (release)
+- Shipped in runtime 0.1.9, together with TICKET-018. 283,954,324 bytes, SHA-256 `8f4d4dda2358d767fcb84a4739c6533195cd9aaa80d6756735a531e43a33a68e`, notarization `a4e09740-e1ff-41ad-abed-7cb9b2556d5e`, Accepted with no issues, minimum macOS 14.0. Hosted on Hugging Face `onionmonster/cue-runtime` at commit `dcf288cca59483d3b562af9ad04403384c327e56`, with GitHub Release `runtime-0.1.9` as backup. The plugin pins both.
+- Checks on the signed archive: the plugin's unpack script installed it into a scratch support folder, Gatekeeper accepts `ffmpeg` as a Notarized Developer ID, and the helper there reported 0.1.9 and listed E2B and E4B. E4B passed its trial on the spoken clip in 8.5 s and became the model in use, and switching back to E2B passed in 5.4 s. The archive downloaded from the pinned Hugging Face URL in 32 s with the same SHA-256.
+- Existing installs keep their old runtime until TICKET-016.
+
 ## Testing
 - Unit tests: a collapse in the middle and at the end, the prefix check, punctuation restored on a prefix, the minimum committed length, and no cue boundary that is not an aligner time.
 - Real inference: the TICKET-017 session driver on the same film range, before and after, with reference-line coverage and hole time.

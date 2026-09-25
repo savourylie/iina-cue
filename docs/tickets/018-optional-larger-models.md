@@ -87,3 +87,8 @@ Per window, from the window-by-window evaluation of the same range before TICKET
 ### 2026-09-26
 - After the measurements above, the user chose to drop 12B. The catalog, sidebar strings and credit, license note and notices, preferences credits and install guide now offer E4B as the only larger model. This supersedes the criterion that listed 12B in Advanced. The helper and sidebar handle any catalog entry, so 12B can return as a catalog entry, strings, a credit link and a license note if a later evaluation (for example with a different prompt) shows that it helps.
 - This checkout's evaluation copy of 12B and its compile cache stay in `.runtime/models` for such an evaluation, at the user's choice. The helper no longer lists 12B, so Remove cannot delete them.
+
+### 2026-09-26 (release)
+- Shipped in runtime 0.1.9, together with TICKET-019. 283,954,324 bytes, SHA-256 `8f4d4dda2358d767fcb84a4739c6533195cd9aaa80d6756735a531e43a33a68e`, notarization `a4e09740-e1ff-41ad-abed-7cb9b2556d5e`, Accepted with no issues, minimum macOS 14.0. Hosted on Hugging Face `onionmonster/cue-runtime` at commit `dcf288cca59483d3b562af9ad04403384c327e56`, with GitHub Release `runtime-0.1.9` as backup. The plugin pins both.
+- Checks on the signed archive: the plugin's unpack script installed it into a scratch support folder, Gatekeeper accepts `ffmpeg` as a Notarized Developer ID, and the helper there reported 0.1.9 and listed E2B and E4B. E4B passed its trial on the spoken clip in 8.5 s and became the model in use, and switching back to E2B passed in 5.4 s. The archive downloaded from the pinned Hugging Face URL in 32 s with the same SHA-256.
+- Existing installs keep their old runtime until TICKET-016.
