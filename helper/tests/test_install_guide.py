@@ -15,7 +15,8 @@ def test_user_guide_covers_both_install_routes_without_terminal():
     assert "file-system" in GUIDE
     assert "127.0.0.1" in GUIDE
     assert "notarized by Apple" in GUIDE
-    assert "macOS 27.0" in GUIDE
+    assert "macOS 14.0" in GUIDE
+    assert "macOS 27" not in GUIDE
     assert "16 GB" in GUIDE
     assert "3.8 GB" in GUIDE
     assert "10 to 30 minutes" in GUIDE

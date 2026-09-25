@@ -49,7 +49,8 @@ export function maySwap(state: {remuxActive: boolean; sessions: number}): {ok: t
 
 /** Resume with curl. The program is /usr/bin/curl, never a file inside the plugin. */
 export function curlResumeArgs(url: string, destination: string): string[] {
-  return ["/usr/bin/curl", "-L", "--fail", "-C", "-", "-o", destination, url];
+  // A stalled host (under 1 KB/s for 60 s) fails, so the next copy can take over.
+  return ["/usr/bin/curl", "-L", "--fail", "--speed-limit", "1024", "--speed-time", "60", "-C", "-", "-o", destination, url];
 }
 
 export function startInstall(userStarted: boolean): void {

@@ -5,6 +5,6 @@
   "entry": "dist/main.js", "globalEntry": "dist/global.js",
   "preferencesPage": "preferences.html", "sidebarTab": {"name": "Cue subtitles"},
   "permissions": ["file-system", "network-request", "show-osd", "show-alert"],
-  "allowedDomains": ["127.0.0.1", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"],
+  "allowedDomains": ["127.0.0.1", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "huggingface.co", "*.hf.co"],
   "preferenceDefaults": {"bootstrap": "", "autoEnable": false, "target": "original", "source": "auto", "pauseUntilReady": false, "subtitleBox": true, "subtitleSize": 0}
 }

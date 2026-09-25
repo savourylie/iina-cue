@@ -171,7 +171,7 @@ export const en = {
   "sidebar.playerDiagnostic": "Player and audio track",
   "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)",
   "sidebar.setupTitle": "Set up Cue",
-  "sidebar.setupIntro": "Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper comes from GitHub and the speech models come from Hugging Face. Everything runs on this Mac.",
+  "sidebar.setupIntro": "Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.",
   "sidebar.setupDisk": "Free disk space needed: {bytes} bytes.",
   "sidebar.setupDownload": "Download",
   "sidebar.setupRetry": "Retry",

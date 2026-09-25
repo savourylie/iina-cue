@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {installVerifiedArchive} from '../src/install-archive';
 import {DEFAULT_RAM_BYTES, curlResumeArgs, maySwap, preflight, startInstall} from '../src/install-runtime';
-import {installPublishedRuntime, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URL} from '../src/runtime-install';
+import {installPublishedRuntime, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS} from '../src/runtime-install';
 
 const base = {arch: 'arm64', macos: '27.0', iina: '1.4.4', freeBytes: 10_000, ramBytes: DEFAULT_RAM_BYTES, minimumMacos: '27.0', bytesNeeded: 1000};
 
@@ -34,7 +34,7 @@ test('a busy helper is not swapped', () => {
 
 test('curl resumes and is not a file shipped in the plugin', () => {
   assert.deepEqual(curlResumeArgs('https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.5/runtime-0.1.5.tar.xz', '/tmp/part'), [
-    '/usr/bin/curl', '-L', '--fail', '-C', '-', '-o', '/tmp/part',
+    '/usr/bin/curl', '-L', '--fail', '--speed-limit', '1024', '--speed-time', '60', '-C', '-', '-o', '/tmp/part',
     'https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.5/runtime-0.1.5.tar.xz',
   ]);
   assert.throws(() => startInstall(false), /SETUP_NOT_STARTED/);
@@ -106,9 +106,11 @@ test('the plugin install path resumes the published archive and rejects a differ
     assert.equal(calls[0][0], '/usr/bin/curl');
     assert.ok(calls[0].includes('-C'));
     assert.ok(calls[0].includes('--fail'));
-    assert.equal(calls[0][calls[0].length - 1], RUNTIME_ARCHIVE_URL);
+    assert.equal(calls[0][calls[0].length - 1], RUNTIME_ARCHIVE_URLS[0]);
     assert.equal(calls[1][0], '/bin/sh');
     assert.ok(calls[1].includes(RUNTIME_ARCHIVE_SHA256));
+    // A file that fails the checksum is removed, so Retry downloads it again.
+    assert.deepEqual(calls[2], ['/bin/rm', '-f', calls[0][calls[0].indexOf('-o') + 1]]);
     assert.equal(existsSync(join(root, 'installed')), false);
     assert.equal(existsSync(join(root, 'runtime', 'bin', 'ffmpeg')), false);
     const busy = await installPublishedRuntime({
@@ -136,4 +138,35 @@ test('the plugin archive gate rejects an executable script and accepts the packe
   } finally {
     rmSync(root, {recursive: true, force: true});
   }
+});
+
+test('a failed Hugging Face download falls back to the GitHub copy of the same file', async () => {
+  const calls: string[][] = [];
+  const result = await installPublishedRuntime({
+    resolve: () => '/Users/cue/Library/Application Support/Cue',
+    remuxActive: false,
+    sessions: 0,
+    exec: async (file, args) => {
+      calls.push([file, ...args]);
+      if (file === '/usr/bin/curl') return {status: args[args.length - 1].includes('huggingface.co') ? 28 : 0};
+      return {status: 0};
+    },
+  });
+  assert.equal(result.ok, true);
+  const curls = calls.filter(([file]) => file === '/usr/bin/curl');
+  assert.deepEqual(curls.map((call) => new URL(call[call.length - 1]).hostname), ['huggingface.co', 'github.com']);
+  // Both attempts write the same partial file, so the second one resumes the first.
+  assert.equal(curls[0][curls[0].indexOf('-o') + 1], curls[1][curls[1].indexOf('-o') + 1]);
+});
+
+test('when every copy fails, setup reports a stopped download and unpacks nothing', async () => {
+  const calls: string[][] = [];
+  const result = await installPublishedRuntime({
+    resolve: () => '/Users/cue/Library/Application Support/Cue',
+    remuxActive: false,
+    sessions: 0,
+    exec: async (file, args) => { calls.push([file, ...args]); return {status: 6}; },
+  });
+  assert.deepEqual(result, {ok: false, reason: 'The runtime download stopped.'});
+  assert.equal(calls.length, RUNTIME_ARCHIVE_URLS.length);
 });

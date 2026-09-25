@@ -22,7 +22,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | 002 | [Build a static LGPL FFmpeg](./002-static-lgpl-ffmpeg.md) | `done` | — | FFmpeg 7.1.1 built in 28 s; media tests pass |
 | 003 | [License notices and THIRD_PARTY_NOTICES](./003-license-notices.md) | `done` | #001 ✅, #002 ✅ | licenses/ ships with the runtime |
 | 004 | [Sign and notarize the runtime](./004-sign-and-notarize-runtime.md) | `done` | #001 ✅, #002 ✅, #003 ✅ | Notarized; minimum macOS 27.0 |
-| 007 | [Hosting and release manifest](./007-host-release-artifacts.md) | `done` | #004 ✅ | GitHub Release runtime-0.1.5; minimum macOS 27.0 |
+| 007 | [Hosting and release manifest](./007-host-release-artifacts.md) | `done` | #004 ✅ | Runtime 0.1.6 on Hugging Face, GitHub Release as backup; minimum macOS 14.0 |
 
 ## Helper and plugin
 

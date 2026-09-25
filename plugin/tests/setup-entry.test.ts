@@ -4,7 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {buildSync} from 'esbuild';
-import {RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URL} from '../src/runtime-install';
+import {RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS} from '../src/runtime-install';
 
 test('sidebar ready posts setup and start-setup runs the published install', async () => {
   const events = new Map<string, () => void>();
@@ -57,7 +57,7 @@ test('sidebar ready posts setup and start-setup runs the published install', asy
   assert.equal(setup?.primary, 'Download');
   const manifest = JSON.parse(readFileSync('models/manifest.json', 'utf8')) as {assets: {files: {bytes: number}[]}[]};
   const models = manifest.assets.reduce((sum, asset) => sum + asset.files.reduce((inner, file) => inner + file.bytes, 0), 0);
-  const release = JSON.parse(readFileSync('release/runtime-0.1.5.json', 'utf8')) as {size: number};
+  const release = JSON.parse(readFileSync('release/runtime-0.1.6.json', 'utf8')) as {size: number};
   assert.match(setup?.detail ?? '', new RegExp(String(models + release.size)));
   messages.get('start-setup')!({});
   // Preflight reads the Mac with sysctl, sw_vers and df first; those are not installs.
@@ -68,7 +68,7 @@ test('sidebar ready posts setup and start-setup runs the published install', asy
   assert.equal(curl.file, '/usr/bin/curl');
   assert.ok(curl.args.includes('-C'));
   assert.ok(curl.args.includes('--fail'));
-  assert.equal(curl.args[curl.args.length - 1], RUNTIME_ARCHIVE_URL);
+  assert.equal(curl.args[curl.args.length - 1], RUNTIME_ARCHIVE_URLS[0]);
   assert.ok(curl.args.some(arg => arg.endsWith("/runtime.tar.xz.partial")));
   assert.equal(unpack.file, '/bin/sh');
   assert.ok(unpack.args.includes(RUNTIME_ARCHIVE_SHA256));

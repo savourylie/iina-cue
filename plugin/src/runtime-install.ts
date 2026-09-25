@@ -2,9 +2,18 @@ import {curlResumeArgs, maySwap} from "./install-runtime";
 import {INSTALLED_SUPPORT} from "./launch";
 import {t} from "./strings";
 
-export const RUNTIME_ARCHIVE_URL = "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.5/runtime-0.1.5.tar.xz";
-export const RUNTIME_ARCHIVE_SHA256 = "70218fd01793d234d280401420aab1dfaf0ba874098a17a9479e3ffbaa91197f";
-export const RUNTIME_ARCHIVE_BYTES = 270969508;
+/**
+ * Hugging Face first, pinned to a commit; the GitHub Release is the same file.
+ * GitHub's release CDN measured about 125 KB/s here against 7.5 MB/s from
+ * Hugging Face. Both copies are byte-identical, so curl -C - may resume a
+ * partial file from either one. The SHA-256 decides, not the host.
+ */
+export const RUNTIME_ARCHIVE_URLS = [
+  "https://huggingface.co/onionmonster/cue-runtime/resolve/ee592ca17f88074387a8f5486d915c6ab57007b6/runtime-0.1.6.tar.xz",
+  "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.6/runtime-0.1.6.tar.xz",
+] as const;
+export const RUNTIME_ARCHIVE_SHA256 = "4dea7f196f67dbcc34872bdb02eb2cfac54378c3e98da72754240f76f6186483";
+export const RUNTIME_ARCHIVE_BYTES = 267837724;
 
 /**
  * IINA's utils.exec keeps only LC_ALL, so the script sets PATH itself.
@@ -92,18 +101,25 @@ export async function installPublishedRuntime(deps: {
   const support = deps.resolve(INSTALLED_SUPPORT);
   if (!support || !support.startsWith("/")) return {ok: false, reason: t("sidebar.setupNoFolder")};
   const partial = `${support}/runtime.tar.xz.partial`;
-  const curl = curlResumeArgs(RUNTIME_ARCHIVE_URL, partial);
-  const downloaded = await deps.exec(curl[0], curl.slice(1));
-  if (downloaded.status !== 0) return {ok: false, reason: t("sidebar.setupDownloadStopped")};
+  let downloaded = false;
+  for (const url of RUNTIME_ARCHIVE_URLS) {
+    const curl = curlResumeArgs(url, partial);
+    if ((await deps.exec(curl[0], curl.slice(1))).status === 0) { downloaded = true; break; }
+  }
+  if (!downloaded) return {ok: false, reason: t("sidebar.setupDownloadStopped")};
   const unpack = unpackRuntimeInvocation(partial, `${support}/runtime`, RUNTIME_ARCHIVE_SHA256);
   const unpacked = await deps.exec(unpack.file, unpack.args);
-  if (unpacked.status === 2) return {ok: false, reason: t("sidebar.setupChecksum")};
+  if (unpacked.status === 2) {
+    // Resuming a bad file would fail the same way on every retry. Start over.
+    await deps.exec("/bin/rm", ["-f", partial]);
+    return {ok: false, reason: t("sidebar.setupChecksum")};
+  }
   if (unpacked.status !== 0) return {ok: false, reason: t("sidebar.setupUnpackFailed")};
   return {ok: true};
 }
 
-/** Must match release/runtime-0.1.5.json and models/manifest.json. */
-export const RUNTIME_MINIMUM_MACOS = "27.0";
+/** Must match release/runtime-0.1.6.json and models/manifest.json. */
+export const RUNTIME_MINIMUM_MACOS = "14.0";
 export const MODEL_BYTES = 3564002544;
 
 /**
