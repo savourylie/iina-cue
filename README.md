@@ -2,6 +2,8 @@
 
 Your videos. Your language. In sync.
 
+People installing Cue, rather than building it, should follow [Install Cue](docs/install-cue.md). That guide uses either a double-click of the `.iinaplgz` or IINA's Install from GitHub. It has no Terminal commands. IINA may warn that a plugin "can execute other programs or applications that can harm your computer". The guide explains that warning. This runtime needs macOS 14.0 or later and about 16 GB of memory.
+
 目前已包含 **0.1.0 開發技術預覽版**：IINA 外掛、本機 Python helper、短窗口排程、字幕快取、seek 隔離與測試。模型已安裝，真實辨識、對齊、翻譯與原生字幕顯示已跑通；**目前是可測試的開發版，尚未完成規格的 v1 驗收。**
 
 ## 檔案

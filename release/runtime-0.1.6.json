@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "version": "0.1.6",
+  "urls": [
+    "https://huggingface.co/onionmonster/cue-runtime/resolve/ee592ca17f88074387a8f5486d915c6ab57007b6/runtime-0.1.6.tar.xz",
+    "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.6/runtime-0.1.6.tar.xz"
+  ],
+  "size": 267837724,
+  "sha256": "4dea7f196f67dbcc34872bdb02eb2cfac54378c3e98da72754240f76f6186483",
+  "minimum_macos": "14.0",
+  "architecture": "arm64",
+  "notarization": "25ba4407-fb9e-4401-8648-397db02256fc",
+  "compatible_plugin_versions": ["0.1.0"],
+  "published": true
+}

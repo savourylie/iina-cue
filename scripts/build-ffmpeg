@@ -21,6 +21,10 @@ for tool in curl shasum tar otool clang make; do
 done
 
 FFMPEG_VERSION=7.1.1
+# The oldest macOS the runtime supports. MLX, numpy and scipy wheels start at
+# 14.0. Without this, clang targets the build machine's own macOS.
+MACOSX_DEPLOYMENT_TARGET=14.0
+export MACOSX_DEPLOYMENT_TARGET
 FFMPEG_URL=https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz
 # Hash of the ffmpeg.org tarball. There is no published .sha256 sidecar.
 FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
@@ -146,10 +150,18 @@ sha256=$FFMPEG_SHA256
 version=$FFMPEG_VERSION
 license=$license
 configure_flags=$CONFIGURE_FLAGS
+macosx_deployment_target=$MACOSX_DEPLOYMENT_TARGET
 EOF
 
 check_system_libraries "$OUT/bin/ffmpeg"
 check_system_libraries "$OUT/bin/ffprobe"
+for bin in "$OUT/bin/ffmpeg" "$OUT/bin/ffprobe"; do
+  minos=$(vtool -show-build "$bin" | awk '$1 == "minos" { print $2 }')
+  if [ "$minos" != "$MACOSX_DEPLOYMENT_TARGET" ]; then
+    echo "build-ffmpeg: $bin targets macOS $minos, not $MACOSX_DEPLOYMENT_TARGET" >&2
+    exit 1
+  fi
+done
 check_decoders "$OUT/bin/ffmpeg"
 
 version=$(sed -n 's/^HELPER_VERSION = "\([^"]*\)"$/\1/p' "$CUE_PROJECT/helper/src/cue/bootstrap.py")

@@ -85,6 +85,16 @@
   @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
 <h1 data-i18n="sidebar.title">Cue subtitles</h1>
+<section id="setup-card" hidden>
+  <h2 data-i18n="sidebar.setupTitle">Set up Cue</h2>
+  <p data-i18n="sidebar.setupIntro">Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.</p>
+  <p id="setup-detail"></p>
+  <p id="setup-bytes"></p>
+  <progress id="setup-progress" max="100" value="0" hidden></progress>
+  <button id="setup-primary" type="button" hidden data-i18n="sidebar.setupDownload">Download</button>
+  <p><a id="setup-credits" href="licenses/" data-i18n="sidebar.setupCredits">Gemma 4 E2B (Google, Apache 2.0) and Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community).</a></p>
+</section>
+<div id="normal-controls">
 <section>
   <label class="switch-control" for="ai-enabled"><span data-i18n="sidebar.aiSubtitles">AI subtitles</span><input id="ai-enabled" type="checkbox" role="switch" aria-label="AI subtitles" data-i18n-attr="aria-label:sidebar.aiSubtitles"><span class="switch-track" aria-hidden="true"></span></label>
   <p id="status-announce" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
@@ -171,6 +181,7 @@
     </details>
   </div>
 </details>
+</div>
 <script>
   // Strings arrive from the plugin (cue-strings); these English defaults cover
   // the moment before that message and must match plugin/src/strings.ts.
@@ -283,6 +294,20 @@
   remuxName.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();iina.postMessage('action',{action:'cancel-remux'});}});
   document.getElementById('remux-form').addEventListener('submit',event=>{event.preventDefault();iina.postMessage('action',{action:'confirm-remux',filename:remuxName.value});});
   document.getElementById('remux-cancel').addEventListener('click',()=>iina.postMessage('action',{action:'cancel-remux'}));
+  iina.onMessage('cue-setup',data=>{
+    document.getElementById('setup-card').hidden=!data.showCard;
+    document.getElementById('normal-controls').hidden=data.showCard===true;
+    document.getElementById('setup-detail').textContent=data.detail||'';
+    document.getElementById('setup-bytes').textContent=data.bytes||'';
+    const progress=document.getElementById('setup-progress');
+    progress.hidden=data.progress==null;
+    if(data.progress!=null)progress.value=data.progress;
+    const button=document.getElementById('setup-primary');
+    button.hidden=!data.primary;
+    if(data.primary)button.textContent=data.primary;
+    if(data.announce)document.getElementById('status-announce').textContent=data.announce;
+  });
+  document.getElementById('setup-primary').addEventListener('click',()=>iina.postMessage('start-setup',{}));
   document.querySelectorAll('#advanced-actions button[data-action]').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));
   iina.postMessage('ready',{});
 </script>

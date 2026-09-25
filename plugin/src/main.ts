@@ -1,4 +1,7 @@
 import {rpc, disposeClient} from "./client";
+import {type PreflightFacts} from "./install-runtime";
+import {installPublishedRuntime, MODEL_BYTES, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
+import {createSetupController} from "./setup-controller";
 import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
 import {has, sidebarStrings, t} from "./strings";
@@ -344,13 +347,41 @@ for (const target of ["original", "zh-TW", "zh-CN", "en", "ja", "ko"]) menu(t("m
 for (const [label, source] of sourceChoices) menu(t("menu.source", {label}), () => setting("source", source));
 menu(t("menu.prioritize"), () => { if (session) void rpc("POST", `/sessions/${session.session_id}/actions`, {action: "prioritize"}).catch(showActionError); });
 
+const resolveSupportPath = (path: string) => {
+  const utils = iina.utils as {resolvePath?: (path: string) => string | null | undefined};
+  return typeof utils.resolvePath === "function" ? utils.resolvePath(path) : null;
+};
+const setupController = createSetupController({
+  rpc: (method, path, body) => rpc(method, path, body ?? {}),
+  post: (view) => iina.sidebar.postMessage("cue-setup", view),
+  facts: async (): Promise<PreflightFacts> => {
+    const core = iina.core as {getVersion?: () => {iina?: string}};
+    // IINA 1.4 is the oldest host this plugin loads in; an unreadable version is treated as that.
+    const version = typeof core.getVersion === "function" ? core.getVersion()?.iina : undefined;
+    return {
+      ...(await readMacFacts({resolve: resolveSupportPath, exec: (file, args) => iina.utils.exec(file, args)})),
+      iina: version && /^\d+(\.\d+)*/.test(version) ? version.match(/^\d+(\.\d+)*/)![0] : "1.4.0",
+      minimumMacos: RUNTIME_MINIMUM_MACOS,
+      bytesNeeded: RUNTIME_ARCHIVE_BYTES + MODEL_BYTES,
+    };
+  },
+  installRuntime: () => installPublishedRuntime({
+    resolve: resolveSupportPath,
+    exec: (file, args) => iina.utils.exec(file, args),
+    remuxActive: remuxStatus.state === "running",
+    sessions: session ? 1 : 0,
+  }),
+  wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+});
+
 function setupSidebar() {
   if (sidebarLoaded) return;
   // IINA throws when loadFile runs before its native window exists. Defer to
   // window-loaded or a user action; never abort timer/event registration.
   iina.sidebar.loadFile("sidebar.html");
   sidebarLoaded = true;
-  iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
+  iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); void setupController.refresh(); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
+  iina.sidebar.onMessage("start-setup", () => { void setupController.start(); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
     if (data.action === "set-enabled" && typeof data.value === "boolean") {
       if (data.value && !enabled) void start();

@@ -71,6 +71,44 @@ class Supervisor:
         self.started = self.clock()
         self.last_job = self.clock()
         self.manifest_hash = digest(json.loads(model_manifest_path().read_text()))
+        self._setup = None
+        self.smoking = False
+
+    def setup_api(self):
+        if self._setup is None:
+            from . import bootstrap
+            from .setupflow import Setup
+            self._setup = Setup(self.models, bootstrap.model_manifest_path(), run_job=self.run_setup_job)
+        return self._setup
+
+    def run_setup_job(self, job: dict, timeout: float = 300) -> dict:
+        """Run the setup smoke job on the same persistent worker captions use.
+        Setup comes before captions, so a busy worker or a live session refuses it."""
+        with self.lock:
+            if self.busy or self.sessions or self.smoking:
+                raise CueError("SETUP_BUSY", "close Cue in other windows, then retry")
+            self.smoking = True
+            self.start_worker()
+            inbox, outbox, worker = self.inbox, self.outbox, self.worker
+        try:
+            inbox.put(job, timeout=5)
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                try:
+                    message = outbox.get(timeout=1)
+                except queue.Empty:
+                    if not worker.is_alive():
+                        raise CueError("WORKER_FAILED", "the inference worker stopped")
+                    continue
+                if message.get("job_id") == job["job_id"] and "stage" not in message:
+                    return message
+            with self.lock:
+                self.stop_worker()
+            raise CueError("WORKER_FAILED", "the smoke test timed out")
+        finally:
+            with self.lock:
+                self.smoking = False
+                self.last_job = self.clock()
 
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
@@ -119,6 +157,8 @@ class Supervisor:
     def tick(self):
         with self.lock:
             now = self.clock()
+            # The setup smoke job owns the worker's queues until it replies.
+            if self.smoking: return
             for cid in list(self.clients):
                 if now-self.clients[cid] > 45: self.remove_client(cid)
             for sid in list(self.sessions):
@@ -244,13 +284,16 @@ class Supervisor:
         return {"job_id": job_id, "state": "running", "phase": "starting", "progress_pct": None}
 
     def request(self, method: str, path: str, body: dict, client: str | None):
+        # Model identity is hashed outside the request lock and then remembered.
+        if path == "/v1/setup" and method == "GET":
+            return self.setup_api().status()
+        if path == "/v1/setup/actions" and method == "POST":
+            return self.setup_api().action(body)
         with self.lock:
             if path == "/v1/health" and method == "GET":
                 return {"protocol_version": 1, "helper_version": HELPER_VERSION, "worker_busy": self.busy is not None}
             if path == "/v1/clients" and method == "POST":
                 cid = opaque(); self.clients[cid] = self.clock(); return {"client_id": cid, "lease_seconds": 45}
-            if path == "/v1/setup" and method == "GET":
-                return {"ready": (self.models/"gemma/gemma-4-E2B-it.litertlm").is_file() and (self.models/"aligner/model.safetensors").is_file(), "model_manifest": self.manifest_hash}
             if path == "/v1/shutdown" and method == "POST":
                 if self.remux_running(): raise CueError("REMUX_ACTIVE")
                 if self.clients: raise CueError("CLIENTS_ACTIVE")
@@ -380,6 +423,8 @@ class Handler(BaseHTTPRequestHandler):
             print(json.dumps({"event":"request_error","method":self.command,"action":self.path.rsplit('/',1)[-1],"code":exc.code}),flush=True)
             if code == 200: code = 404 if exc.code == "NOT_FOUND" else 400
             response = {"error": {"code": exc.code}}
+            if str(exc) and str(exc) != exc.code:
+                response["error"]["detail"] = str(exc)
         except (ValueError, KeyError, TypeError, OSError):
             code = 400; response = {"error": {"code": "INVALID_REQUEST"}}
         response["instance_id"] = sup.instance

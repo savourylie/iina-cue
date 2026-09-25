@@ -169,7 +169,27 @@ export const en = {
   "sidebar.saveDiagnostics": "Save diagnostics",
   "sidebar.developer": "Developer diagnostics",
   "sidebar.playerDiagnostic": "Player and audio track",
-  "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)"
+  "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)",
+  "sidebar.setupTitle": "Set up Cue",
+  "sidebar.setupIntro": "Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.",
+  "sidebar.setupDisk": "Free disk space needed: {bytes} bytes.",
+  "sidebar.setupDownload": "Download",
+  "sidebar.setupRetry": "Retry",
+  "sidebar.setupPhaseUnsupported": "This Mac cannot run Cue.",
+  "sidebar.setupPhaseDownload": "Set up Cue",
+  "sidebar.setupPhaseRuntime": "Downloading the helper",
+  "sidebar.setupPhaseModels": "Downloading the speech models",
+  "sidebar.setupPhaseVerifying": "Checking the download",
+  "sidebar.setupPhaseSmoke": "Trying a short clip",
+  "sidebar.setupPhaseDone": "Cue is ready",
+  "sidebar.setupPhaseFailed": "Setup did not finish",
+  "sidebar.setupNoFolder": "Cue could not find its folder.",
+  "sidebar.setupDownloadStopped": "The runtime download stopped.",
+  "sidebar.setupRestart": "Wait for the MKV copy to finish or close other Cue windows, then retry.",
+  "sidebar.setupModelsStopped": "The speech model download stopped. Retry continues where it left off.",
+  "sidebar.setupChecksum": "The runtime download does not match the published checksum.",
+  "sidebar.setupUnpackFailed": "The runtime archive could not be unpacked.",
+  "sidebar.setupCredits": "Gemma 4 E2B (Google, Apache 2.0) and Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community)."
 } as const;
 
 export type StringKey = keyof typeof en;
