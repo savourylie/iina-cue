@@ -35,6 +35,15 @@ A general user needs a pack that starts only from the installed runtime (`~/Libr
 - Suggested approach: a build flag or a separate script, such as `npm run build:release`, that defines `CUE_BOOTSTRAP_DEFAULT` as an empty string and passes `development=false`. `planLaunch` already returns `SETUP_REQUIRED` when the development path is not absolute or does not exist.
 - Decide whether the general-user pack keeps the "Technical Preview" name and the description "Requires the Cue helper and models". The sidebar now installs both.
 
+## As-Built Notes
+
+### 2026-09-25
+- `npm run build:release` (`node scripts/build-plugin.mjs --release`) makes `dist/Cue-<version>.iinaplgz`. `npm run build` still makes the development pack, now named `dist/Cue-<version>-dev.iinaplgz` instead of `Cue.iinaplugin-0.1.0.iinaplgz`, so the two cannot be mixed up. The version comes from `plugin/Info.json`.
+- The release build defines `CUE_BOOTSTRAP_DEFAULT` as an empty string, and packs `preferences.html` with the development block hidden. `planLaunch` then either uses the installed runtime, uses an explicit `bootstrap` preference, or reports `SETUP_REQUIRED`. The build stops if either bundle contains the checkout path, the home folder, `/Users/` or `scripts/cue-helper`.
+- The release bundle is written to `dist/release/`. Only the development build writes `plugin/dist/`, because the development link loads that folder. Sharing one output folder would break the linked development plugin after every release build.
+- `plugin/Info.json` is unchanged. Whether the general-user pack keeps "Technical Preview" in its name and "Requires the Cue helper and models" in its description is left for the user; the sidebar now installs both.
+- Not run in IINA. Installing the general-user pack here would replace the development link, which shares the identifier `io.iina.cue`. The first IINA run of this pack is TICKET-012 on a clean Mac.
+
 ## Testing
 - Unit tests: the general-user bundle has no build-machine path, the preferences development block is hidden, and `planLaunch` with an empty development path and no installed marker returns `SETUP_REQUIRED`.
 - `scripts/test` and `npm run build` pass. The new release build command passes and prints the archive path.

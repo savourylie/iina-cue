@@ -33,7 +33,7 @@ scripts/test
 npm run build
 ```
 
-安裝包：`dist/Cue.iinaplugin-0.1.0.iinaplgz`。此機已用 IINA 官方 CLI 建立開發連結，IINA 設定 → Plugins 已辨識 Cue，已啟用供本機驗證。模型設定已完成；字幕預設保留影片原語言，側欄 **Subtitle language** 會依辨識結果顯示如 **English (original)**，也可改選 Traditional Chinese、Simplified Chinese、English、Japanese 或 Korean。側欄 **Subtitle size** 滑桿會即時調整 Cue 字幕大小，停止 Cue 時還原播放器原本的字級。影片預設在字幕準備期間繼續播放，字幕就緒後自動接上；可勾選 **Pause until captions are ready** 與切換 **White text on a translucent black background**（預設開啟）。整個外掛介面使用英文；IINA 外掛選單另提供手動啟用、停止、來源語言、重試與部分匯出。
+開發安裝包：`dist/Cue-0.1.0-dev.iinaplgz`（`npm run build`）；給一般使用者的安裝包是 `dist/Cue-0.1.0.iinaplgz`（`npm run build:release`）。此機已用 IINA 官方 CLI 建立開發連結，IINA 設定 → Plugins 已辨識 Cue，已啟用供本機驗證。模型設定已完成；字幕預設保留影片原語言，側欄 **Subtitle language** 會依辨識結果顯示如 **English (original)**，也可改選 Traditional Chinese、Simplified Chinese、English、Japanese 或 Korean。側欄 **Subtitle size** 滑桿會即時調整 Cue 字幕大小，停止 Cue 時還原播放器原本的字級。影片預設在字幕準備期間繼續播放，字幕就緒後自動接上；可勾選 **Pause until captions are ready** 與切換 **White text on a translucent black background**（預設開啟）。整個外掛介面使用英文；IINA 外掛選單另提供手動啟用、停止、來源語言、重試與部分匯出。
 
 安裝包不內含 Python、FFmpeg 或模型；本版 helper 預設指向建置此包的專案路徑，搬移專案後須重建或更新外掛設定。這是開發版流程，免 Terminal 安裝器尚未實作。[安裝與復原](docs/install.md)
 

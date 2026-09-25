@@ -2,6 +2,7 @@
   "name": "iina-cue", "version": "0.1.0", "private": true, "type": "module",
   "scripts": {
     "build": "tsc --noEmit && node scripts/build-plugin.mjs",
+    "build:release": "tsc --noEmit && node scripts/build-plugin.mjs --release",
     "test": "node --import tsx --test plugin/tests/*.test.ts",
     "check": "npm test && npm run build"
   },

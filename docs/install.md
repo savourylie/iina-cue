@@ -4,7 +4,7 @@ This is a local developer preview, not the spec's finished zero-terminal install
 
 ## Existing machine
 
-The isolated `.venv` and npm dependencies have been installed. `uv.lock` and `package-lock.json` pin them. `dist/Cue.iinaplugin-0.1.0.iinaplgz` was built by IINA's official CLI.
+The isolated `.venv` and npm dependencies have been installed. `uv.lock` and `package-lock.json` pin them. `npm run build` makes the development pack `dist/Cue-0.1.0-dev.iinaplgz`, which starts this checkout's helper and shows the Terminal steps. `npm run build:release` makes the general-user pack `dist/Cue-0.1.0.iinaplgz`, which starts only the installed runtime or shows setup. IINA's official CLI packs both.
 
 A development symlink already exists:
 
