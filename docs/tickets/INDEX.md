@@ -8,9 +8,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 10 |
+| ✅ Done | 11 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 2 |
+| 📋 Pending | 1 |
 | 🚫 Blocked | 2 |
 | ⏸️ Deferred | 0 |
 
@@ -40,8 +40,8 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | # | Ticket | Status | Depends On | Notes |
 | --- | --- | --- | --- | --- |
 | 010 | [End-user install guide](./010-end-user-install-guide.md) | `done` | #009 ✅ | Explains IINA's permission warning |
-| 011 | [Minimum RAM on an 8 GB Mac](./011-minimum-ram-measurement.md) | `pending` | #001 ✅ | The user has an 8 GB Mac and will measure on it |
-| 012 | [**TEST: Checkpoint 1 — Clean install on a SIP-enabled Mac**](./012-test-checkpoint-1-clean-mac-install.md) | `blocked` | #004 ✅, #008 ✅, #009 ✅, #010 ✅, #011, #013, #014 | Gate: public release for general users. See the prerequisites below |
+| 011 | [Minimum RAM on an 8 GB Mac](./011-minimum-ram-measurement.md) | `done` | #001 ✅ | No 8 GB Mac available; 16 GB required by default, not measured |
+| 012 | [**TEST: Checkpoint 1 — Clean install on a SIP-enabled Mac**](./012-test-checkpoint-1-clean-mac-install.md) | `blocked` | #004 ✅, #008 ✅, #009 ✅, #010 ✅, #011 ✅, #013, #014 | Gate: public release for general users. See the prerequisites below |
 
 ## Before TICKET-012 can run
 
@@ -49,10 +49,10 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | # | Prerequisite | State | What is missing |
 | --- | --- | --- | --- |
-| 1 | #011: minimum RAM decided | ⏳ pending | The user measures on their 8 GB Mac. A 16 GB comparison is also needed |
+| 1 | #011: minimum RAM decided | ✅ done | 16 GB by default. No 8 GB Mac was available to measure |
 | 2 | #013: general-user plugin build | 📋 pending, ready to start | `scripts/build-plugin.mjs` builds only the development pack, with this checkout's helper path and the Terminal steps |
 | 3 | #014: published plugin release | 🚫 blocked on #013 | Both install routes in 012 need a general-user `.iinaplgz` on a GitHub Release. Publishing needs the user's approval at the time |
-| 4 | The test Mac | ⏳ user | Apple Silicon, SIP on, IINA 1.4 or later, 16 GB or more (until #011 says otherwise). No Homebrew, Python, Node or project checkout. macOS 14–26 is preferred, because every run so far was on macOS 27.2 and 14.0 is the new minimum |
+| 4 | The test Mac | ⏳ user | Apple Silicon, SIP on, IINA 1.4 or later, 16 GB or more (#011). No Homebrew, Python, Node or project checkout. macOS 14–26 is preferred, because every run so far was on macOS 27.2 and 14.0 is the new minimum |
 
 Already in place: runtime 0.1.6 (macOS 14.0, notarized) on Hugging Face with a GitHub backup, the sidebar setup flow, the real model download and smoke test (#006), and the install guide (#010).
 
