@@ -38,6 +38,18 @@ On a Japanese film with casual, overlapping dialogue (Shoplifters, provided by t
 - Suggested approach: pass `constrained_decoding_config` when creating the conversation and `response_format` when sending. The schema uses `prefixItems` with `const` ids and a `minLength` text. For the target-script rule, validation is the gate; a kana-free pattern can be tried on the retry.
 - Out of scope: translation context from earlier cues (spec §7), locking the detected language, and larger models (TICKET-018).
 
+## As-Built Notes
+
+### 2026-09-25
+- Translation passes a JSON Schema to LiteRT-LM's llguidance constrained decoding: `prefixItems` with a `const` id per cue, `minItems` and `maxItems` equal to the cue count, `items: false`, and text of 1–1000 characters. ASR calls are unchanged. The batch that failed with two strings in one field now translates on the first call, in 3.7 s.
+- `check_target_script` keeps the Han and Hangul rule, and it now rejects hiragana or katakana for zh-TW, zh-CN and ko. It still passes kana for ja.
+- If the batch fails, each cue is translated alone with the kana-free pattern (`^[^\u3040-\u30ff]+$`) for those targets. The script rule then applies to the joined batch, so a name-only cue can stay in Latin letters. The retry never resends the first prompt.
+- The supervisor keeps the half-window retry for alignment and ASR. After that, and at once for `TRANSLATION_FAILED`, the window becomes a failed hole: `failed_ranges` plus `failure`, which holds code, detail and range. Scheduling skips holes. Other codes, such as a missing model, a changed file or a crashed worker, still end the session. Retry clears failed holes and ranges skipped for language.
+- `ready` treats failed and skipped holes as settled, so pause-until-ready does not wait for them. `buffer_*` still counts only installed captions. With the playhead in a failed hole, the sidebar shows "No captions for this part" with Retry. In a range skipped for language it shows "Language unclear". Review found that the settled `ready` would otherwise have replaced that message with "Captions ready".
+- Real sessions on Shoplifters 0–798 s: the supervisor, the worker and the real models, with the viewer never ahead of settled ranges. Before (the TICKET-015 code): the session ended at 138 s with `ALIGNMENT_FAILED` and 0 captions, for both `auto` and `ja`. After: both reached 798 s with no session error. `auto`: 131 captions, 11 holes (136 s), 1 range skipped for language (8 s). `ja`: 134 captions, 13 holes (152 s). 96 and 97 of the 133 embedded English lines had a Cue caption overlapping them in time. No caption contained kana.
+- Most holes are 8 s: the half that failed again after the half-window retry. Accuracy is still limited by E2B transcription. For example, "A crusher... is shaped like a hammer" came out as "是碎石。 / 這樣的黏土就形狀了。". TICKET-018 covers larger models.
+- Not run inside IINA. The plugin changes are covered by unit tests only.
+
 ## Testing
 - Unit tests: the schema sent for a batch; kana rejected for zh and ko targets and accepted for ja; the retry prompt differs from the first; the supervisor turns failures into holes and schedules the next window; Retry clears the holes; `ready` with a hole ahead.
 - Real inference: the same Shoplifters range through a helper session. Record session state, holes and coverage against the embedded English subtitles, before and after.
