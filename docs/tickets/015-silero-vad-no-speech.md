@@ -60,6 +60,11 @@ The specification plans Silero VAD for this: the VAD row in §3.2, `verified_no_
 - The same film shows problems outside this ticket, recorded separately: 35 of 60 speech windows failed alignment, Gemma wrote Korean for Japanese speech, and translation JSON failed identically on both attempts.
 - Not done: no run inside IINA, where the linked plugin still starts the installed 0.1.6. Publishing 0.1.7 and pointing the plugin at it wait for approval, and TICKET-016 covers updating existing installs.
 
+### 2026-09-25 (release)
+- Shipped in runtime 0.1.8, together with TICKET-017. 283,956,592 bytes, SHA-256 `90d9c4f0f20200b26ab15921e0de57b070febf7dcb59fb4a12bd117cb52d8822`, notarization `4b4e80e6-948b-46e5-b5b1-0d4310783334`, Accepted with no issues, minimum macOS 14.0. Hosted on Hugging Face `onionmonster/cue-runtime` at commit `35ab9c22ad9890a0598c13d70247919e8754633b`, with GitHub Release `runtime-0.1.8` as backup. The plugin pins both. Runtime 0.1.7 was notarized but never published.
+- Checks on the signed archive: the plugin's unpack script installs it and deletes the archive, Gatekeeper accepts `libonnxruntime` as a Notarized Developer ID, and the setup smoke test passes. The plugin's install function downloaded it from Hugging Face and unpacked version 0.1.8 in 95.5 s.
+- Existing installs keep their old runtime until TICKET-016.
+
 ## Testing
 - Unit tests: the VAD on generated silence, noise and speech; the segment rule on crafted probability sequences; the pipeline with a stub VAD, where no speech means ASR is never called and speech means the normal path.
 - Real inference: the session-level reproduction with source `auto` and `en`, plus speech under music and quiet speech. Record the results in this ticket.

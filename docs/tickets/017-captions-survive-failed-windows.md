@@ -50,6 +50,11 @@ On a Japanese film with casual, overlapping dialogue (Shoplifters, provided by t
 - Most holes are 8 s: the half that failed again after the half-window retry. Accuracy is still limited by E2B transcription. For example, "A crusher... is shaped like a hammer" came out as "是碎石。 / 這樣的黏土就形狀了。". TICKET-018 covers larger models.
 - Not run inside IINA. The plugin changes are covered by unit tests only.
 
+### 2026-09-25 (release)
+- Shipped in runtime 0.1.8, together with TICKET-015. 283,956,592 bytes, SHA-256 `90d9c4f0f20200b26ab15921e0de57b070febf7dcb59fb4a12bd117cb52d8822`, notarization `4b4e80e6-948b-46e5-b5b1-0d4310783334`, Accepted with no issues, minimum macOS 14.0. Hosted on Hugging Face `onionmonster/cue-runtime` at commit `35ab9c22ad9890a0598c13d70247919e8754633b`, with GitHub Release `runtime-0.1.8` as backup. The plugin pins both. Runtime 0.1.7 was notarized but never published.
+- Checks on the signed archive: the plugin's unpack script installs it and deletes the archive, Gatekeeper accepts `libonnxruntime` as a Notarized Developer ID, and the setup smoke test passes. The plugin's install function downloaded it from Hugging Face and unpacked version 0.1.8 in 95.5 s.
+- Existing installs keep their old runtime until TICKET-016.
+
 ## Testing
 - Unit tests: the schema sent for a batch; kana rejected for zh and ko targets and accepted for ja; the retry prompt differs from the first; the supervisor turns failures into holes and schedules the next window; Retry clears the holes; `ready` with a hole ahead.
 - Real inference: the same Shoplifters range through a helper session. Record session state, holes and coverage against the embedded English subtitles, before and after.

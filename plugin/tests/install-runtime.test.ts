@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {installVerifiedArchive} from '../src/install-archive';
 import {DEFAULT_RAM_BYTES, curlResumeArgs, maySwap, preflight, startInstall} from '../src/install-runtime';
-import {CREDIT_LINKS, installPublishedRuntime, openCreditLink, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS, UNPACK_RUNTIME_SCRIPT} from '../src/runtime-install';
+import {CREDIT_LINKS, installPublishedRuntime, openCreditLink, RUNTIME_ARCHIVE_BYTES, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS, UNPACK_RUNTIME_SCRIPT} from '../src/runtime-install';
 
 const base = {arch: 'arm64', macos: '27.0', iina: '1.4.4', freeBytes: 10_000, ramBytes: DEFAULT_RAM_BYTES, minimumMacos: '27.0', bytesNeeded: 1000};
 
@@ -197,7 +197,7 @@ test('the runtime download reports the archive size while curl runs, and a finis
     resolve: () => '/Users/cue/Library/Application Support/Cue',
     remuxActive: false,
     sessions: 0,
-    onProgress: (done, total) => { progress.push(done); assert.equal(total, 267837724); },
+    onProgress: (done, total) => { progress.push(done); assert.equal(total, RUNTIME_ARCHIVE_BYTES); },
     wait: () => new Promise<void>((resolve) => setImmediate(resolve)),
     exec: async (file) => {
       if (file === '/usr/bin/curl') return new Promise((resolve) => { finish = () => resolve({status: 0}); });

@@ -9,11 +9,11 @@ import {t} from "./strings";
  * partial file from either one. The SHA-256 decides, not the host.
  */
 export const RUNTIME_ARCHIVE_URLS = [
-  "https://huggingface.co/onionmonster/cue-runtime/resolve/ee592ca17f88074387a8f5486d915c6ab57007b6/runtime-0.1.6.tar.xz",
-  "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.6/runtime-0.1.6.tar.xz",
+  "https://huggingface.co/onionmonster/cue-runtime/resolve/35ab9c22ad9890a0598c13d70247919e8754633b/runtime-0.1.8.tar.xz",
+  "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.8/runtime-0.1.8.tar.xz",
 ] as const;
-export const RUNTIME_ARCHIVE_SHA256 = "4dea7f196f67dbcc34872bdb02eb2cfac54378c3e98da72754240f76f6186483";
-export const RUNTIME_ARCHIVE_BYTES = 267837724;
+export const RUNTIME_ARCHIVE_SHA256 = "90d9c4f0f20200b26ab15921e0de57b070febf7dcb59fb4a12bd117cb52d8822";
+export const RUNTIME_ARCHIVE_BYTES = 283956592;
 
 /**
  * IINA's utils.exec keeps only LC_ALL, so the script sets PATH itself.
@@ -140,7 +140,7 @@ export async function installPublishedRuntime(deps: {
   return {ok: true};
 }
 
-/** Must match release/runtime-0.1.6.json and models/manifest.json. */
+/** Must match release/runtime-0.1.8.json and models/manifest.json. */
 export const RUNTIME_MINIMUM_MACOS = "14.0";
 export const MODEL_BYTES = 3564002544;
 
