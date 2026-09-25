@@ -71,6 +71,17 @@
   .remux-save-path,.remux-note{margin:0;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
   .remux-note{opacity:.75}
   .remux-error{margin:0;font-size:12px;line-height:1.4;color:var(--text-error)}
+  .speech-models{margin:10px 0 8px;padding:0 8px;border:0;min-width:0}
+  .speech-models legend{padding:0;font-size:11px;font-weight:600;letter-spacing:.02em;opacity:.62}
+  .model{margin-top:10px}
+  .model .option{margin-top:0}
+  .model-note{display:block;margin:2px 0 0 21px;font-size:12px;line-height:1.4;opacity:.75}
+  .model-note[data-tone="error"]{opacity:1;color:var(--text-error)}
+  .model progress{display:block;width:calc(100% - 21px);margin:6px 0 0 21px;accent-color:AccentColor}
+  .model-bytes{display:block;margin-left:21px;font-size:12px;opacity:.75;font-variant-numeric:tabular-nums}
+  .model-actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0 21px}
+  .model-credits{margin:10px 0 0;font-size:12px;line-height:1.4;opacity:.75}
+  .model-actions:empty,.model-note:empty,.model-bytes:empty,.model progress[hidden],#speech-models[hidden]{display:none}
   .remux-form input[aria-invalid="true"]{outline:1px solid var(--text-error);outline-offset:0}
   .remux-reveal{margin-top:8px}
   .remux-form-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:2px}
@@ -156,6 +167,11 @@
 </section>
 <details id="advanced" class="advanced">
   <summary data-i18n="sidebar.advanced">Advanced</summary>
+  <fieldset id="speech-models" class="speech-models" hidden>
+    <legend data-i18n="sidebar.speechModel">Speech model</legend>
+    <div id="speech-model-rows"></div>
+    <p id="speech-model-credits" class="model-credits"><span data-i18n="model.creditsLead">Larger models:</span> <a href="#" data-link="gemma-e4b" data-i18n="model.creditE4b">Gemma 4 E4B (Google, Apache 2.0)</a> <span data-i18n="sidebar.creditJoin">and</span> <a href="#" data-link="gemma-12b" data-i18n="model.credit12b">Gemma 4 12B (Google, Apache 2.0)</a>.</p>
+  </fieldset>
   <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions" data-i18n-attr="aria-label:sidebar.advancedActions">
     <button type="button" data-action="remux" data-i18n="sidebar.remux">Save a copy as MKV (reset timestamps)…</button>
     <form id="remux-form" class="remux-form" hidden>
@@ -294,6 +310,32 @@
   remuxName.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();iina.postMessage('action',{action:'cancel-remux'});}});
   document.getElementById('remux-form').addEventListener('submit',event=>{event.preventDefault();iina.postMessage('action',{action:'confirm-remux',filename:remuxName.value});});
   document.getElementById('remux-cancel').addEventListener('click',()=>iina.postMessage('action',{action:'cancel-remux'}));
+  // Rows are updated in place, so a poll never steals focus from a Cancel button.
+  const modelNodes={};let modelRowsById={};
+  function modelNode(row){
+    if(modelNodes[row.id])return modelNodes[row.id];
+    const box=document.createElement('div');box.className='model';
+    box.innerHTML='<label class="option"><input type="radio" name="speech-model"><span><span class="model-name"></span><span class="option-hint model-description"></span><span class="option-hint model-facts"></span></span></label><span class="model-note" role="status"></span><progress max="100" hidden></progress><span class="model-bytes"></span><div class="model-actions"></div>';
+    const radio=box.querySelector('input');radio.value=row.id;
+    radio.addEventListener('change',()=>{if(radio.checked&&!modelRowsById[row.id]?.checked)iina.postMessage('model',{action:'use',model:row.id});});
+    const node={box,radio,name:box.querySelector('.model-name'),description:box.querySelector('.model-description'),facts:box.querySelector('.model-facts'),note:box.querySelector('.model-note'),progress:box.querySelector('progress'),bytes:box.querySelector('.model-bytes'),actions:box.querySelector('.model-actions'),actionKey:null};
+    modelNodes[row.id]=node;return node;
+  }
+  iina.onMessage('cue-models',rows=>{
+    document.getElementById('speech-models').hidden=!rows.length;
+    const list=document.getElementById('speech-model-rows');
+    modelRowsById=Object.fromEntries(rows.map(row=>[row.id,row]));
+    for(const row of rows){
+      const node=modelNode(row);if(node.box.parentNode!==list)list.appendChild(node.box);
+      node.radio.checked=row.checked;node.radio.disabled=row.disabled&&!row.checked;
+      node.name.textContent=row.name;node.description.textContent=row.description;node.facts.textContent=row.facts;
+      if(node.note.textContent!==row.note)node.note.textContent=row.note;node.note.dataset.tone=row.noteTone;
+      node.progress.hidden=row.progress==null;if(row.progress!=null)node.progress.value=row.progress;node.progress.setAttribute('aria-label',row.name);
+      node.bytes.textContent=row.bytes;
+      const key=row.actions.map(a=>a.action+':'+a.label).join('|');
+      if(key!==node.actionKey){node.actionKey=key;node.actions.replaceChildren(...row.actions.map(a=>{const b=document.createElement('button');b.type='button';b.textContent=a.label;b.addEventListener('click',()=>iina.postMessage('model',{action:a.action,model:row.id}));return b;}));}
+    }
+  });
   iina.onMessage('cue-setup',data=>{
     document.getElementById('setup-card').hidden=!data.showCard;
     document.getElementById('normal-controls').hidden=data.showCard===true;
@@ -309,7 +351,7 @@
   });
   document.getElementById('setup-primary').addEventListener('click',()=>iina.postMessage('start-setup',{}));
   // A link would navigate this sidebar. The plugin opens the model page in the browser instead.
-  for(const link of document.querySelectorAll('#setup-credits a[data-link]'))link.addEventListener('click',event=>{event.preventDefault();iina.postMessage('open-link',{link:link.dataset.link});});
+  for(const link of document.querySelectorAll('#setup-credits a[data-link],#speech-model-credits a[data-link]'))link.addEventListener('click',event=>{event.preventDefault();iina.postMessage('open-link',{link:link.dataset.link});});
   document.querySelectorAll('#advanced-actions button[data-action]').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));
   iina.postMessage('ready',{});
 </script>

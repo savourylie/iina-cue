@@ -79,15 +79,21 @@ class Supervisor:
         self.stopping = False
         self.started = self.clock()
         self.last_job = self.clock()
-        self.manifest_hash = digest(json.loads(model_manifest_path().read_text()))
+        # Captions depend on the pinned first-run models; the speech model in use is keyed
+        # separately. The optional catalog's sizes and memory figures stay out of the key.
+        self.manifest_hash = digest(json.loads(model_manifest_path().read_text())["assets"])
+        self.speech_model = self._read_speech_model()
         self._setup = None
         self.smoking = False
+        # True while a model chosen in Advanced is on trial; sessions wait for the outcome.
+        self.switching_model = False
 
     def setup_api(self):
         if self._setup is None:
             from . import bootstrap
             from .setupflow import Setup
-            self._setup = Setup(self.models, bootstrap.model_manifest_path(), run_job=self.run_setup_job)
+            self._setup = Setup(self.models, bootstrap.model_manifest_path(), run_job=self.run_setup_job,
+                                try_model=self.try_speech_model, current_model=lambda: self.speech_model)
         return self._setup
 
     def run_setup_job(self, job: dict, timeout: float = 300) -> dict:
@@ -119,11 +125,64 @@ class Supervisor:
                 self.smoking = False
                 self.last_job = self.clock()
 
+    def _manifest(self) -> dict:
+        return json.loads(model_manifest_path().read_text())
+
+    def _read_speech_model(self) -> str:
+        """The model chosen in Advanced, if its files are still complete; otherwise the default."""
+        from .setupflow import default_speech_model, speech_model_complete
+        manifest = self._manifest()
+        path = self.models / ".speech-model.json"
+        try:
+            chosen = json.loads(path.read_text())["model"] if path.is_file() and not path.is_symlink() else None
+            if chosen and speech_model_complete(self.models, manifest, chosen):
+                return chosen
+        except (OSError, ValueError, KeyError, CueError):
+            pass
+        return default_speech_model(manifest)
+
+    def speech_model_key(self) -> str:
+        """Part of the cache key: captions from one model are never served as another's."""
+        from .setupflow import find_asset, speech_model
+        manifest = self._manifest()
+        choice = speech_model(manifest, self.speech_model)
+        return f"{choice['id']}@{find_asset(manifest, choice['asset'])[0]['revision']}"
+
+    def try_speech_model(self, model_id: str, clip: Path) -> dict:
+        """Restart the worker with model_id and run the smoke job. Keep the model only if
+        the job passes; otherwise go back to the previous model."""
+        from .setupflow import _run_smoke
+        with self.lock:
+            copying = any(job.get("state") == "running" for job in self.remux_jobs.values())
+            if self.busy or self.sessions or self.smoking or self.switching_model or copying:
+                raise CueError("SETUP_BUSY", "close Cue in other windows or wait for the MKV copy, then retry")
+            previous = self.speech_model
+            self.stop_worker()
+            self.speech_model = model_id
+            # A session keyed to the model on trial could cache another model's captions.
+            self.switching_model = True
+        result = None
+        try:
+            result = _run_smoke(clip, self.run_setup_job)
+        finally:
+            passed = bool(result and result.get("passed"))
+            with self.lock:
+                if not passed:
+                    self.stop_worker()
+                    self.speech_model = previous
+                self.switching_model = False
+        # Only a model that passed its trial is remembered for the next helper start.
+        if passed:
+            atomic_write(self.models / ".speech-model.json", json.dumps({"model": model_id}))
+        return result
+
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
+        from .setupflow import speech_model_path
+        gemma = speech_model_path(self.models, self._manifest(), self.speech_model)
         ctx = mp.get_context("spawn")
         self.inbox, self.outbox = ctx.Queue(maxsize=1), ctx.Queue(maxsize=16)
-        self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp")), daemon=True)
+        self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp"), str(gemma)), daemon=True)
         self.worker.start()
 
     def stop_worker(self):
@@ -342,13 +401,14 @@ class Supervisor:
                 if key in self.requests and self.requests[key] in self.sessions:
                     return self.snapshot(self.sessions[self.requests[key]])
                 if len(self.sessions) >= 8: raise CueError("RESOURCE_PRESSURE")
+                if self.switching_model: raise CueError("MODEL_SWITCHING", "a speech model chosen in Advanced is on trial")
                 settings = Settings(**body.get("settings", {}))
                 media = Media.open(body["path"], body.get("track", {}))
                 position = integer(body.get("position_ms", 0), upper=media.duration_ms)
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
-                                         "sentence-cues-v3", VAD_ID])
+                                         "sentence-cues-v3", VAD_ID, self.speech_model_key()])
                 profile = digest([source_profile, settings.target, "translate-v2"])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position)
                 self.cache.register(source_profile, media.signature, "original")

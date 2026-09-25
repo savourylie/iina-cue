@@ -144,8 +144,8 @@ def test_supervisor_hashes_the_runtime_manifest_in_installed_mode(monkeypatch,tm
     from cue.service import Supervisor
     supervisor=Supervisor(tmp_path,tmp_path/'models',clock=lambda:100)
     checkout=json.loads((bootstrap.PROJECT/'models'/'manifest.json').read_text())
-    assert supervisor.manifest_hash==digest(payload)
-    assert supervisor.manifest_hash!=digest(checkout)
+    assert supervisor.manifest_hash==digest(payload['assets'])
+    assert supervisor.manifest_hash!=digest(checkout['assets'])
 
 def test_runtime_build_ships_a_scanned_launcher_and_manifest():
     script=(bootstrap.PROJECT/'scripts'/'build-runtime').read_text()
