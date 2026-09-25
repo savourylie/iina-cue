@@ -10,7 +10,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | --- | --- |
 | ✅ Done | 11 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 1 |
+| 📋 Pending | 3 |
 | 🚫 Blocked | 2 |
 | ⏸️ Deferred | 0 |
 
@@ -34,6 +34,8 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | 008 | [Plugin installs and updates the runtime](./008-plugin-installs-runtime.md) | `done` | #005 ✅, #007 ✅ | Downloads with curl or http.download, which leave no quarantine flag |
 | 009 | [Sidebar "Set up Cue" flow](./009-sidebar-set-up-cue-flow.md) | `done` | #006 ✅, #008 ✅ | Follows DESIGN.md; includes credits |
 | 013 | [General-user plugin build](./013-general-user-plugin-build.md) | `pending` | #009 ✅ | No build-machine path in the bundle; Terminal steps hidden |
+| 015 | [Detect stretches without speech with Silero VAD](./015-silero-vad-no-speech.md) | `pending` | #001 ✅, #004 ✅, #007 ✅ | Music or quiet openings: no "Language unclear", no session error; runtime 0.1.7 |
+| 016 | [Plugin replaces an outdated runtime](./016-plugin-updates-outdated-runtime.md) | `pending` | #008 ✅ | #008's newer-runtime swap was never implemented |
 
 ## Docs and verification
 
