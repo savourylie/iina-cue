@@ -6,7 +6,7 @@ You need an Apple Silicon Mac, macOS 14.0 or later, and IINA 1.4 or later. Plan 
 
 ## Double-click the plugin
 
-1. Get `Cue.iinaplugin-0.1.0.iinaplgz`.
+1. Get `Cue-0.1.0.iinaplgz`.
 2. Double-click it.
 3. When IINA asks, confirm the install.
 4. Open IINA, then Settings, then Plugins, and enable Cue.
