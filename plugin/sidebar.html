@@ -97,8 +97,8 @@
 </style>
 <h1 data-i18n="sidebar.title">Cue subtitles</h1>
 <section id="setup-card" hidden>
-  <h2 data-i18n="sidebar.setupTitle">Set up Cue</h2>
-  <p data-i18n="sidebar.setupIntro">Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.</p>
+  <h2 id="setup-title" data-i18n="sidebar.setupTitle">Set up Cue</h2>
+  <p id="setup-intro" data-i18n="sidebar.setupIntro">Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.</p>
   <p id="setup-detail"></p>
   <p id="setup-bytes"></p>
   <progress id="setup-progress" max="100" value="0" hidden></progress>
@@ -338,7 +338,11 @@
   });
   iina.onMessage('cue-setup',data=>{
     document.getElementById('setup-card').hidden=!data.showCard;
-    document.getElementById('normal-controls').hidden=data.showCard===true;
+    // An offered update leaves captions usable; setup and a running update replace the controls.
+    document.getElementById('normal-controls').hidden=data.showControls===false;
+    if(data.title)document.getElementById('setup-title').textContent=data.title;
+    if(data.intro)document.getElementById('setup-intro').textContent=data.intro;
+    document.getElementById('setup-credits').hidden=data.credits===false;
     document.getElementById('setup-detail').textContent=data.detail||'';
     document.getElementById('setup-bytes').textContent=data.bytes||'';
     const progress=document.getElementById('setup-progress');

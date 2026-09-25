@@ -205,6 +205,55 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   assert.equal(element('normal-controls').hidden, false);
 });
 
+test('an offered update keeps captions usable and names its size; a running one replaces the controls', () => {
+  const script = readFileSync('plugin/sidebar.html', 'utf8').match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  const elements = new Map<string, any>();
+  const element = (id: string) => {
+    if (!elements.has(id)) elements.set(id, {hidden: id === 'setup-card', textContent: '', value: 0, dataset: {}, listeners: new Map(), addEventListener(name: string, fn: any) {this.listeners.set(name, fn);}});
+    return elements.get(id);
+  };
+  const messages = new Map<string, (data: any) => void>();
+  const posted: [string, any][] = [];
+  vm.runInNewContext(script, {
+    setTimeout: () => 0, clearTimeout: () => {},
+    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}})},
+    iina: {onMessage: (name: string, fn: any) => messages.set(name, fn), postMessage: (name: string, data: any) => posted.push([name, data])},
+  });
+  const show = (phase: Parameters<typeof setupView>[0]['phase'], extra: Partial<Parameters<typeof setupView>[0]> = {}) => {
+    const view = setupView({phase, mode: 'update', updateBytes: 283_954_324, ...extra});
+    messages.get('cue-setup')!(view);
+    return view;
+  };
+  const offer = show('update');
+  assert.equal(element('setup-card').hidden, false);
+  assert.equal(element('normal-controls').hidden, false, 'the installed helper still works until the user updates');
+  assert.equal(element('setup-title').textContent, "Update Cue's helper");
+  assert.match(element('setup-intro').textContent, /speech models and subtitles stay/);
+  assert.equal(element('setup-credits').hidden, true);
+  assert.equal(offer.primary, 'Update');
+  assert.equal(offer.detail, 'It is a 284 MB download. Turn off AI subtitles in every IINA window before you update.');
+  assert.equal(posted.some(([name]) => name === 'start-setup'), false, 'nothing starts without the button');
+  element('setup-primary').listeners.get('click')();
+  assert.equal(posted[posted.length - 1][0], 'start-setup');
+  const running = show('runtime', {bytesDone: 142_000_000, bytesTotal: 283_954_324, previous: 'update'});
+  assert.equal(element('normal-controls').hidden, true);
+  assert.equal(running.detail, 'Downloading the update');
+  assert.equal(running.bytes, '142 MB of 284 MB (50%)');
+  assert.equal(show('unpacking', {previous: 'runtime'}).detail, 'Checking and installing the update. This takes about half a minute.');
+  const failed = show('failed', {reason: 'Cue\'s helper is still in use.', previous: 'unpacking'});
+  assert.equal(element('normal-controls').hidden, false, 'a failed update leaves the old helper working');
+  assert.equal(failed.primary, 'Retry');
+  assert.equal(failed.announce, 'The update did not finish');
+  assert.equal(show('done', {previous: 'smoke'}).announce, "Cue's helper is up to date");
+  assert.equal(element('setup-card').hidden, true);
+  // First-run setup gets its own heading and the model credits back.
+  messages.get('cue-setup')!(setupView({phase: 'download', diskBytes: 3_834_972_052}));
+  assert.equal(element('setup-title').textContent, 'Set up Cue');
+  assert.equal(element('setup-credits').hidden, false);
+  assert.equal(element('normal-controls').hidden, true);
+});
+
 test('with nothing left to download, setup says so and offers Continue', () => {
   const view = setupView({phase: 'download', diskBytes: 0});
   assert.equal(view.primary, 'Continue');

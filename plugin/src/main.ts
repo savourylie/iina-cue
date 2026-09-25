@@ -1,6 +1,6 @@
-import {rpc, disposeClient} from "./client";
+import {rpc, disposeClient, helperIdentity, stopHelper} from "./client";
 import {type PreflightFacts} from "./install-runtime";
-import {installPublishedRuntime, MODEL_BYTES, openCreditLink, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
+import {installPublishedRuntime, MODEL_BYTES, openCreditLink, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS, RUNTIME_VERSION} from "./runtime-install";
 import {createSetupController} from "./setup-controller";
 import {modelRows, modelsBusy, type ModelAction, type ModelsStatus} from "./speech-models";
 import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, holeAt, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
@@ -373,7 +373,7 @@ const setupController = createSetupController({
       bytesNeeded: RUNTIME_ARCHIVE_BYTES + MODEL_BYTES,
     };
   },
-  installRuntime: (onProgress, onUnpack) => installPublishedRuntime({
+  installRuntime: (onProgress, onUnpack, update) => installPublishedRuntime({
     onProgress,
     onUnpack,
     wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
@@ -381,8 +381,20 @@ const setupController = createSetupController({
     exec: (file, args) => iina.utils.exec(file, args),
     remuxActive: remuxStatus.state === "running",
     sessions: session ? 1 : 0,
+    ...(update ? {
+      busyReason: t("sidebar.updateBusy"),
+      // Checked again: the download can take minutes, and captions may have started meanwhile.
+      // The helper itself refuses while another window or an MKV copy uses it.
+      beforeSwap: async () => {
+        if (session || remuxStatus.state === "running") return {ok: false as const, reason: t("sidebar.updateBusy")};
+        const stopped = await stopHelper();
+        return stopped.ok ? {ok: true as const} : {ok: false as const, reason: t("sidebar.updateBusy")};
+      },
+    } : {}),
   }),
   wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  helper: helperIdentity,
+  runtime: {version: RUNTIME_VERSION, bytes: RUNTIME_ARCHIVE_BYTES},
 });
 
 // Speech models in Advanced. Polls only while the helper downloads or tries one.
@@ -390,6 +402,8 @@ let speechModels: ModelsStatus | null = null;
 let speechModelError: {model: string; code: string} | null = null;
 let speechModelPoll = false;
 async function refreshSpeechModels() {
+  // A request now would start the old helper while its runtime is being replaced.
+  if (setupController.swapping()) return;
   try { speechModels = (await rpc<{speech_models?: ModelsStatus}>("GET", "/setup")).speech_models ?? null; }
   catch { speechModels = null; }
   if (sidebarLoaded) iina.sidebar.postMessage("cue-models", modelRows(speechModels, speechModelError));
@@ -415,7 +429,8 @@ function setupSidebar() {
   iina.sidebar.loadFile("sidebar.html");
   sidebarLoaded = true;
   iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); void setupController.refresh(); void refreshSpeechModels(); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
-  iina.sidebar.onMessage("start-setup", () => { void setupController.start(); });
+  // A finished setup or update can change which speech models the helper offers.
+  iina.sidebar.onMessage("start-setup", () => { void setupController.start().then(() => refreshSpeechModels()); });
   iina.sidebar.onMessage("model", (data: {action?: string; model?: string}) => { void speechModelAction(data); });
   iina.sidebar.onMessage("open-link", (data: {link?: unknown}) => { openCreditLink(data?.link, (file, args) => iina.utils.exec(file, args)); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
