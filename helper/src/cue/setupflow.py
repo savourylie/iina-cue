@@ -249,6 +249,10 @@ class Setup:
     def status(self) -> dict:
         from .core import digest
         body = describe(self.manifest(), self.models, _read_progress(self.progress_path))
+        # A saved "downloading" outlives a stopped helper. No thread here means
+        # nothing is downloading; a resume continues from the partial files.
+        if body["progress"]["phase"] == "downloading" and not (self._thread and self._thread.is_alive()):
+            body["progress"]["phase"] = "interrupted"
         body["model_manifest"] = digest(self.manifest())
         return body
 
