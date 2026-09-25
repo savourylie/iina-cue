@@ -1,3 +1,4 @@
+import {formatBytes} from "./setup-view";
 export const DEFAULT_RAM_BYTES = 16 * 1024 * 1024 * 1024;
 
 /** A fact the plugin could not read is left out; preflight does not guess it. */
@@ -35,10 +36,10 @@ export function preflight(facts: PreflightFacts): Preflight {
   }
   if (compareVersions(facts.iina, "1.4.0") < 0) return {ok: false, code: "IINA_TOO_OLD", reason: "IINA 1.4 or later is required."};
   if (facts.freeBytes !== undefined && facts.freeBytes < facts.bytesNeeded) {
-    return {ok: false, code: "DISK_FULL", reason: `Not enough disk space. ${facts.bytesNeeded} bytes are required.`};
+    return {ok: false, code: "DISK_FULL", reason: `Not enough disk space. About ${formatBytes(facts.bytesNeeded)} is required.`};
   }
   const ram = facts.ramThresholdBytes ?? DEFAULT_RAM_BYTES;
-  if (facts.ramBytes !== undefined && facts.ramBytes < ram) return {ok: false, code: "LOW_MEMORY", reason: `At least ${ram} bytes of memory are required.`};
+  if (facts.ramBytes !== undefined && facts.ramBytes < ram) return {ok: false, code: "LOW_MEMORY", reason: `Cue needs at least ${Math.round(ram / 2 ** 30)} GB of memory.`};
   return {ok: true};
 }
 

@@ -30,12 +30,12 @@ test('sidebar ready posts the setup card and start-setup runs install then the h
   assert.equal(posts[0].showCard, true);
   assert.equal(posts[0].ready, false);
   assert.equal(posts[0].primary, 'Download');
-  assert.match(posts[0].detail, /3834972052/);
+  assert.equal(posts[0].detail, 'Needs about 3.8 GB of free disk space.');
   assert.equal(calls.includes('install'), false);
   await controller.start();
   assert.ok(calls.includes('install'));
-  assert.ok(calls.includes('POST /v1/setup/actions start'));
-  assert.ok(calls.includes('POST /v1/setup/actions smoke'));
+  assert.ok(calls.includes('POST /setup/actions start'));
+  assert.ok(calls.includes('POST /setup/actions smoke'));
 });
 
 test('low free disk does not start the download', async () => {
@@ -50,7 +50,7 @@ test('low free disk does not start the download', async () => {
   });
   await controller.start();
   assert.equal(installed, false);
-  assert.match(posts[posts.length - 1].detail, /3834972052 bytes are required/);
+  assert.match(posts[posts.length - 1].detail, /About 3\.8 GB is required/);
   assert.equal(posts[posts.length - 1].primary, null);
 });
 
@@ -158,7 +158,7 @@ test('an interrupted download offers retry, and retry resumes without reinstalli
   await controller.refresh();
   assert.equal(posts[0].primary, 'Retry');
   await controller.start();
-  assert.ok(helper.calls.includes('POST /v1/setup/actions resume'));
+  assert.ok(helper.calls.includes('POST /setup/actions resume'));
   assert.ok(!helper.calls.some((call) => call.endsWith(' start')));
 });
 
@@ -196,4 +196,40 @@ test('Mac facts come from system tools, and an unreadable fact stays unknown', a
   const unknown = await readMacFacts({resolve: () => null, exec: async () => ({status: 1})});
   assert.deepEqual(unknown, {arch: undefined, macos: undefined, freeBytes: undefined, ramBytes: undefined});
   assert.equal(preflight({...unknown, iina: '1.4.4', minimumMacos: '27.0', bytesNeeded: 1}).ok, true);
+});
+
+test('after the runtime download, the card says it is unpacking instead of sitting at 100%', async () => {
+  const posts: {detail: string; bytes: string; progress: number | null}[] = [];
+  let helperUp = false;
+  const controller = createSetupController({
+    rpc: async (method, path, body) => {
+      if (!helperUp) throw new Error('SETUP_REQUIRED');
+      return {files_ready: true, bytes_needed: 0, progress: {phase: body?.action === 'smoke' ? 'smoke' : 'idle'}, smoke: body?.action === 'smoke' ? {passed: true} : null};
+    },
+    post: (view) => posts.push(view),
+    facts: async () => facts,
+    wait: async () => {},
+    installRuntime: async (onProgress, onUnpack) => {
+      // Real reports are a second apart; let each one reach the card.
+      const tick = async () => { for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setImmediate(resolve)); };
+      onProgress(134_000_000, 267_837_724);
+      await tick();
+      onProgress(267_837_724, 267_837_724);
+      await tick();
+      onUnpack();
+      // A late size report during unpacking must not bring the progress bar back.
+      onProgress(267_837_724, 267_837_724);
+      for (let i = 0; i < 5; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+      helperUp = true;
+      return {ok: true};
+    },
+  });
+  await controller.start();
+  const details = posts.map((view) => view.detail);
+  assert.ok(posts.some((view) => view.bytes === '134 MB of 268 MB (50%)'));
+  const unpackAt = details.findIndex((detail) => /unpacking the helper/.test(detail));
+  assert.ok(unpackAt > 0, details.join('\n'));
+  assert.equal(posts[unpackAt].bytes, '');
+  assert.equal(posts[unpackAt].progress, null);
+  assert.ok(posts.slice(unpackAt).every((view) => view.bytes === ''));
 });

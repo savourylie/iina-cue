@@ -77,6 +77,8 @@ fi
 marker="$(dirname "$destination")/installed"
 printf '1\\n' > "$marker"
 rm -rf "$previous"
+# The runtime is in place; the 268 MB archive is no longer needed.
+rm -f "$archive"
 `;
 
 export function unpackRuntimeInvocation(archive: string, destination: string, expectedSha256: string): {file: string; args: string[]} {
@@ -95,6 +97,11 @@ export async function installPublishedRuntime(deps: {
   exec: (file: string, args: string[]) => Promise<RuntimeExecResult>;
   remuxActive: boolean;
   sessions: number;
+  /** Bytes of the archive on disk so far, about once a second while curl runs. */
+  onProgress?: (done: number, total: number) => void;
+  /** The download is complete; checking and unpacking take tens of seconds. */
+  onUnpack?: () => void;
+  wait?: (ms: number) => Promise<void>;
 }): Promise<{ok: true} | {ok: false; reason: string}> {
   const decision = maySwap({remuxActive: deps.remuxActive, sessions: deps.sessions});
   if (!decision.ok) return {ok: false, reason: t("sidebar.setupRestart")};
@@ -104,9 +111,24 @@ export async function installPublishedRuntime(deps: {
   let downloaded = false;
   for (const url of RUNTIME_ARCHIVE_URLS) {
     const curl = curlResumeArgs(url, partial);
-    if ((await deps.exec(curl[0], curl.slice(1))).status === 0) { downloaded = true; break; }
+    let running = true;
+    const download = deps.exec(curl[0], curl.slice(1)).finally(() => { running = false; });
+    // curl through utils.exec reports nothing until it exits; read the file size instead.
+    // Not awaited: installing never waits on the progress reader.
+    void (async () => {
+      const {onProgress, wait} = deps;
+      if (!onProgress || !wait) return;
+      while (running) {
+        const size = Number((await deps.exec("/usr/bin/stat", ["-f%z", partial]).catch(() => ({stdout: ""}))).stdout);
+        if (running && Number.isFinite(size) && size > 0) onProgress(size, RUNTIME_ARCHIVE_BYTES);
+        await wait(1000);
+      }
+    })();
+    const result = await download;
+    if (result.status === 0) { downloaded = true; break; }
   }
   if (!downloaded) return {ok: false, reason: t("sidebar.setupDownloadStopped")};
+  deps.onUnpack?.();
   const unpack = unpackRuntimeInvocation(partial, `${support}/runtime`, RUNTIME_ARCHIVE_SHA256);
   const unpacked = await deps.exec(unpack.file, unpack.args);
   if (unpacked.status === 2) {
@@ -149,4 +171,20 @@ export async function readMacFacts(deps: {
   const available = Number(df?.split("\n")[1]?.trim().split(/\s+/)[3]);
   const freeBytes = Number.isFinite(available) && available >= 0 ? available * 1024 : undefined;
   return {arch, macos, freeBytes, ramBytes};
+}
+
+/**
+ * Model pages the setup credits open. Keys come from the sidebar; the URLs
+ * never do. These are the repositories pinned in models/manifest.json.
+ */
+export const CREDIT_LINKS = {
+  gemma: "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
+  aligner: "https://huggingface.co/mlx-community/Qwen3-ForcedAligner-0.6B-4bit",
+} as const;
+
+/** The browser opens the page; /usr/bin/open is a system tool, not a plugin file. */
+export function openCreditLink(key: unknown, exec: (file: string, args: string[]) => unknown): boolean {
+  if (typeof key !== "string" || !Object.prototype.hasOwnProperty.call(CREDIT_LINKS, key)) return false;
+  void exec("/usr/bin/open", [CREDIT_LINKS[key as keyof typeof CREDIT_LINKS]]);
+  return true;
 }

@@ -16,7 +16,8 @@ export interface SetupHost {
   post(view: SetupView): void;
   /** Facts about this Mac. Runtime plus model bytes when the helper cannot answer yet. */
   facts(): Promise<PreflightFacts>;
-  installRuntime(): Promise<{ok: boolean; reason?: string}>;
+  /** Paths are relative to the helper API; the client adds its /v1 prefix. */
+  installRuntime(onProgress: (done: number, total: number) => void, onUnpack: () => void): Promise<{ok: boolean; reason?: string}>;
   /** Pause between polls of a running model download. */
   wait(ms: number): Promise<void>;
 }
@@ -28,10 +29,12 @@ export function createSetupController(host: SetupHost) {
   let previous: SetupPhase | undefined;
   let started = false;
   let running = false;
+  let runtimeProgress: {done: number; total: number} | null = null;
+  let unpacking = false;
 
   /** The helper answers only once a runtime is installed; null means it cannot yet. */
   async function helperStatus(): Promise<SetupStatus | null> {
-    try { return await host.rpc("GET", "/v1/setup"); } catch { return null; }
+    try { return await host.rpc("GET", "/setup"); } catch { return null; }
   }
 
   async function gate(reported: SetupStatus | null) {
@@ -50,6 +53,7 @@ export function createSetupController(host: SetupHost) {
       : status.smoke?.passed && status.files_ready ? "done"
       : reason || (helperPhase && STOPPED.has(helperPhase)) || status.smoke?.passed === false ? "failed"
       : helperPhase === "downloading" ? "models"
+      : running && unpacking ? "unpacking"
       : helperPhase === "smoking" || (running && status.files_ready) ? "smoke"
       : running ? "runtime"
       : started ? "failed"
@@ -57,8 +61,8 @@ export function createSetupController(host: SetupHost) {
     const view = setupView({
       phase,
       previous,
-      bytesDone: status.progress?.bytes_done,
-      bytesTotal: status.progress?.bytes_total ?? status.bytes_total,
+      bytesDone: phase === "runtime" ? runtimeProgress?.done : status.progress?.bytes_done,
+      bytesTotal: phase === "runtime" ? runtimeProgress?.total : status.progress?.bytes_total ?? status.bytes_total,
       diskBytes: bytesNeeded,
       reason: result.ok ? (reason ?? status.smoke?.reason) : result.reason,
     });
@@ -75,25 +79,34 @@ export function createSetupController(host: SetupHost) {
     await publish(undefined, first);
     if (!first) {
       // No helper yet: fetch and unpack the runtime before anything else.
-      const installed = await host.installRuntime();
+      runtimeProgress = null;
+      unpacking = false;
+      // No helper to ask while its runtime downloads: known = null skips the request.
+      const installed = await host.installRuntime(
+        (done, total) => { if (!unpacking) { runtimeProgress = {done, total}; void publish(undefined, null); } },
+        () => { unpacking = true; void publish(undefined, null); },
+      );
+      unpacking = false;
       if (!installed.ok) return publish(installed.reason);
     }
     try {
-      let status = await host.rpc("POST", "/v1/setup/actions", {action: first?.progress?.bytes_done ? "resume" : "start"});
+      // Files already in place need no download request, only the smoke test.
+      let status = first?.files_ready ? first
+        : await host.rpc("POST", "/setup/actions", {action: first?.progress?.bytes_done ? "resume" : "start"});
       // The download runs in the helper's own thread; the smoke test needs its files.
       while (status.progress?.phase === "downloading") {
         await publish(undefined, status);
         await host.wait(1000);
-        status = await host.rpc("GET", "/v1/setup");
+        status = await host.rpc("GET", "/setup");
       }
       if (!status.files_ready) return publish(undefined, status);
       await publish(undefined, status);
       // The helper runs the smoke test on its inference worker in the background.
-      status = await host.rpc("POST", "/v1/setup/actions", {action: "smoke"});
+      status = await host.rpc("POST", "/setup/actions", {action: "smoke"});
       while (status.progress?.phase === "smoking") {
         await publish(undefined, status);
         await host.wait(1000);
-        status = await host.rpc("GET", "/v1/setup");
+        status = await host.rpc("GET", "/setup");
       }
       return publish(undefined, status);
     } catch {
