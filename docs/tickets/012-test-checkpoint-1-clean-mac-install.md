@@ -5,6 +5,10 @@
 
 ## Dependencies
 - Requires: #004 ✅, #008 ✅, #009 ✅, #010 ✅, #011
+- Also requires, with no ticket yet:
+  - a general-user plugin build. `scripts/build-plugin.mjs` makes only the development pack.
+  - a published plugin release for both install routes.
+- Test Mac: Apple Silicon, SIP on, IINA 1.4 or later, 16 GB or more, and never used for development. macOS 14–26 is preferred, because runtime 0.1.6's minimum of 14.0 has only been checked from the binaries, never run on an older system.
 
 ## Description
 This gate proves the whole path the way a real user meets it, which no single ticket covers:
