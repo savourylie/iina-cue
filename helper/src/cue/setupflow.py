@@ -55,6 +55,9 @@ def partial_path(dest: Path) -> Path:
     return path
 
 
+_verified: dict[tuple[str, int, int], bool] = {}
+
+
 def _digest_matches(path: Path, item: dict) -> bool:
     if path.is_symlink() or not path.is_file() or path.stat().st_size != item["bytes"]:
         return False
@@ -70,9 +73,23 @@ def _digest_matches(path: Path, item: dict) -> bool:
     return digest.hexdigest() == expected
 
 
+def _installed(path: Path, item: dict) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    info = path.stat()
+    if info.st_size != item["bytes"]:
+        return False
+    key = (str(path), info.st_mtime_ns, info.st_size)
+    known = _verified.get(key)
+    if known is None:
+        known = _digest_matches(path, item)
+        _verified[key] = known
+    return known
+
+
 def _have(models: Path, asset: dict, item: dict) -> tuple[str, int]:
     dest = destination(models, asset, item)
-    if _digest_matches(dest, item):
+    if _installed(dest, item):
         return "installed", item["bytes"]
     partial = partial_path(dest)
     if partial.is_file() and not partial.is_symlink():
@@ -199,19 +216,25 @@ def _fetch(url: str, dest: Path, total: int, item: dict, cancel: threading.Event
     partial.replace(dest)
 
 
-def write_tone(path: Path) -> None:
-    import math
-    import struct
-    rate, count = 16000, 1600
-    frames = b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * 440 * i / rate))) for i in range(count))
-    header = struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + len(frames), b"WAVE", b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16, b"data", len(frames))
+SMOKE_TEXT = "Cue is checking that speech recognition works on this Mac."
+
+
+def write_speech(path: Path) -> None:
+    """Speak a known English sentence with the system voice. No media is read from the user."""
+    import subprocess
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(header + frames)
+    path.unlink(missing_ok=True)
+    run = subprocess.run(["/usr/bin/say", "-o", str(path), "--file-format=WAVE", "--data-format=LEI16@16000", SMOKE_TEXT],
+                         capture_output=True, timeout=60)
+    if run.returncode != 0 or not path.is_file():
+        raise CueError("SMOKE_FAILED", "the system voice could not write the test clip")
 
 
 class Setup:
-    def __init__(self, models: Path, manifest_path: Path):
+    def __init__(self, models: Path, manifest_path: Path, run_job=None):
         self.models = models
+        # Sends one job to the supervisor's persistent worker and returns its reply.
+        self.run_job = run_job
         self.manifest_path = manifest_path
         self.progress_path = models / ".setup-progress.json"
         self.cancel = threading.Event()
@@ -231,7 +254,14 @@ class Setup:
 
     def status(self) -> dict:
         from .core import digest
+        # Check the thread before reading the file: a thread that ends in between
+        # has already saved its final phase.
+        alive = bool(self._thread and self._thread.is_alive())
         body = describe(self.manifest(), self.models, _read_progress(self.progress_path))
+        # A saved "downloading" outlives a stopped helper. No thread here means
+        # nothing is downloading; a resume continues from the partial files.
+        if body["progress"]["phase"] in {"downloading", "smoking"} and not alive:
+            body["progress"]["phase"] = "interrupted"
         body["model_manifest"] = digest(self.manifest())
         return body
 
@@ -271,7 +301,7 @@ class Setup:
             self._save(phase="verified" if bytes_needed(self.manifest(), self.models) == 0 else "incomplete", error=None)
             return self.status()
         if action == "smoke":
-            return self._smoke()
+            return self._start_smoke()
         self._require_space()
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -282,34 +312,53 @@ class Setup:
             self._thread.start()
         return self.status()
 
-    def _smoke(self) -> dict:
-        clip = self.models.parent / "smoke-clip.wav"
-        write_tone(clip)
+    def _start_smoke(self) -> dict:
         gemma = self.models / "gemma" / "gemma-4-E2B-it.litertlm"
         aligner = self.models / "aligner" / "model.safetensors"
         if gemma.is_symlink() or aligner.is_symlink() or not gemma.is_file() or not aligner.is_file():
-            result = {"passed": False, "reason": "models are not installed", "clip": clip.name}
-        else:
-            result = _run_smoke(self.models, clip)
+            result = {"passed": False, "reason": "models are not installed"}
+            self._save(phase="smoke", smoke=result, error={"code": "SMOKE_FAILED", "detail": result["reason"]})
+            return self.status()
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return self.status()
+            self._save(phase="smoking", smoke=None, error=None)
+            self._thread = threading.Thread(target=self._smoke, name="cue-smoke", daemon=True)
+            self._thread.start()
+        return self.status()
+
+    def _smoke(self) -> None:
+        try:
+            clip = self.models.parent / "smoke-clip.wav"
+            write_speech(clip)
+            result = _run_smoke(clip, self.run_job)
+        except CueError as exc:
+            result = {"passed": False, "reason": str(exc) or exc.code}
+        except Exception as exc:
+            result = {"passed": False, "reason": exc.__class__.__name__}
         self._save(phase="smoke", smoke=result, error=None if result["passed"] else {"code": "SMOKE_FAILED", "detail": result["reason"]})
-        body = self.status()
-        body["smoke"] = result
-        return body
 
 
-def _run_smoke(models: Path, clip: Path) -> dict:
-    """Transcribe and align the synthesized clip. Failure keeps a reason."""
-    try:
-        from .media import Media
-        from .pipeline import Pipeline
-        media = Media.open(str(clip))
-        pipeline = Pipeline(models, models.parent / "audio-temp")
-        prepared = pipeline.run(media, 0, min(media.duration_ms, 1000), 0, "smoke")
-        text = " ".join(cue.text for cue in prepared.cues).strip()
-        if not prepared.cues:
-            return {"passed": False, "reason": "alignment produced no cues", "clip": clip.name}
-        return {"passed": True, "reason": text or "alignment produced cues", "clip": clip.name}
-    except CueError as exc:
-        return {"passed": False, "reason": str(exc) or exc.code, "clip": clip.name}
-    except Exception as exc:
-        return {"passed": False, "reason": exc.__class__.__name__, "clip": clip.name}
+def _run_smoke(clip: Path, run_job) -> dict:
+    """Transcribe, align and translate the spoken clip in the persistent worker."""
+    from dataclasses import asdict
+    from .core import Settings, digest
+    from .media import Media
+    if run_job is None:
+        return {"passed": False, "reason": "no inference worker"}
+    media = Media.open(str(clip), {})
+    settings = Settings(target="zh-TW", source="en")
+    job = {"job_id": "setup-smoke", "media": asdict(media), "settings": asdict(settings), "range": [0, media.duration_ms],
+           "source_profile": digest([media.stream_key, settings.source, "setup-smoke"]), "previous_source": []}
+    reply = run_job(job)
+    if "error" in reply:
+        error = reply["error"]
+        return {"passed": False, "reason": f"{error.get('code')}: {error.get('detail', '')}".rstrip(": ")}
+    result = reply["result"]
+    source = " ".join(cue["text"] for cue in result["source"]).strip()
+    rendered = " ".join(cue["text"] for cue in result["rendered"]).strip()
+    if not source or not rendered:
+        return {"passed": False, "reason": "the test clip produced no subtitles"}
+    timings = result.get("timings", {})
+    return {"passed": True, "reason": source, "translation": rendered,
+            "language": result["language"].get("code"), "seconds": round(timings.get("pipeline_s", 0), 1)}

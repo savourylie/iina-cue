@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {RUNTIME_ARCHIVE_BYTES, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URL} from '../src/runtime-install';
 
 const root = resolve(import.meta.dirname, '../..');
 const manifest = JSON.parse(readFileSync(resolve(root, 'release/runtime-0.1.5.json'), 'utf8'));
@@ -15,6 +16,9 @@ test('the runtime manifest records this notarized archive, including macOS 27.0'
   assert.equal(manifest.architecture, 'arm64');
   assert.deepEqual(manifest.compatible_plugin_versions, ['0.1.0']);
   assert.equal(manifest.published, true);
+  assert.equal(RUNTIME_ARCHIVE_URL, manifest.url);
+  assert.equal(RUNTIME_ARCHIVE_SHA256, manifest.sha256);
+  assert.equal(RUNTIME_ARCHIVE_BYTES, manifest.size);
   const url = new URL(manifest.url);
   assert.equal(url.protocol, 'https:');
   assert.equal(url.hostname, 'github.com');

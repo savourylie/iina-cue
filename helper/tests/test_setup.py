@@ -196,11 +196,118 @@ def test_smoke_reports_failure_with_a_reason_without_models(monkeypatch, tmp_pat
         server.shutdown()
     assert body["smoke"]["passed"] is False
     assert body["smoke"]["reason"] == "models are not installed"
-    assert (tmp_path / "smoke-clip.wav").is_file()
+    assert supervisor.worker is None
     assert server.state.hits == []
+
+
+def test_setup_status_does_not_rehash_or_wait_for_the_request_lock(monkeypatch, tmp_path):
+    body = b"cached-weight"
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest_for(body)))
+    weight = tmp_path / "models" / "gemma" / "model.bin"
+    weight.parent.mkdir(parents=True)
+    weight.write_bytes(body)
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    supervisor = Supervisor(tmp_path / "runtime", tmp_path / "models", clock=lambda: 100)
+    reads = []
+    real_open = type(weight).open
+
+    def counting_open(self, *args, **kwargs):
+        if self.name == "model.bin":
+            reads.append(1)
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(weight), "open", counting_open)
+    supervisor.lock.acquire()
+    try:
+        first = supervisor.request("GET", "/v1/setup", {}, None)
+        second = supervisor.request("GET", "/v1/setup", {}, None)
+    finally:
+        supervisor.lock.release()
+    assert first["files_ready"] is True and second["files_ready"] is True
+    assert reads == [1]
 
 
 def test_development_manifest_stays_the_pinned_file():
     text = (PROJECT / "models" / "manifest.json").read_text()
     assert "litert-community/gemma-4-E2B-it-litert-lm" in text
     assert "mlx-community/Qwen3-ForcedAligner-0.6B-4bit" in text
+
+
+def test_a_download_left_by_a_stopped_helper_reports_interrupted(monkeypatch, tmp_path):
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest_for(BODY)))
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / ".setup-progress.json").write_text(json.dumps({"phase": "downloading", "file": "gemma/model.bin"}))
+    supervisor = Supervisor(tmp_path / "runtime", models, clock=lambda: 100)
+    body = supervisor.request("GET", "/v1/setup", {}, None)
+    assert body["progress"]["phase"] == "interrupted"
+
+
+def fake_models(models):
+    for relative in ("gemma/gemma-4-E2B-it.litertlm", "aligner/model.safetensors"):
+        (models / relative).parent.mkdir(parents=True, exist_ok=True)
+        (models / relative).write_bytes(b"weights")
+
+
+def wait_smoke(supervisor):
+    for _ in range(300):
+        body = supervisor.request("GET", "/v1/setup", {}, None)
+        if body["progress"]["phase"] != "smoking":
+            return body
+        time.sleep(0.02)
+    return body
+
+
+def test_smoke_speaks_a_clip_and_sends_one_job_to_the_worker(monkeypatch, tmp_path):
+    supervisor, server = bind(monkeypatch, tmp_path, BODY, "full")
+    fake_models(tmp_path / "models")
+    jobs = []
+
+    def run_job(job):
+        jobs.append(job)
+        return {"job_id": job["job_id"], "result": {
+            "source": [{"id": "a", "start_ms": 100, "end_ms": 900, "text": "Cue is checking"}],
+            "rendered": [{"id": "a", "start_ms": 100, "end_ms": 900, "text": "Cue 正在檢查"}],
+            "language": {"code": "en"}, "timings": {"pipeline_s": 4.2}}}
+
+    supervisor.run_setup_job = run_job
+    try:
+        started = supervisor.request("POST", "/v1/setup/actions", {"action": "smoke"}, None)
+        body = wait_smoke(supervisor)
+    finally:
+        server.shutdown()
+    assert started["progress"]["phase"] in {"smoking", "smoke"}
+    assert len(jobs) == 1
+    assert jobs[0]["settings"]["source"] == "en"
+    assert jobs[0]["range"][1] > 1000
+    assert (tmp_path / "smoke-clip.wav").stat().st_size > 1000
+    assert body["smoke"]["passed"] is True
+    assert body["smoke"]["translation"] == "Cue 正在檢查"
+
+
+def test_smoke_with_no_subtitles_fails_with_a_reason(monkeypatch, tmp_path):
+    supervisor, server = bind(monkeypatch, tmp_path, BODY, "full")
+    fake_models(tmp_path / "models")
+    supervisor.run_setup_job = lambda job: {"job_id": job["job_id"], "result": {"source": [], "rendered": [], "language": {"code": "und"}}}
+    try:
+        supervisor.request("POST", "/v1/setup/actions", {"action": "smoke"}, None)
+        body = wait_smoke(supervisor)
+    finally:
+        server.shutdown()
+    assert body["smoke"] == {"passed": False, "reason": "the test clip produced no subtitles"}
+    assert body["ready"] is False
+
+
+def test_smoke_is_refused_while_captions_use_the_worker(monkeypatch, tmp_path):
+    supervisor, server = bind(monkeypatch, tmp_path, BODY, "full")
+    supervisor.busy = {"job_id": "caption"}
+    try:
+        with pytest.raises(CueError) as exc:
+            supervisor.run_setup_job({"job_id": "setup-smoke"})
+    finally:
+        server.shutdown()
+    assert exc.value.code == "SETUP_BUSY"
+    assert supervisor.worker is None

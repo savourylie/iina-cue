@@ -1,11 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
+import {execFileSync, spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync} from 'node:fs';
+import {chmodSync, copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {DEFAULT_RAM_BYTES, curlResumeArgs, installVerifiedArchive, maySwap, preflight, startInstall} from '../src/install-runtime';
+import {installVerifiedArchive} from '../src/install-archive';
+import {DEFAULT_RAM_BYTES, curlResumeArgs, maySwap, preflight, startInstall} from '../src/install-runtime';
+import {installPublishedRuntime, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URL} from '../src/runtime-install';
 
 const base = {arch: 'arm64', macos: '27.0', iina: '1.4.4', freeBytes: 10_000, ramBytes: DEFAULT_RAM_BYTES, minimumMacos: '27.0', bytesNeeded: 1000};
 
@@ -43,10 +45,10 @@ test('a checksum mismatch and a failed unpack leave the working runtime in place
   const root = mkdtempSync(join(tmpdir(), 'cue-install-'));
   try {
     const payload = join(root, 'tree');
-    mkdirSync(join(payload, 'bin'), {recursive: true});
-    writeFileSync(join(payload, 'bin', 'ffmpeg'), 'ffmpeg');
-    const archive = join(root, 'runtime.tar');
-    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'bin']);
+    mkdirSync(join(payload, 'runtime-0.1.5', 'bin'), {recursive: true});
+    writeFileSync(join(payload, 'runtime-0.1.5', 'bin', 'ffmpeg'), 'ffmpeg');
+    const archive = join(root, 'runtime.tar.xz.partial');
+    execFileSync('/usr/bin/tar', ['-cJf', archive, '-C', payload, 'runtime-0.1.5']);
     const sha = createHash('sha256').update(readFileSync(archive)).digest('hex');
     const destination = join(root, 'runtime');
     mkdirSync(join(destination, 'bin'), {recursive: true});
@@ -64,11 +66,58 @@ test('a checksum mismatch and a failed unpack leave the working runtime in place
     assert.equal(busy.ok, false);
     if (!busy.ok) assert.equal(busy.code, 'HELPER_RESTART_REQUIRED');
     assert.equal(readFileSync(join(destination, 'bin', 'keep'), 'utf8'), 'working');
-    execFileSync('/usr/bin/tar', ['-cf', archive, '-C', payload, 'bin']);
+    execFileSync('/usr/bin/tar', ['-cJf', archive, '-C', payload, 'runtime-0.1.5']);
     const goodSha = createHash('sha256').update(readFileSync(archive)).digest('hex');
     const installed = await installVerifiedArchive({archive, expectedSha256: goodSha, destination});
     assert.equal(installed.ok, true);
     assert.equal(readFileSync(join(destination, 'bin', 'ffmpeg'), 'utf8'), 'ffmpeg');
+    assert.equal(readFileSync(join(root, 'installed'), 'utf8'), '1\n');
+    assert.equal(existsSync(join(destination, 'runtime-0.1.5')), false);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('the plugin install path resumes the published archive and rejects a different file', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cue-published-'));
+  try {
+    const payload = join(root, 'tree');
+    mkdirSync(join(payload, 'runtime-0.1.5', 'bin'), {recursive: true});
+    writeFileSync(join(payload, 'runtime-0.1.5', 'bin', 'ffmpeg'), 'ffmpeg');
+    const archive = join(root, 'made.tar.xz');
+    execFileSync('/usr/bin/tar', ['-cJf', archive, '-C', payload, 'runtime-0.1.5']);
+    const calls: string[][] = [];
+    const rejected = await installPublishedRuntime({
+      resolve: () => root,
+      remuxActive: false,
+      sessions: 0,
+      exec: async (file, args) => {
+        calls.push([file, ...args]);
+        if (file === '/usr/bin/curl') {
+          copyFileSync(archive, args[args.indexOf('-o') + 1]);
+          return {status: 0, stdout: '', stderr: ''};
+        }
+        const result = spawnSync(file, args, {encoding: 'utf8'});
+        return {status: result.status ?? 1, stdout: result.stdout, stderr: result.stderr};
+      },
+    });
+    assert.equal(rejected.ok, false);
+    if (!rejected.ok) assert.equal(rejected.reason, 'The runtime download does not match the published checksum.');
+    assert.equal(calls[0][0], '/usr/bin/curl');
+    assert.ok(calls[0].includes('-C'));
+    assert.ok(calls[0].includes('--fail'));
+    assert.equal(calls[0][calls[0].length - 1], RUNTIME_ARCHIVE_URL);
+    assert.equal(calls[1][0], '/bin/sh');
+    assert.ok(calls[1].includes(RUNTIME_ARCHIVE_SHA256));
+    assert.equal(existsSync(join(root, 'installed')), false);
+    assert.equal(existsSync(join(root, 'runtime', 'bin', 'ffmpeg')), false);
+    const busy = await installPublishedRuntime({
+      resolve: () => root,
+      remuxActive: true,
+      sessions: 0,
+      exec: async () => { throw new Error('should not download'); },
+    });
+    assert.equal(busy.ok, false);
   } finally {
     rmSync(root, {recursive: true, force: true});
   }
