@@ -1,7 +1,7 @@
 # [TICKET-013] General-user plugin build
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: #009 ✅
@@ -15,12 +15,12 @@
 A general user needs a pack that starts only from the installed runtime (`~/Library/Application Support/Cue`), or else shows the sidebar setup. TICKET-012 installs this pack, and TICKET-014 publishes it.
 
 ## Acceptance Criteria
-- [ ] One command builds a general-user `.iinaplgz`. Its bundled JavaScript contains no path from the build machine: no home folder, no checkout path, no `scripts/cue-helper`.
-- [ ] With no installed runtime, the general-user pack shows the sidebar setup card. It never runs a helper from outside `~/Library/Application Support/Cue`. A non-empty `bootstrap` preference still works as an explicit override.
-- [ ] The preferences page in the general-user pack hides the development block (`id="dev-setup"`).
-- [ ] The general-user archive still passes `assertSafePluginArchive`: no Mach-O file, dylib or executable script.
-- [ ] The file name carries the plugin version from `plugin/Info.json`, and the development and general-user packs cannot be confused by name.
-- [ ] The development pack still builds and behaves as it does now. `npm run build` keeps working for development.
+- [x] One command builds a general-user `.iinaplgz`. Its bundled JavaScript contains no path from the build machine: no home folder, no checkout path, no `scripts/cue-helper`.
+- [x] With no installed runtime, the general-user pack shows the sidebar setup card. It never runs a helper from outside `~/Library/Application Support/Cue`. A non-empty `bootstrap` preference still works as an explicit override.
+- [x] The preferences page in the general-user pack hides the development block (`id="dev-setup"`).
+- [x] The general-user archive still passes `assertSafePluginArchive`: no Mach-O file, dylib or executable script.
+- [x] The file name carries the plugin version from `plugin/Info.json`, and the development and general-user packs cannot be confused by name.
+- [x] The development pack still builds and behaves as it does now. `npm run build` keeps working for development.
 
 ## References
 - `scripts/build-plugin.mjs`: current single build path, esbuild `define`, IINA's `iina-plugin pack`.

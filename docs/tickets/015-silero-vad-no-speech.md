@@ -1,7 +1,7 @@
 # [TICKET-015] Detect stretches without speech with Silero VAD
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: #001 ✅, #004 ✅, #007 ✅
@@ -18,14 +18,14 @@ Root cause, reproduced on 2026-09-25 with generated audio (40 s of pink noise an
 The specification plans Silero VAD for this: the VAD row in §3.2, `verified_no_speech` in §7.1, and §15.3 "a 60 s opening of pure music or silence does not block viewing". The quality targets in §14.4 say non-speech must not produce invented dialogue. This ticket adds the VAD so a window without speech never reaches ASR and becomes verified non-speech coverage.
 
 ## Acceptance Criteria
-- [ ] A window in which Silero VAD finds no speech skips ASR, language identification, alignment and translation. Its range is committed as `verified_no_speech` with no cues, and playback coverage continues past it.
-- [ ] With the reproduction clip (40 s of ambient sound, then speech), both source `auto` and source `en` produce captions for the speech. Neither run reports `LANGUAGE_UNCERTAIN`, a skipped range, or a session error for the ambient part.
-- [ ] Speech is not filtered out. The spoken fixtures, speech under music, and quiet speech keep their captions. The decision thresholds and the measured probabilities that justify them are recorded in this ticket.
-- [ ] VAD only decides whether a window contains speech. Cue start and end times still come from forced alignment.
-- [ ] The VAD model loads once in the persistent inference worker, not once per window. It runs on the CPU.
-- [ ] The model is the official `silero_vad.onnx` from the PyPI `silero-vad` 6.2.3 wheel, verified by SHA-256 before use. It runs with `onnxruntime`, and neither PyTorch nor the `silero-vad` package is installed.
-- [ ] The cache key includes the VAD model and rule, so results cached before this change are not reused.
-- [ ] Runtime 0.1.7 includes onnxruntime and the model. It still targets macOS 14.0, is notarized, and its license notices cover Silero VAD (MIT) and onnxruntime with its dependencies. Publishing it and pointing the plugin at it wait for the user's approval at the time.
+- [x] A window in which Silero VAD finds no speech skips ASR, language identification, alignment and translation. Its range is committed as `verified_no_speech` with no cues, and playback coverage continues past it.
+- [x] With the reproduction clip (40 s of ambient sound, then speech), both source `auto` and source `en` produce captions for the speech. Neither run reports `LANGUAGE_UNCERTAIN`, a skipped range, or a session error for the ambient part.
+- [x] Speech is not filtered out. The spoken fixtures, speech under music, and quiet speech keep their captions. The decision thresholds and the measured probabilities that justify them are recorded in this ticket.
+- [x] VAD only decides whether a window contains speech. Cue start and end times still come from forced alignment.
+- [x] The VAD model loads once in the persistent inference worker, not once per window. It runs on the CPU.
+- [x] The model is the official `silero_vad.onnx` from the PyPI `silero-vad` 6.2.3 wheel, verified by SHA-256 before use. It runs with `onnxruntime`, and neither PyTorch nor the `silero-vad` package is installed.
+- [x] The cache key includes the VAD model and rule, so results cached before this change are not reused.
+- [x] Runtime 0.1.7 includes onnxruntime and the model. It still targets macOS 14.0, is notarized, and its license notices cover Silero VAD (MIT) and onnxruntime with its dependencies. Publishing it and pointing the plugin at it wait for the user's approval at the time.
 
 ## References
 - `IINA_AI_SUBTITLES_SPEC.md`: §3.2 VAD row, §6.1 "VAD only decides whether there is speech; it is not a forced aligner", §7.1 coverage kinds, §14.4 non-speech and quiet-speech targets, §15.3 music opening.

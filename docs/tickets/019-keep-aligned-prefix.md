@@ -1,7 +1,7 @@
 # [TICKET-019] Keep the aligned part of a window when alignment collapses
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: None
@@ -17,12 +17,12 @@ The rule is all or nothing per window. `coalesce_quantized_units` accepts at mos
 This ticket keeps the aligned part of the window before the collapse. The next window starts at the collapse and transcribes and aligns the rest again, so no text is silently dropped and no time is invented.
 
 ## Acceptance Criteria
-- [ ] When coalescing finds a collapsed run, the aligned units before it are kept, with their measured times unchanged. A collapsed run is more than 3 zero-length tokens, or a span over 1.5 s. For a trailing collapse, the stretched unit before the run is not kept.
-- [ ] The kept units must spell out the beginning of the transcript: their normalized text is a prefix of it. Punctuation is restored on that prefix only.
-- [ ] The window commits up to the start of the collapse, and the next window starts there. The text after the collapse is transcribed and aligned again, not discarded.
-- [ ] If nothing would be kept, or the committed part is shorter than 2 s, the window fails as it does today: half-window retry, then a hole.
-- [ ] No cue time is invented or distributed. Every committed cue starts and ends on aligner times.
-- [ ] Real helper sessions on Shoplifters 0–798 s, `auto` and `ja`, cover more reference lines than TICKET-017, which covered 96 and 97 of 133 lines, with 11 holes over 136 s and 13 holes over 152 s. The hole time is reported too.
+- [x] When coalescing finds a collapsed run, the aligned units before it are kept, with their measured times unchanged. A collapsed run is more than 3 zero-length tokens, or a span over 1.5 s. For a trailing collapse, the stretched unit before the run is not kept.
+- [x] The kept units must spell out the beginning of the transcript: their normalized text is a prefix of it. Punctuation is restored on that prefix only.
+- [x] The window commits up to the start of the collapse, and the next window starts there. The text after the collapse is transcribed and aligned again, not discarded.
+- [x] If nothing would be kept, or the committed part is shorter than 2 s, the window fails as it does today: half-window retry, then a hole.
+- [x] No cue time is invented or distributed. Every committed cue starts and ends on aligner times.
+- [x] Real helper sessions on Shoplifters 0–798 s, `auto` and `ja`, cover more reference lines than TICKET-017, which covered 96 and 97 of 133 lines, with 11 holes over 136 s and 13 holes over 152 s. The hole time is reported too.
 
 ## References
 - `helper/src/cue/core.py`: `coalesce_quantized_units`, `validate_units`, `restore_transcript`, `assemble`.

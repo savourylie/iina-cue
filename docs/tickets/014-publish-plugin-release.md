@@ -1,10 +1,10 @@
 # [TICKET-014] Publish the plugin release
 
 ## Status
-`blocked`
+`pending`
 
 ## Dependencies
-- Requires: #013
+- Requires: #013 ✅
 
 ## Description
 TICKET-012 tests two install routes, and neither has a plugin to install yet:

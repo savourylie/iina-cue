@@ -1,7 +1,7 @@
 # [TICKET-017] One failed window never stops captions; translation output is constrained
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: None
@@ -16,13 +16,13 @@ On a Japanese film with casual, overlapping dialogue (Shoplifters, provided by t
 - 35 of 60 windows with speech in the first 20 minutes failed alignment. With the source fixed to Japanese, 15 of 36 did. Each such window currently risks ending the session.
 
 ## Acceptance Criteria
-- [ ] Translation uses JSON Schema constrained decoding: exactly one object per cue, ids in order, and non-empty text. A broken JSON output can no longer occur.
-- [ ] For Traditional and Simplified Chinese and for Korean targets, a translation that contains hiragana or katakana is rejected. The check is in validation, not only in the prompt.
-- [ ] A retry changes something that matters. For example, it translates the failing cues one at a time. It never resends the identical prompt.
-- [ ] A window that still fails after its bounded retries becomes a failed hole. It is not `verified_no_speech`, the session stays usable, and the next window is scheduled. This holds for `ALIGNMENT_FAILED`, `ASR_FAILED` and `TRANSLATION_FAILED`.
-- [ ] The sidebar says that some captions could not be made and offers Retry. Retry prepares the failed holes again.
-- [ ] "Pause until captions are ready" does not hold playback forever at a hole that no longer has work scheduled.
-- [ ] On the Shoplifters range used for the evidence above, a helper session continues past every failure to the end of the range, and no failure ends the session.
+- [x] Translation uses JSON Schema constrained decoding: exactly one object per cue, ids in order, and non-empty text. A broken JSON output can no longer occur.
+- [x] For Traditional and Simplified Chinese and for Korean targets, a translation that contains hiragana or katakana is rejected. The check is in validation, not only in the prompt.
+- [x] A retry changes something that matters. For example, it translates the failing cues one at a time. It never resends the identical prompt.
+- [x] A window that still fails after its bounded retries becomes a failed hole. It is not `verified_no_speech`, the session stays usable, and the next window is scheduled. This holds for `ALIGNMENT_FAILED`, `ASR_FAILED` and `TRANSLATION_FAILED`.
+- [x] The sidebar says that some captions could not be made and offers Retry. Retry prepares the failed holes again.
+- [x] "Pause until captions are ready" does not hold playback forever at a hole that no longer has work scheduled.
+- [x] On the Shoplifters range used for the evidence above, a helper session continues past every failure to the end of the range, and no failure ends the session.
 
 ## References
 - `helper/src/cue/backend.py`: `send`, `translate`, `TARGET_SCRIPTS`.
