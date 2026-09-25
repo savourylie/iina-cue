@@ -19,7 +19,7 @@ It points to this repository's `plugin/`. IINA visibly recognizes “Cue for IIN
 - Bind a random **127.0.0.1-only** port, protected by a random bearer token and client/session IDs.
 - Show IINA status and native dialogs. No microphone, screen recording, login agent, administrator access or cloud API.
 - Download 3,564,002,544 bytes of pinned public weights after explicit consent; allow 7 GB for models/runtime. Source repositories and revision hashes are printed by `scripts/setup-models` and stored in `models/manifest.json`.
-- Pinned Gemma 4 E2B and Qwen3 ForcedAligner model cards declare Apache 2.0, as do the optional Gemma 4 E4B and 12B, which download only when chosen under Advanced in the Cue sidebar. Read `THIRD_PARTY_NOTICES.md` before downloading models. This project cannot accept license terms on the user's behalf, and the notices are not legal advice.
+- Pinned Gemma 4 E2B and Qwen3 ForcedAligner model cards declare Apache 2.0, as does the optional Gemma 4 E4B, which downloads only when chosen under Advanced in the Cue sidebar. Read `THIRD_PARTY_NOTICES.md` before downloading models. This project cannot accept license terms on the user's behalf, and the notices are not legal advice.
 
 ```sh
 scripts/setup-models                    # print plan only

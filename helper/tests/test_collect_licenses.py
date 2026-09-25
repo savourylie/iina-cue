@@ -69,8 +69,8 @@ def test_wheel_license_is_copied_for_every_distribution(tmp_path):
     assert "Apache License" in (output / "models" / "gemma-4-e2b" / "LICENSE").read_text()
     assert "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1" in (output / "models" / "gemma-4-e2b" / "SOURCE.txt").read_text()
     assert "2eee7ac325f20eb8c9ac1d0e972f7c84663062da" in (output / "models" / "gemma-4-e4b" / "SOURCE.txt").read_text()
-    assert "7a0b1ce0ea821bcd01c5f72af84155e02191152f" in (output / "models" / "gemma-4-12b" / "SOURCE.txt").read_text()
-    assert "Apache License" in (output / "models" / "gemma-4-12b" / "LICENSE").read_text()
+    assert "Apache License" in (output / "models" / "gemma-4-e4b" / "LICENSE").read_text()
+    assert not (output / "models" / "gemma-4-12b").exists(), "12B is not offered, so its notice is not shipped"
     assert "2f652af86ae0c73fe189b9429225c908ce4bf020" in (output / "models" / "qwen3-forced-aligner-0.6b-4bit" / "SOURCE.txt").read_text()
     assert (output / "THIRD_PARTY_NOTICES.md").read_text() == (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
     assert "Mozilla Public License" in (output / "common" / "MPL-2.0.txt").read_text()
@@ -158,7 +158,7 @@ def test_notices_name_apache_gemma_qwen_and_lgpl_obligations():
     assert "not legal advice" in notice
     assert "Apache License, Version 2.0" in notice
     assert "gemma-4-E2B" in notice
-    assert "gemma-4-E4B" in notice and "gemma-4-12B" in notice
+    assert "gemma-4-E4B" in notice
     assert "Qwen3-ForcedAligner" in notice
     assert "ai.google.dev/gemma/terms does not describe this artifact" in notice
     assert "soynlp" in notice

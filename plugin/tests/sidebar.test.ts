@@ -157,7 +157,7 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   for (const [, href] of html.matchAll(/<a [^>]*href="([^"]*)"/g)) assert.equal(href, '#');
   // The plugin pack has no licenses folder; the preferences credits name the models without a local link.
   for (const [, href] of preferences.matchAll(/<a [^>]*href="([^"]*)"/g)) assert.match(href, /^https:\/\//);
-  assert.match(preferences, /Gemma 4 E2B, and the optional E4B and 12B \(Google, Apache 2\.0\)/);
+  assert.match(preferences, /Gemma 4 E2B and the optional E4B \(Google, Apache 2\.0\)/);
   assert.match(preferences, /id="dev-setup" hidden/);
   assert.ok(preferences.indexOf('scripts/setup-dev') > preferences.indexOf('id="dev-setup" hidden'));
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];

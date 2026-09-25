@@ -181,7 +181,6 @@ export const CREDIT_LINKS = {
   gemma: "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
   aligner: "https://huggingface.co/mlx-community/Qwen3-ForcedAligner-0.6B-4bit",
   "gemma-e4b": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm",
-  "gemma-12b": "https://huggingface.co/litert-community/gemma-4-12B-it-litert-lm",
 } as const;
 
 /** The browser opens the page; /usr/bin/open is a system tool, not a plugin file. */

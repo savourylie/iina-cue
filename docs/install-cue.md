@@ -27,12 +27,9 @@ IINA can show a red warning that a plugin "can execute other programs or applica
 
 ## Larger speech models
 
-Cue listens with Gemma 4 E2B. Under Advanced in the Cue sidebar, Speech model offers two larger models. Each is a separate download, and Cue downloads one only when you press its Download button.
+Cue listens with Gemma 4 E2B. Under Advanced in the Cue sidebar, Speech model also offers Gemma 4 E4B, a larger model. It hears difficult dialogue more accurately, and it is a little slower. It is a 3.7 GB download that needs about 6.0 GB of disk space and 16 GB of memory. The disk space includes a cache the model writes the first time it runs. Cue downloads it only when you press its Download button.
 
-- Gemma 4 E4B: a 3.7 GB download that needs about 6.0 GB of disk space and 16 GB of memory. It hears difficult dialogue more accurately, and it is a little slower.
-- Gemma 4 12B: a 6.9 GB download that needs about 12.9 GB of disk space and 24 GB of memory. It is experimental: it is the slowest, and in testing it missed more lines than E2B.
-
-The disk space includes a cache the model writes the first time it runs. To switch models, turn off AI subtitles in every IINA window, then choose the model. Cue tries a short spoken clip with it first. If the clip does not work, Cue keeps the model you had. Remove deletes a model and its cache. Gemma 4 E2B stays installed.
+To switch models, turn off AI subtitles in every IINA window, then choose the model. Cue tries a short spoken clip with it first. If the clip does not work, Cue keeps the model you had. Remove deletes Gemma 4 E4B and its cache. Gemma 4 E2B stays installed.
 
 ## If something goes wrong
 

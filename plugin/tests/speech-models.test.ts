@@ -27,14 +27,14 @@ test('the default model is in use and a larger one offers its download with size
   assert.deepEqual(second.actions, [{action: 'download', label: 'Download (3.7 GB)'}]);
 });
 
-test('a download shows progress and only Cancel, and nothing else can start meanwhile', () => {
-  const rows = modelRows(status([e2b, model({id: 'e4b', state: 'partial', bytes_done: 1_829_765_120}), model({id: '12b', bytes: 6_883_278_368, min_ram_bytes: 24 * GiB})],
+test('a download shows progress and only Cancel, and no model can be chosen meanwhile', () => {
+  const rows = modelRows(status([e2b, model({id: 'e4b', state: 'partial', bytes_done: 1_829_765_120})],
     {download: {model: 'e4b', phase: 'downloading'}}));
   assert.equal(rows[1].progress, 50);
   assert.equal(rows[1].bytes, '1.8 GB of 3.7 GB (50%)');
   assert.deepEqual(rows[1].actions.map((a) => a.action), ['cancel']);
   assert.equal(rows[1].note, 'Downloading…');
-  assert.deepEqual(rows[2].actions, [], 'no second download while one runs');
+  assert.equal(rows[0].disabled, true, 'no switching while a download runs');
   assert.equal(modelsBusy(status([e2b], {download: {model: 'e4b', phase: 'downloading'}})), true);
 });
 
@@ -66,18 +66,18 @@ test('an installed model can be chosen or removed; the trial is announced and th
 });
 
 test('a Mac with too little memory sees why a model is unavailable', () => {
-  const [, , big] = modelRows(status([e2b, model({id: 'e4b'}), model({id: '12b', bytes: 6_883_278_368, min_ram_bytes: 24 * GiB, fits_memory: false})]));
-  assert.equal(big.disabled, true);
-  assert.deepEqual(big.actions, []);
-  assert.equal(big.note, 'Needs 24 GB of memory. This Mac has less.');
+  const [, e4b] = modelRows(status([e2b, model({id: 'e4b', fits_memory: false})], {ram_bytes: 8 * GiB}));
+  assert.equal(e4b.disabled, true);
+  assert.deepEqual(e4b.actions, []);
+  assert.equal(e4b.note, 'Needs 16 GB of memory. This Mac has less.');
 });
 
 test('helper refusals read as plain sentences under the model', () => {
-  const big = model({id: '12b', bytes: 6_883_278_368, disk_bytes: 6_883_278_368, min_ram_bytes: 24 * GiB});
-  assert.equal(modelErrorText('SETUP_BUSY', big), 'Turn off AI subtitles in every IINA window, then choose the model.');
-  assert.equal(modelErrorText('DISK_FULL', big), 'Not enough disk space. About 6.9 GB is needed.');
-  assert.equal(modelErrorText('SOMETHING_ELSE', big), 'That did not work. Try again.');
-  const [, row] = modelRows(status([e2b, big]), {model: '12b', code: 'SETUP_BUSY'});
+  const e4b = model({id: 'e4b'});
+  assert.equal(modelErrorText('SETUP_BUSY', e4b), 'Turn off AI subtitles in every IINA window, then choose the model.');
+  assert.equal(modelErrorText('DISK_FULL', e4b), 'Not enough disk space. About 6.0 GB is needed.', 'the download and its compile cache');
+  assert.equal(modelErrorText('SOMETHING_ELSE', e4b), 'That did not work. Try again.');
+  const [, row] = modelRows(status([e2b, e4b]), {model: 'e4b', code: 'SETUP_BUSY'});
   assert.equal(row.noteTone, 'error');
   assert.doesNotMatch(row.note, /SETUP_BUSY/);
 });
@@ -100,9 +100,8 @@ test('the sidebar has the speech model group and sends the chosen action', () =>
   assert.match(html, /iina\.onMessage\('cue-models'/);
   assert.match(html, /iina\.postMessage\('model',\{action:'use',model:row\.id\}\)/);
   assert.match(html, /iina\.postMessage\('model',\{action:a\.action,model:row\.id\}\)/);
-  // The larger models are credited beside their downloads, and the links open through the plugin.
+  // The larger model is credited beside its download, and the link opens through the plugin.
   const group = html.slice(html.indexOf('<fieldset id="speech-models"'), html.indexOf('</fieldset>'));
   assert.match(group, /data-link="gemma-e4b"[^>]*>Gemma 4 E4B \(Google, Apache 2\.0\)</);
-  assert.match(group, /data-link="gemma-12b"[^>]*>Gemma 4 12B \(Google, Apache 2\.0\)</);
   assert.match(html, /querySelectorAll\('#setup-credits a\[data-link\],#speech-model-credits a\[data-link\]'\)/);
 });

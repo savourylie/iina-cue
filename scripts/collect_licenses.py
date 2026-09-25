@@ -173,14 +173,12 @@ def model_needles(project: Path) -> dict[str, str]:
     try:
         gemma = assets["gemma"]["revision"]
         gemma_e4b = assets["gemma-e4b"]["revision"]
-        gemma_12b = assets["gemma-12b"]["revision"]
         aligner = assets["aligner"]["revision"]
     except KeyError as error:
         fail(f"models/manifest.json is missing {error}")
     return {
         "gemma-4-e2b": gemma,
         "gemma-4-e4b": gemma_e4b,
-        "gemma-4-12b": gemma_12b,
         "qwen3-forced-aligner-0.6b": "Qwen/Qwen3-ForcedAligner-0.6B",
         "qwen3-forced-aligner-0.6b-4bit": aligner,
     }

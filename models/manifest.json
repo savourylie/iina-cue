@@ -101,20 +101,6 @@
           "git_blob": null
         }
       ]
-    },
-    {
-      "name": "gemma-12b",
-      "repository": "litert-community/gemma-4-12B-it-litert-lm",
-      "revision": "7a0b1ce0ea821bcd01c5f72af84155e02191152f",
-      "folder": "gemma-12b",
-      "files": [
-        {
-          "path": "gemma-4-12B-it.litertlm",
-          "bytes": 6883278368,
-          "sha256": "58fd31b778ca2c21c80d634fb34fc5a89d11d563a38dfd3cbf1b40dbf252a8b6",
-          "git_blob": null
-        }
-      ]
     }
   ],
   "speech_models": [
@@ -131,13 +117,6 @@
       "file": "gemma-4-E4B-it.litertlm",
       "min_ram_bytes": 17179869184,
       "cache_bytes": 2319929280
-    },
-    {
-      "id": "12b",
-      "asset": "gemma-12b",
-      "file": "gemma-4-12B-it.litertlm",
-      "min_ram_bytes": 25769803776,
-      "cache_bytes": 5991500024
     }
   ],
   "default_speech_model": "e2b"

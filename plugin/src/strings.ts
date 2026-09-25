@@ -206,8 +206,6 @@ export const en = {
   "model.e2b.description": "Default. The fastest.",
   "model.e4b.name": "Gemma 4 E4B",
   "model.e4b.description": "Hears difficult dialogue more accurately. A little slower.",
-  "model.12b.name": "Gemma 4 12B",
-  "model.12b.description": "Experimental. The slowest, and it can miss more lines than E2B.",
   "model.facts": "{size} download · needs {disk} of disk space and {memory} GB of memory",
   "model.factsInstalled": "Downloaded · uses {disk} of disk space · needs {memory} GB of memory",
   "model.factsDefault": "Installed with Cue · needs {memory} GB of memory",
@@ -225,9 +223,8 @@ export const en = {
   "model.diskFull": "Not enough disk space. About {size} is needed.",
   "model.busy": "Turn off AI subtitles in every IINA window, then choose the model.",
   "model.failed": "That did not work. Try again.",
-  "model.creditsLead": "Larger models:",
-  "model.creditE4b": "Gemma 4 E4B (Google, Apache 2.0)",
-  "model.credit12b": "Gemma 4 12B (Google, Apache 2.0)"
+  "model.creditsLead": "Larger model:",
+  "model.creditE4b": "Gemma 4 E4B (Google, Apache 2.0)"
 } as const;
 
 export type StringKey = keyof typeof en;
