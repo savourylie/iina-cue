@@ -21,7 +21,8 @@ def test_user_guide_covers_both_install_routes_without_terminal():
     assert "10 to 30 minutes" in GUIDE
     assert "unsupported Mac" in GUIDE
     assert "not enough free disk space" in GUIDE
-    assert "interrupted download" in GUIDE
+    assert "continues from the bytes it already saved" in GUIDE
+    assert "spoken test clip" in GUIDE
     assert "remove Cue completely" in GUIDE
 
 

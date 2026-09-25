@@ -30,6 +30,7 @@ The public README and install docs currently describe a developer workflow. A no
 
 ### 2026-09-25
 - The public guide is `docs/install-cue.md`. Requirements use this archive's minimum, macOS 27.0, and the 16 GB memory default. They do not claim an 8 GB measurement from TICKET-011. The README links to the guide and keeps the existing developer prose, including the measured timings. Developer Terminal steps remain in `docs/install.md`.
+- After TICKET-009 was wired, the guide says that a stopped download resumes when the user presses Retry, not by itself when IINA opens again. It also says setup ends with a spoken test clip.
 
 ## Testing
 - Someone unfamiliar with the project follows the guide on the #012 test Mac without help. Note every point where they hesitate.

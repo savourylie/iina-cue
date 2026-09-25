@@ -31,6 +31,8 @@ An unsupported Mac, including an Intel Mac or a system older than macOS 27.0, is
 
 If there is not enough free disk space, Cue names the number of bytes it needs and does not start. Free some space, then press Download again.
 
-An interrupted download continues when you open IINA again. The sidebar shows the bytes already saved. You do not start from zero.
+If the download stops, for example because IINA quit or the connection dropped, the sidebar offers Retry. Press it, and Cue continues from the bytes it already saved. You do not start from zero.
+
+After the download, Cue tries a short spoken test clip before it calls itself ready. If that test fails, the sidebar gives the reason and offers Retry.
 
 To remove Cue completely, quit IINA, open Settings, then Plugins, and remove Cue. Then delete the folder `~/Library/Application Support/Cue`. That folder holds the helper, the models, and the local subtitle cache.
