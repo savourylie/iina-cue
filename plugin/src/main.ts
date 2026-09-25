@@ -2,7 +2,7 @@ import {rpc, disposeClient} from "./client";
 import {type PreflightFacts} from "./install-runtime";
 import {installPublishedRuntime, MODEL_BYTES, openCreditLink, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
 import {createSetupController} from "./setup-controller";
-import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
+import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, holeAt, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
 import {has, sidebarStrings, t} from "./strings";
 import type {StringKey} from "./strings";
@@ -165,6 +165,13 @@ async function consume(snapshot: Snapshot, token: number) {
   if (snapshot.error) {
     if (session.ready) status(partialFailureStatus(session.buffer_wall_ms), true);
     else showError(snapshot.error.code);
+    return;
+  }
+  const hole = holeAt(session, Math.round(number("time-pos")*1000));
+  if (hole) {
+    // Nothing is being prepared here, so playback is never held for it.
+    if (session.ready) intent.ready();
+    status({...hole, coverage: coverage(session)}, lastStage !== hole.title); lastStage = hole.title;
     return;
   }
   if (session.ready) {

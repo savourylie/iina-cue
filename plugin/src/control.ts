@@ -64,6 +64,22 @@ export function readyStatus(aheadMs: number, isPaused: boolean, cueHeldPlayback:
   const key = !isPaused ? "status.readyDetail" : cueHeldPlayback ? "status.readyDetailPressPlay" : "status.readyDetailPaused";
   return {tone: "ready", title: t("status.ready"), detail: t(key, {seconds: (aheadMs/1000).toFixed(0)})};
 }
+/** The playhead is in a range whose window failed after its retries. Later captions keep coming. */
+export function holeStatus(): CueStatus {
+  return {tone: "warning", title: t("status.hole"), detail: t("status.holeDetail"), retry: true};
+}
+export function insideRange(ranges: number[][] | undefined, positionMs: number): boolean {
+  return (ranges ?? []).some(([start, end]) => positionMs >= start && positionMs < end);
+}
+export function unclearStatus(): CueStatus {
+  return {tone: "warning", title: t("status.unclear"), detail: t("status.unclearDetail"), retry: true};
+}
+/** A range under the playhead that will get no captions unless the user retries. */
+export function holeAt(snapshot: Pick<Snapshot, "failed_ranges" | "skipped_language_ranges">, positionMs: number): CueStatus | null {
+  if (insideRange(snapshot.failed_ranges, positionMs)) return holeStatus();
+  if (insideRange(snapshot.skipped_language_ranges, positionMs)) return unclearStatus();
+  return null;
+}
 export function partialFailureStatus(aheadMs: number): CueStatus {
   return {tone: "warning", title: t("status.partial"), detail: t("status.partialDetail", {seconds: (aheadMs/1000).toFixed(0)}), retry: true};
 }
@@ -104,7 +120,7 @@ export function preparationStatus(snapshot: Pick<Snapshot, "stage" | "stage_elap
     const detail = elapsed && elapsed >= 5 ? t("status.stageElapsed", {stage, seconds: Math.floor(elapsed)}) : t("status.stage", {stage});
     return {tone: "working", title: t("status.preparing"), detail};
   }
-  if (snapshot.skipped_language_ranges?.length) return {tone: "warning", title: t("status.unclear"), detail: t("status.unclearDetail"), retry: true};
+  if (snapshot.skipped_language_ranges?.length) return unclearStatus();
   return {tone: "working", title: t("status.preparing"), detail: t("status.nearPlayhead")};
 }
 export function acceptSnapshot(s: {session_id: string; seek_epoch: number; instance_id: string}, id: string, epoch: number, instance: string): boolean {

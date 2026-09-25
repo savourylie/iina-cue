@@ -10,7 +10,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | --- | --- |
 | ✅ Done | 11 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 3 |
+| 📋 Pending | 5 |
 | 🚫 Blocked | 2 |
 | ⏸️ Deferred | 0 |
 
@@ -36,6 +36,8 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | 013 | [General-user plugin build](./013-general-user-plugin-build.md) | `pending` | #009 ✅ | No build-machine path in the bundle; Terminal steps hidden |
 | 015 | [Detect stretches without speech with Silero VAD](./015-silero-vad-no-speech.md) | `pending` | #001 ✅, #004 ✅, #007 ✅ | Music or quiet openings: no "Language unclear", no session error; runtime 0.1.7 |
 | 016 | [Plugin replaces an outdated runtime](./016-plugin-updates-outdated-runtime.md) | `pending` | #008 ✅ | #008's newer-runtime swap was never implemented |
+| 017 | [One failed window never stops captions](./017-captions-survive-failed-windows.md) | `pending` | — | Constrained translation JSON, no kana in Chinese, failed windows become holes |
+| 018 | [Optional larger models in Advanced](./018-optional-larger-models.md) | `pending` | #006 ✅, #009 ✅ | Gemma 4 E4B (3.66 GB) and 12B (6.88 GB); E2B stays default |
 
 ## Docs and verification
 

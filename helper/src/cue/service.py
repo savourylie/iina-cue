@@ -52,6 +52,14 @@ class Session:
     versions: dict = field(default_factory=dict)
     retry_window: list[int] | None = None
     skipped_language: list[list[int]] = field(default_factory=list)
+    # Windows that still failed after their bounded retry. They stay holes: no
+    # cues, never counted as coverage or as silence, and retried only on request.
+    failed: list[list[int]] = field(default_factory=list)
+    last_failure: dict | None = None
+
+# Failures of one window's audio or text. Anything else (a missing model, a changed
+# file, a crashed worker) still stops the session, because the next window would fail too.
+WINDOW_FAILURES = {"ALIGNMENT_FAILED", "ASR_FAILED", "TRANSLATION_FAILED"}
 
 class Supervisor:
     def __init__(self, root: Path, models: Path, clock=time.monotonic):
@@ -144,16 +152,19 @@ class Supervisor:
 
     def snapshot(self, s: Session):
         buffer = continuous_end(s.installed, s.position)-s.position
+        # Holes will not be prepared unless the user retries, so nothing is waiting on them.
+        settled = continuous_end(ranges_merge([*s.installed, *s.skipped_language, *s.failed]), s.position)-s.position
         job = self.busy if self.busy and self.busy["session"] == s.id and self.busy["epoch"] == s.epoch and self.busy["profile"] == s.profile else None
         return {"session_id": s.id, "seek_epoch": s.epoch, "profile_revision": 1, "snapshot_revision": s.revision,
                 "state": s.state, "stage": job.get("stage", "extracting") if job else "idle",
                 "stage_elapsed_s": round(self.clock()-job.get("stage_at", job["started"]), 1) if job else 0,
                 "prepared_ranges": s.prepared, "installed_ranges": s.installed, "artifact": s.artifact,
                 "skipped_language_ranges": s.skipped_language,
+                "failed_ranges": s.failed, "failure": s.last_failure,
                 "buffer_media_ms": buffer, "buffer_wall_ms": buffer/s.rate,
                 "language": s.language, "metrics": s.timings, "error": s.error,
                 "duration_ms": s.media.duration_ms, "target": s.settings.target,
-                "ready": buffer >= min(s.settings.startup_ms, s.media.duration_ms-s.position)}
+                "ready": settled >= min(s.settings.startup_ms, s.media.duration_ms-s.position)}
 
     def tick(self):
         with self.lock:
@@ -201,6 +212,11 @@ class Supervisor:
                             s.state="preparing"
                         elif failure["code"] in {"ALIGNMENT_FAILED","ASR_FAILED"} and not job.get("attempt") and job["range"][1]-job["range"][0] >= 8000:
                             a,b=job["range"];s.retry_window=[a,a+(b-a)//2];s.state="preparing"
+                        elif failure["code"] in WINDOW_FAILURES:
+                            # This window's audio or text failed, not Cue itself: leave a hole and go on.
+                            s.failed = ranges_merge([*s.failed, job["range"]])
+                            s.last_failure = {**failure, "range": job["range"]}
+                            s.state = "preparing"
                         else:
                             s.error = failure; s.state = "error"
                 elif not self.worker.is_alive() or now-self.busy["started"] > 180:
@@ -216,7 +232,7 @@ class Supervisor:
             try: self.publish(s)
             except CueError as exc: s.error = {"code": exc.code}; s.state = "error"; return
             retry = s.retry_window
-            window = retry or next_window(ranges_merge([*s.prepared, *s.skipped_language]), s.position, s.media.duration_ms, s.settings, s.rate)
+            window = retry or next_window(ranges_merge([*s.prepared, *s.skipped_language, *s.failed]), s.position, s.media.duration_ms, s.settings, s.rate)
             if window is None: s.state = "idle"; return
             self.start_worker()
             job = {"job_id": opaque(), "session": s.id, "epoch": s.epoch, "source_profile": s.source_profile,
@@ -381,7 +397,10 @@ class Supervisor:
             if action == "actions" and method == "POST":
                 name = body.get("action")
                 if name == "prioritize": self.active = s.id
-                elif name == "retry": s.error = None; s.state = "preparing"; self.active = s.id
+                elif name == "retry":
+                    # Retry prepares the holes again, including ranges skipped for an unclear language.
+                    s.error = None; s.failed = []; s.skipped_language = []; s.last_failure = None
+                    s.state = "preparing"; self.active = s.id
                 else: raise CueError("INVALID_REQUEST")
                 return self.snapshot(s)
             if action == "export" and method == "POST":
