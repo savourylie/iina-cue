@@ -40,7 +40,7 @@ def compile_c(path: Path, minimum: str, kind: str) -> None:
 
 
 def test_helper_version_matches_bootstrap():
-    assert load().helper_version(ROOT) == "0.1.5"
+    assert load().helper_version(ROOT) == "0.1.6"
 
 
 def test_defaults_match_the_notarization_trial():
@@ -255,9 +255,10 @@ def test_manifest_has_the_release_fields_and_no_download_url(tmp_path):
 
 
 def test_cli_refuses_a_runtime_without_license_notices(tmp_path):
-    runtime = tmp_path / "runtime-0.1.5"
+    version = load().helper_version(ROOT)
+    runtime = tmp_path / f"runtime-{version}"
     runtime.mkdir()
-    (runtime / "VERSION").write_text("0.1.5\n")
+    (runtime / "VERSION").write_text(f"{version}\n")
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "--runtime", str(runtime)],
         check=False,

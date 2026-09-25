@@ -16,6 +16,9 @@ if [ "$(uname -m)" != "arm64" ]; then
   exit 1
 fi
 
+# The oldest macOS the runtime supports. uv picks wheels for this target, not
+# for the build machine: MLX publishes separate 14.0, 15.0 and 26.0 wheels.
+RUNTIME_MACOS=14.0
 unset VIRTUAL_ENV || true
 unset UV_PROJECT_ENVIRONMENT || true
 export UV_CACHE_DIR="$CUE_PROJECT/.cache/uv"
@@ -351,8 +354,9 @@ codesign --force --sign - "$LIBPYTHON" >/dev/null
 REQS=$(mktemp)
 echo "build-runtime: installing locked dependencies into the copy" >&2
 uv export --project "$CUE_PROJECT" --frozen --no-dev --no-emit-project --no-annotate --quiet -o "$REQS"
-uv pip install \
+MACOSX_DEPLOYMENT_TARGET=$RUNTIME_MACOS uv pip install \
   --python "$PY" \
+  --python-platform aarch64-apple-darwin \
   --break-system-packages \
   --require-hashes \
   --no-build \
@@ -423,6 +427,27 @@ copy_ffmpeg() {
   echo "build-runtime: included FFmpeg from $FFMPEG_ROOT" >&2
 }
 copy_ffmpeg
+
+echo "build-runtime: checking that every Mach-O file runs on macOS $RUNTIME_MACOS" >&2
+"$PY" - "$STAGE" "$RUNTIME_MACOS" <<'PY'
+import subprocess, sys
+from pathlib import Path
+root, target = Path(sys.argv[1]), tuple(int(p) for p in sys.argv[2].split("."))
+newer = []
+for path in root.rglob("*"):
+    if path.is_symlink() or not path.is_file():
+        continue
+    with path.open("rb") as handle:
+        if handle.read(4) not in (b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe"):
+            continue
+    out = subprocess.run(["vtool", "-show-build", str(path)], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        parts = line.split()
+        if parts[:1] == ["minos"] and tuple(int(p) for p in parts[1].split(".")) > target:
+            newer.append(f"{parts[1]} {path.relative_to(root)}")
+if newer:
+    sys.exit("build-runtime: files need a newer macOS than the runtime target:\n" + "\n".join(sorted(newer)))
+PY
 
 rm -rf "$OUT"
 mv "$STAGE" "$OUT"

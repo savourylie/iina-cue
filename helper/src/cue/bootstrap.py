@@ -12,7 +12,7 @@ from .core import CueError
 from .storage import private_dir
 
 PROJECT = Path(__file__).resolve().parents[3]
-HELPER_VERSION = "0.1.5"
+HELPER_VERSION = "0.1.6"
 _INSTALLED_ON = {"1", "true", "yes"}
 _INSTALLED_OFF = {"0", "false", "no"}
 
