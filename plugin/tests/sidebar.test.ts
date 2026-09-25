@@ -151,8 +151,10 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   assert.doesNotMatch(card, /aria-live/);
   assert.equal([...html.matchAll(/aria-live="polite"/g)].length, 2);
   assert.match(card, /<progress id="setup-progress"/);
-  assert.match(html, /Gemma 4 E2B \(Google, Apache 2.0\) and Qwen3-ForcedAligner \(Qwen team, Apache 2.0; MLX conversion by mlx-community\)/);
-  assert.match(card, /href="licenses\/"/);
+  assert.match(html, /data-link="gemma"[^>]*>Gemma 4 E2B \(Google, Apache 2.0\)</);
+  assert.match(html, /data-link="aligner"[^>]*>Qwen3-ForcedAligner \(Qwen team, Apache 2.0; MLX conversion by mlx-community\)</);
+  // Links open model pages through the plugin; none points into the plugin folder or this Mac.
+  for (const [, href] of html.matchAll(/<a [^>]*href="([^"]*)"/g)) assert.equal(href, '#');
   assert.match(preferences, /id="dev-setup" hidden/);
   assert.ok(preferences.indexOf('scripts/setup-dev') > preferences.indexOf('id="dev-setup" hidden'));
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
@@ -190,9 +192,20 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   const models = show('models', {bytesDone: 40, bytesTotal: 100, previous: 'runtime'});
   assert.equal(models.progress, 40);
   assert.equal(element('setup-progress').value, 40);
-  assert.equal(element('setup-bytes').textContent, '40 / 100');
+  assert.equal(element('setup-bytes').textContent, '0 MB of 0 MB (40%)');
+  const large = show('runtime', {bytesDone: 134_000_000, bytesTotal: 267_837_724, previous: 'download'});
+  assert.equal(large.bytes, '134 MB of 268 MB (50%)');
+  assert.equal(large.detail, 'Step 1 of 3: downloading the helper');
   const done = show('done');
   assert.equal(done.ready, true);
   assert.equal(element('setup-card').hidden, true);
   assert.equal(element('normal-controls').hidden, false);
+});
+
+test('with nothing left to download, setup says so and offers Continue', () => {
+  const view = setupView({phase: 'download', diskBytes: 0});
+  assert.equal(view.primary, 'Continue');
+  assert.match(view.detail, /already on this Mac/);
+  assert.doesNotMatch(view.detail, /0 MB/);
+  assert.equal(setupView({phase: 'download', diskBytes: 3_834_972_052}).primary, 'Download');
 });

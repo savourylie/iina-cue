@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {installVerifiedArchive} from '../src/install-archive';
 import {DEFAULT_RAM_BYTES, curlResumeArgs, maySwap, preflight, startInstall} from '../src/install-runtime';
-import {installPublishedRuntime, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS} from '../src/runtime-install';
+import {CREDIT_LINKS, installPublishedRuntime, openCreditLink, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS, UNPACK_RUNTIME_SCRIPT} from '../src/runtime-install';
 
 const base = {arch: 'arm64', macos: '27.0', iina: '1.4.4', freeBytes: 10_000, ramBytes: DEFAULT_RAM_BYTES, minimumMacos: '27.0', bytesNeeded: 1000};
 
@@ -22,8 +22,8 @@ test('preflight refuses Intel, an older system, old IINA, low disk, and low memo
   assert.match(reason(preflight({...base, arch: 'x86_64'})), /Apple Silicon/);
   assert.match(reason(preflight({...base, macos: '14.6'})), /27\.0/);
   assert.match(reason(preflight({...base, iina: '1.3.9'})), /1\.4/);
-  assert.match(reason(preflight({...base, freeBytes: 10, bytesNeeded: 1000})), /1000 bytes/);
-  assert.match(reason(preflight({...base, ramBytes: DEFAULT_RAM_BYTES - 1})), new RegExp(String(DEFAULT_RAM_BYTES)));
+  assert.match(reason(preflight({...base, freeBytes: 10, bytesNeeded: 3_834_972_052})), /About 3\.8 GB is required/);
+  assert.match(reason(preflight({...base, ramBytes: DEFAULT_RAM_BYTES - 1})), /at least 16 GB of memory/);
 });
 
 test('a busy helper is not swapped', () => {
@@ -169,4 +169,46 @@ test('when every copy fails, setup reports a stopped download and unpacks nothin
   });
   assert.deepEqual(result, {ok: false, reason: 'The runtime download stopped.'});
   assert.equal(calls.length, RUNTIME_ARCHIVE_URLS.length);
+});
+
+test('credit links open only the pinned model pages in the browser', () => {
+  const opened: string[][] = [];
+  const exec = (file: string, args: string[]) => { opened.push([file, ...args]); };
+  assert.equal(openCreditLink('gemma', exec), true);
+  assert.equal(openCreditLink('aligner', exec), true);
+  assert.equal(openCreditLink('https://example.com', exec), false);
+  assert.equal(openCreditLink('toString', exec), false);
+  assert.equal(openCreditLink(undefined, exec), false);
+  assert.deepEqual(opened, [
+    ['/usr/bin/open', CREDIT_LINKS.gemma],
+    ['/usr/bin/open', CREDIT_LINKS.aligner],
+  ]);
+  const manifest = JSON.parse(readFileSync('models/manifest.json', 'utf8')) as {assets: {name: string; repository: string}[]};
+  for (const asset of manifest.assets) {
+    assert.equal(CREDIT_LINKS[asset.name as keyof typeof CREDIT_LINKS], `https://huggingface.co/${asset.repository}`);
+  }
+});
+
+test('the runtime download reports the archive size while curl runs, and a finished install deletes the archive', async () => {
+  const progress: number[] = [];
+  let finish: () => void = () => {};
+  let sizes = 0;
+  const pending = installPublishedRuntime({
+    resolve: () => '/Users/cue/Library/Application Support/Cue',
+    remuxActive: false,
+    sessions: 0,
+    onProgress: (done, total) => { progress.push(done); assert.equal(total, 267837724); },
+    wait: () => new Promise<void>((resolve) => setImmediate(resolve)),
+    exec: async (file) => {
+      if (file === '/usr/bin/curl') return new Promise((resolve) => { finish = () => resolve({status: 0}); });
+      if (file === '/usr/bin/stat') { sizes += 1_000_000; return {status: 0, stdout: `${sizes}\n`}; }
+      return {status: 0};
+    },
+  });
+  for (let i = 0; i < 10; i++) await new Promise<void>((resolve) => setImmediate(resolve));
+  finish();
+  assert.deepEqual(await pending, {ok: true});
+  assert.ok(progress.length >= 2);
+  assert.ok(progress.every((value, index) => index === 0 || value > progress[index - 1]));
+  assert.match(UNPACK_RUNTIME_SCRIPT, /rm -rf "\$previous"\n# The runtime is in place[^\n]*\nrm -f "\$archive"/);
 });

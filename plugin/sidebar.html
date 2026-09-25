@@ -92,7 +92,7 @@
   <p id="setup-bytes"></p>
   <progress id="setup-progress" max="100" value="0" hidden></progress>
   <button id="setup-primary" type="button" hidden data-i18n="sidebar.setupDownload">Download</button>
-  <p><a id="setup-credits" href="licenses/" data-i18n="sidebar.setupCredits">Gemma 4 E2B (Google, Apache 2.0) and Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community).</a></p>
+  <p id="setup-credits"><span data-i18n="sidebar.setupCreditsLead">Speech models:</span> <a href="#" data-link="gemma" data-i18n="sidebar.creditGemma">Gemma 4 E2B (Google, Apache 2.0)</a> <span data-i18n="sidebar.creditJoin">and</span> <a href="#" data-link="aligner" data-i18n="sidebar.creditAligner">Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community)</a>.</p>
 </section>
 <div id="normal-controls">
 <section>
@@ -308,6 +308,8 @@
     if(data.announce)document.getElementById('status-announce').textContent=data.announce;
   });
   document.getElementById('setup-primary').addEventListener('click',()=>iina.postMessage('start-setup',{}));
+  // A link would navigate this sidebar. The plugin opens the model page in the browser instead.
+  for(const link of document.querySelectorAll('#setup-credits a[data-link]'))link.addEventListener('click',event=>{event.preventDefault();iina.postMessage('open-link',{link:link.dataset.link});});
   document.querySelectorAll('#advanced-actions button[data-action]').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));
   iina.postMessage('ready',{});
 </script>

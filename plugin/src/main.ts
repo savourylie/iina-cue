@@ -1,6 +1,6 @@
 import {rpc, disposeClient} from "./client";
 import {type PreflightFacts} from "./install-runtime";
-import {installPublishedRuntime, MODEL_BYTES, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
+import {installPublishedRuntime, MODEL_BYTES, openCreditLink, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
 import {createSetupController} from "./setup-controller";
 import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
@@ -365,7 +365,10 @@ const setupController = createSetupController({
       bytesNeeded: RUNTIME_ARCHIVE_BYTES + MODEL_BYTES,
     };
   },
-  installRuntime: () => installPublishedRuntime({
+  installRuntime: (onProgress, onUnpack) => installPublishedRuntime({
+    onProgress,
+    onUnpack,
+    wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     resolve: resolveSupportPath,
     exec: (file, args) => iina.utils.exec(file, args),
     remuxActive: remuxStatus.state === "running",
@@ -382,6 +385,7 @@ function setupSidebar() {
   sidebarLoaded = true;
   iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); void setupController.refresh(); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
   iina.sidebar.onMessage("start-setup", () => { void setupController.start(); });
+  iina.sidebar.onMessage("open-link", (data: {link?: unknown}) => { openCreditLink(data?.link, (file, args) => iina.utils.exec(file, args)); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
     if (data.action === "set-enabled" && typeof data.value === "boolean") {
       if (data.value && !enabled) void start();
