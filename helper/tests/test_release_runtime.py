@@ -40,7 +40,7 @@ def compile_c(path: Path, minimum: str, kind: str) -> None:
 
 
 def test_helper_version_matches_bootstrap():
-    assert load().helper_version(ROOT) == "0.1.8"
+    assert load().helper_version(ROOT) == "0.1.9"
 
 
 def test_defaults_match_the_notarization_trial():
