@@ -76,15 +76,15 @@ def by_id(status, model):
     return next(m for m in status["models"] if m["id"] == model)
 
 
-def test_the_shipped_catalog_pins_both_larger_models_and_keeps_e2b_default():
+def test_the_shipped_catalog_pins_e4b_and_keeps_e2b_default():
     manifest = json.loads((PROJECT / "models" / "manifest.json").read_text())
     assert manifest["default_speech_model"] == "e2b"
-    assert [m["id"] for m in manifest["speech_models"]] == ["e2b", "e4b", "12b"]
+    # 12B was measured and dropped: slower than E2B, and it captioned fewer lines.
+    assert [m["id"] for m in manifest["speech_models"]] == ["e2b", "e4b"]
     optional = {a["name"]: a for a in manifest["optional_assets"]}
     assert optional["gemma-e4b"]["revision"] == "2eee7ac325f20eb8c9ac1d0e972f7c84663062da"
     assert optional["gemma-e4b"]["files"][0]["sha256"] == "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0"
-    assert optional["gemma-12b"]["revision"] == "7a0b1ce0ea821bcd01c5f72af84155e02191152f"
-    assert optional["gemma-12b"]["files"][0]["sha256"] == "58fd31b778ca2c21c80d634fb34fc5a89d11d563a38dfd3cbf1b40dbf252a8b6"
+    assert set(optional) == {"gemma-e4b"}
     # First-run setup still downloads only E2B and the aligner.
     assert [a["name"] for a in manifest["assets"]] == ["gemma", "aligner"]
 
@@ -264,6 +264,9 @@ def test_a_chosen_model_whose_file_is_gone_or_cut_short_falls_back_to_e2b(env, t
     assert Supervisor(tmp_path / "runtime3", models, clock=lambda: 100).speech_model == "e2b"
     (models / "gemma-e4b" / "gemma-4-E4B-it.litertlm").write_bytes(MODEL)
     assert Supervisor(tmp_path / "runtime4", models, clock=lambda: 100).speech_model == "e4b"
+    # A model dropped from the catalog, as 12B was, is no longer a choice.
+    (models / ".speech-model.json").write_text(json.dumps({"model": "12b"}))
+    assert Supervisor(tmp_path / "runtime5", models, clock=lambda: 100).speech_model == "e2b"
 
 
 def test_the_worker_starts_with_the_selected_model(env, monkeypatch):
