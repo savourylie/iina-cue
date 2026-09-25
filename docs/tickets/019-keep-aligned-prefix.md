@@ -49,6 +49,7 @@ This ticket keeps the aligned part of the window before the collapse. The next w
   - `ja`: 97 lines (73%) with 13 holes over 152 s became 115 lines (86%) with 7 holes over 56 s. Captions went from 134 to 165.
   - No caption contained kana. Committed chunks went from 46 to 64 (`ja`) and from 48 to 59 (`auto`), because a partial commit leaves the rest to a new window.
 - Mutation checks: ignoring the cut fails 2 pipeline tests, and removing the 2 s minimum fails 1.
+- Cost: an instrumented rerun of the `ja` session gave identical results: 165 captions, 115 of 133 lines, and the same 7 holes. It ran 85 jobs, which sent 1,242 s of audio for 798 s of film, 56% more than the film. That is the rest after each cut, the retries, and context. The jobs took 507 s in total, with a median of 4.3 s per window. That is about 1.6 times faster than playback on this M1 Ultra. Whole-session wall time varied between runs: 354 s for TICKET-017, and 766 s and 508 s for two runs of this ticket with identical output. The slowest job, 32.5 s at 316–332 s, took 7.7 s when run alone, so the outlier is not in the window itself. Whether a slower Mac keeps up is not measured yet. It belongs with the memory and speed measurements for TICKET-011 and TICKET-018.
 
 ## Testing
 - Unit tests: a collapse in the middle and at the end, the prefix check, punctuation restored on a prefix, the minimum committed length, and no cue boundary that is not an aligner time.
