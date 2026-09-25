@@ -61,11 +61,14 @@ class Unit:
     text: str
     quality_flags: tuple[str, ...] = ()
 
-def coalesce_quantized_units(units: list[Unit]) -> list[Unit]:
+def coalesce_until_collapse(units: list[Unit]) -> tuple[list[Unit], int | None, str | None]:
     """Keep Qwen's measured outer boundaries when sub-word bins collapse.
 
     No duration is guessed or distributed. A zero-length token is included in
     an adjacent multi-token span; raw standalone zero intervals stay invalid.
+    Stops at the first run that cannot be placed and returns the units before
+    it, the time where that run begins, and why. A trailing run also drops the
+    word before it, because that word's end was stretched over the run.
     """
     out: list[Unit] = []
     pending: list[Unit] = []
@@ -75,16 +78,26 @@ def coalesce_quantized_units(units: list[Unit]) -> list[Unit]:
             continue
         if pending:
             if len(pending) > 3 or u.end_ms-pending[0].start_ms > 1500:
-                raise CueError("ALIGNMENT_FAILED", "collapsed alignment span")
+                return out, pending[0].start_ms, "collapsed alignment span"
             u = Unit(pending[0].start_ms, u.end_ms, " ".join(x.text for x in pending)+" "+u.text, ("quantized_tokens_coalesced",))
             pending = []
         out.append(u)
     if pending:
         if not out or len(pending) > 3 or pending[-1].end_ms-out[-1].start_ms > 1500:
-            raise CueError("ALIGNMENT_FAILED", "collapsed trailing alignment")
+            if not out:
+                return [], pending[0].start_ms, "collapsed trailing alignment"
+            stretched = out.pop()
+            return out, stretched.start_ms, "collapsed trailing alignment"
         last=out.pop()
         out.append(Unit(last.start_ms, max(last.end_ms,pending[-1].end_ms), last.text+" "+" ".join(u.text for u in pending), ("quantized_tokens_coalesced",)))
-    return out
+    return out, None, None
+
+def coalesce_quantized_units(units: list[Unit]) -> list[Unit]:
+    """All-or-nothing form of coalesce_until_collapse: any collapse fails the window."""
+    kept, cut, reason = coalesce_until_collapse(units)
+    if cut is not None:
+        raise CueError("ALIGNMENT_FAILED", reason)
+    return kept
 
 @dataclass(frozen=True)
 class Cue:
@@ -97,7 +110,7 @@ def clean_text(text: str) -> str:
     text = re.sub(r"<[^>]*>|\{[^}]*\}", "", text)
     return re.sub(r"[\x00-\x1f\x7f]", " ", text).strip()
 
-def validate_units(units: list[Unit], duration_ms: int, source: str) -> None:
+def validate_units(units: list[Unit], duration_ms: int, source: str, prefix: bool = False) -> None:
     if not units or not source.strip():
         raise CueError("ALIGNMENT_FAILED", "empty alignment")
     previous = -1
@@ -108,11 +121,14 @@ def validate_units(units: list[Unit], duration_ms: int, source: str) -> None:
             raise CueError("ALIGNMENT_FAILED", "non-monotonic or empty alignment")
         previous = unit.end_ms
     normalize = lambda s: "".join(c for c in s.casefold() if c.isalnum())
-    # The aligner must account for the actual transcript, not a partial prefix.
-    if normalize("".join(u.text for u in units)) != normalize(source):
+    aligned = normalize("".join(u.text for u in units))
+    # The aligner must account for the actual transcript. A kept prefix (after a
+    # collapse) must spell out its beginning; the next window prepares the rest.
+    expected = normalize(source)
+    if not (aligned == expected or (prefix and aligned and expected.startswith(aligned))):
         raise CueError("ALIGNMENT_FAILED", "incomplete text coverage")
 
-def restore_transcript(units: list[Unit], transcript: str) -> list[Unit] | None:
+def restore_transcript(units: list[Unit], transcript: str, prefix: bool = False) -> list[Unit] | None:
     """Put ASR punctuation back on aligned words without changing their times.
 
     Qwen commonly returns the spoken words without punctuation. The validated
@@ -123,6 +139,9 @@ def restore_transcript(units: list[Unit], transcript: str) -> list[Unit] | None:
     positions = [i for i, char in enumerate(transcript)
                  for folded in char.casefold() if folded.isalnum()]
     lengths = [sum(char.isalnum() for char in unit.text.casefold()) for unit in units]
+    if prefix:
+        # Only the start of the transcript was aligned; map the units onto that part.
+        positions = positions[:sum(lengths)]
     if not units or any(length == 0 for length in lengths) or sum(lengths) != len(positions):
         return None
     spans = []
@@ -142,7 +161,14 @@ def restore_transcript(units: list[Unit], transcript: str) -> list[Unit] | None:
         if opener:
             split = opener.start()
         boundaries.append(right + split)
-    boundaries.append(len(transcript))
+    if prefix:
+        # The last kept word takes its closing punctuation, never the next phrase's opener.
+        end = spans[-1][1]
+        while end < len(transcript) and not transcript[end].isalnum() and not transcript[end].isspace() and transcript[end] not in "\"“‘([{「『":
+            end += 1
+        boundaries.append(end)
+    else:
+        boundaries.append(len(transcript))
     cursor = 0
     restored = []
     for unit, boundary in zip(units, boundaries):

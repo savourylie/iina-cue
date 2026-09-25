@@ -9,6 +9,10 @@ from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, assemble, validate_
 from .media import Media, extract
 from .vad import SileroVad
 
+# A window whose alignment collapses keeps its aligned part only if that part is
+# at least this long; otherwise the window fails as a whole.
+MIN_KEPT_MS = 2000
+
 class Pipeline:
     def __init__(self, models: Path, temp: Path, vad_model: Path | None = None):
         self.backend = Backend(models)
@@ -76,10 +80,12 @@ class Pipeline:
                         report("identifying_language", language)
                         raise CueError("LANGUAGE_UNCERTAIN", f"unsupported transcript language candidate: {language['code']}")
                     report("aligning", language)
-                    t = time.monotonic(); units = self.backend.align(wav, transcript, language["code"]); timings["align_s"] = time.monotonic()-t
-                    validate_units(units, limit-zero, transcript)
+                    t = time.monotonic(); units, cut = self.backend.align(wav, transcript, language["code"], partial=True); timings["align_s"] = time.monotonic()-t
+                    # After a collapse, keep the aligned words before it. The next window
+                    # starts at the collapse and transcribes and aligns the rest again.
+                    validate_units(units, limit-zero, transcript, prefix=cut is not None)
                     timings["quantized_token_groups"] = sum(bool(u.quality_flags) for u in units)
-                    punctuated = restore_transcript(units, transcript)
+                    punctuated = restore_transcript(units, transcript, prefix=cut is not None)
                     if punctuated is not None:
                         units = punctuated
                     timings["transcript_punctuation_restored"] = punctuated is not None
@@ -87,6 +93,11 @@ class Pipeline:
                     # If an aligned word straddles that frontier, retain all of it.
                     known_right = job.get("following_source")
                     committed_end = end if end == media.duration_ms or known_right is not None else end-1000
+                    if cut is not None:
+                        committed_end = min(committed_end, zero+cut)
+                        timings["alignment_cut_ms"] = zero+cut
+                        if committed_end-start < MIN_KEPT_MS:
+                            raise CueError("ALIGNMENT_FAILED", "collapsed alignment left too little to keep")
                     crossing = [u.start_ms+zero for u in units if u.start_ms+zero < committed_end < u.end_ms+zero]
                     if crossing and known_right is None: committed_end = min(crossing)
                     elif crossing:
