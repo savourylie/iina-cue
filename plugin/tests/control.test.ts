@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {acceptSnapshot,actionErrorStatus,coverageStrip,remuxFilename,errorStatus,originalLanguageChoice,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists} from '../src/control';
+import {acceptSnapshot,actionErrorStatus,coverageStrip,remuxFilename,errorStatus,originalLanguageChoice,partialFailureStatus,readyStatus,statusText,originalLanguageLabel,ownedTrack,PlaybackIntent,preparationStatus,targetSubtitleExists, holeAt, holeStatus, insideRange} from '../src/control';
 test('prepared reply from old epoch or helper never accepted',()=>{
   const reply={session_id:'s',seek_epoch:1,instance_id:'new'};
   assert.equal(acceptSnapshot(reply,'s',1,'new'),true);
@@ -97,4 +97,25 @@ test('MKV filename check rejects folders and existing files before writing',()=>
   assert.match(remuxFilename('../escape','x.mkv','/tmp',none).error!,/plain filename/);
   assert.match(remuxFilename('.hidden','x.mkv','/tmp',none).error!,/plain filename/);
   assert.match(remuxFilename('taken','x.mkv','/tmp',path=>path==='/tmp/taken.mkv').error!,/already exists/);
+});
+
+test('a failed hole under the playhead is a warning with retry, and later holes do not count', () => {
+  const hole = holeStatus();
+  assert.equal(hole.tone, 'warning');
+  assert.equal(hole.retry, true);
+  assert.match(hole.detail ?? '', /moved on/);
+  assert.equal(insideRange([[10000, 26000]], 10000), true);
+  assert.equal(insideRange([[10000, 26000]], 25999), true);
+  assert.equal(insideRange([[10000, 26000]], 26000), false);
+  assert.equal(insideRange([[10000, 26000]], 9999), false);
+  assert.equal(insideRange(undefined, 5000), false);
+});
+
+test('the playhead in a failed hole or a range skipped for language gets its own status', () => {
+  const snapshot = {failed_ranges: [[10000, 26000]], skipped_language_ranges: [[40000, 60000]]};
+  assert.equal(holeAt(snapshot, 12000)?.title, 'No captions for this part');
+  assert.equal(holeAt(snapshot, 45000)?.title, 'Language unclear');
+  assert.equal(holeAt(snapshot, 45000)?.retry, true);
+  assert.equal(holeAt(snapshot, 30000), null);
+  assert.equal(holeAt({}, 30000), null);
 });

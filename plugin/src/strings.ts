@@ -47,6 +47,8 @@ export const en = {
   "status.readyDetail": "Loaded in the player for the next {seconds} s.",
   "status.readyDetailPressPlay": "Loaded in the player for the next {seconds} s. Press play to continue.",
   "status.readyDetailPaused": "Loaded in the player for the next {seconds} s. Video remains paused.",
+  "status.hole": "No captions for this part",
+  "status.holeDetail": "Cue could not make captions here and moved on. Keep playing, or retry this part.",
   "status.partial": "Later captions failed",
   "status.partialDetail": "{seconds} s of captions remain available. Keep playing or retry.",
   "status.captionsStillWork": "Captions still work.",

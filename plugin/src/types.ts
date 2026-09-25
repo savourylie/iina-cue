@@ -11,6 +11,7 @@ export interface Snapshot {
   language: {code: string; status: string}; artifact: Artifact | null;
   error: {code: string} | null; ready: boolean; duration_ms: number;
   stage_elapsed_s?: number; skipped_language_ranges?: number[][];
+  failed_ranges?: number[][]; failure?: {code: string; detail?: string; range?: number[]} | null;
   metrics?: Record<string, unknown>;
 }
 export interface ChildGlobal {

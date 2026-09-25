@@ -131,9 +131,13 @@ def test_alignment_failure_retries_once_with_shorter_window_and_more_context(sup
     sup.tick();retry=sup.inbox.get_nowait()
     assert retry['range']==[0,8000] and retry['attempt']==1
     assert retry['settings']['context_ms']==2000
-    sup.outbox.put({'job_id':retry['job_id'],'error':{'code':'ALIGNMENT_FAILED'}})
-    sup.tick()
-    assert s.error['code']=='ALIGNMENT_FAILED' and sup.inbox.empty()
+    sup.outbox.put({'job_id':retry['job_id'],'error':{'code':'ALIGNMENT_FAILED','detail':'collapsed alignment span'}})
+    sup.tick();following=sup.inbox.get_nowait()
+    # The half that failed twice is a hole; the session keeps going after it.
+    assert s.error is None and s.state=='preparing'
+    assert s.failed==[[0,8000]] and s.prepared==[]
+    assert following['range'][0]==8000
+    assert sup.snapshot(s)['failure']=={'code':'ALIGNMENT_FAILED','detail':'collapsed alignment span','range':[0,8000]}
 
 def test_uncertain_language_retries_with_longer_audio_then_keeps_coverage_hole(sup,monkeypatch):
     s=next(iter(sup.sessions.values()));sup.active=s.id
@@ -186,3 +190,42 @@ def test_remux_cancel_marks_job_cancelled_and_allows_a_new_copy(sup,monkeypatch,
     again=sup.request('POST',f"/v1/remux/{started['job_id']}/cancel",{},'a')
     assert again['cancel_requested'] is False
     with pytest.raises(CueError,match='NOT_FOUND'):sup.request('POST','/v1/remux/missing/cancel',{},'a')
+
+
+def failing_job(sup,s,monkeypatch,code,attempt=0,window=(0,16000)):
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.busy={'session':s.id,'job_id':'job','epoch':0,'media_obj':s.media,'source_profile':s.source_profile,
+              'profile':s.profile,'range':list(window),'attempt':attempt,'started':100}
+    sup.outbox.put({'job_id':'job','error':{'code':code}})
+    sup.tick()
+
+def test_translation_failure_becomes_a_hole_without_a_second_attempt(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    failing_job(sup,s,monkeypatch,'TRANSLATION_FAILED')
+    following=sup.inbox.get_nowait()
+    assert s.failed==[[0,16000]] and s.error is None and following['range'][0]==16000
+
+def test_a_failure_of_cue_itself_still_stops_the_session(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    failing_job(sup,s,monkeypatch,'MODEL_LOAD_FAILED')
+    assert s.error=={'code':'MODEL_LOAD_FAILED'} and s.state=='error' and sup.inbox.empty() and s.failed==[]
+
+def test_retry_prepares_failed_and_skipped_holes_again(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    failing_job(sup,s,monkeypatch,'TRANSLATION_FAILED')
+    sup.inbox.get_nowait();sup.busy=None
+    s.skipped_language=[[40000,60000]]
+    sup.request('POST',f'/v1/sessions/{s.id}/actions',{'action':'retry'},'a')
+    assert s.failed==[] and s.skipped_language==[] and s.last_failure is None
+    sup.tick()
+    assert sup.inbox.get_nowait()['range'][0]==0
+
+def test_ready_looks_past_holes_but_the_caption_buffer_does_not(sup):
+    s=next(iter(sup.sessions.values()))
+    s.installed=[[0,10000]];s.failed=[[10000,26000]];s.position=9000
+    snap=sup.snapshot(s)
+    assert snap['ready'] is True
+    assert snap['buffer_media_ms']==1000
+    s.failed=[]
+    assert sup.snapshot(s)['ready'] is False
