@@ -1,7 +1,7 @@
 import json
 import pytest
 from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
-from cue.core import coalesce_quantized_units, restore_transcript
+from cue.core import coalesce_quantized_units, coalesce_until_collapse, restore_transcript
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
     assert Settings(target='zh-CN').target == 'zh-CN'
@@ -138,3 +138,40 @@ def test_boundary_reuses_previous_measured_end_and_rejects_large_conflict():
     assert (settled[0].start_ms,settled[0].end_ms,settled[0].text)==(8880,13640,'final decision')
     assert previous[0].end_ms == 8880
     with pytest.raises(CueError): reconcile_boundary([Cue('x',8000,10000,'conflict')],previous)
+
+
+def test_a_collapse_mid_window_keeps_the_units_before_it():
+    units=[Unit(0,300,'私'),Unit(300,600,'は')]+[Unit(700,700,x) for x in 'あいうえ']+[Unit(900,1200,'行く')]
+    kept,cut,reason=coalesce_until_collapse(units)
+    assert kept==[Unit(0,300,'私'),Unit(300,600,'は')] and cut==700 and reason=='collapsed alignment span'
+
+def test_a_collapsed_token_far_from_the_next_word_cuts_before_it():
+    kept,cut,_=coalesce_until_collapse([Unit(0,300,'a'),Unit(400,400,'b'),Unit(2100,2400,'c')])
+    assert kept==[Unit(0,300,'a')] and cut==400
+
+def test_a_trailing_collapse_also_drops_the_word_stretched_over_it():
+    units=[Unit(0,300,'転ん'),Unit(300,500,'だ'),Unit(13040,15200,'だけ'),Unit(15200,15200,'な')]
+    kept,cut,reason=coalesce_until_collapse(units)
+    assert kept==[Unit(0,300,'転ん'),Unit(300,500,'だ')] and cut==13040 and reason=='collapsed trailing alignment'
+
+def test_without_a_collapse_nothing_is_cut_and_the_strict_rule_is_unchanged():
+    units=[Unit(0,100,'go'),Unit(100,100,'to'),Unit(160,400,'town')]
+    assert coalesce_until_collapse(units)==(coalesce_quantized_units(units),None,None)
+    with pytest.raises(CueError,match='collapsed trailing alignment'):
+        coalesce_quantized_units([Unit(0,300,'a'),Unit(2000,2000,'b')])
+
+def test_a_kept_prefix_must_spell_the_start_of_the_transcript():
+    units=[Unit(0,100,'Hello'),Unit(100,200,'world')]
+    validate_units(units,1000,'Hello, world. More words here',prefix=True)
+    with pytest.raises(CueError,match='incomplete text coverage'):
+        validate_units(units,1000,'Hello, world. More words here')
+    with pytest.raises(CueError):
+        validate_units([Unit(0,100,'world')],1000,'Hello, world.',prefix=True)
+    with pytest.raises(CueError):
+        validate_units([],1000,'Hello',prefix=True)
+
+def test_punctuation_is_restored_on_a_prefix_only():
+    units=[Unit(0,100,'Hello'),Unit(100,200,'world')]
+    restored=restore_transcript(units,'Hello, world. 「More」 words',prefix=True)
+    assert [u.text for u in restored]==['Hello,',' world.']
+    assert [(u.start_ms,u.end_ms) for u in restored]==[(0,100),(100,200)]

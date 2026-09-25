@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
-from .core import Cue, CueError, Unit, SOURCE_LANGUAGES, translation_parse, coalesce_quantized_units
+from .core import Cue, CueError, Unit, SOURCE_LANGUAGES, translation_parse, coalesce_quantized_units, coalesce_until_collapse
 
 LANGUAGES = SOURCE_LANGUAGES
 TARGET_LANGUAGES = {"zh-TW": "Traditional Chinese using natural Taiwan vocabulary",
@@ -124,7 +124,8 @@ class Backend:
         return {"code": code, "status": "tentative", "method": "original_asr_text_lid", "score": values[0].value,
                 "score_kind": "classifier_relative_score"}
 
-    def align(self, audio: Path, text: str, language: str) -> list[Unit]:
+    def align(self, audio: Path, text: str, language: str, partial: bool = False):
+        """Aligned units. With partial, returns (units before any collapse, collapse time or None)."""
         if language not in LANGUAGES: raise CueError("ALIGNMENT_LANGUAGE_UNSUPPORTED")
         self.load_aligner()
         import importlib.util
@@ -134,7 +135,11 @@ class Backend:
         result = self.aligner.generate(str(audio), text=text, language=LANGUAGES[language])
         import mlx.core as mx
         mx.synchronize()
-        return coalesce_quantized_units([Unit(round(i.start_time * 1000), round(i.end_time * 1000), i.text) for i in result.items])
+        units = [Unit(round(i.start_time * 1000), round(i.end_time * 1000), i.text) for i in result.items]
+        if partial:
+            kept, cut, _ = coalesce_until_collapse(units)
+            return kept, cut
+        return coalesce_quantized_units(units)
 
     def translate(self, cues: list[Cue], target: str, language: str) -> list[Cue]:
         if target == "original" or target == language: return cues
