@@ -14,8 +14,8 @@ from .vad import SileroVad
 MIN_KEPT_MS = 2000
 
 class Pipeline:
-    def __init__(self, models: Path, temp: Path, vad_model: Path | None = None):
-        self.backend = Backend(models)
+    def __init__(self, models: Path, temp: Path, vad_model: Path | None = None, gemma: Path | None = None):
+        self.backend = Backend(models, gemma)
         # Loaded on first use and kept for the life of the worker.
         self.vad = None
         self.vad_model = vad_model
@@ -130,8 +130,8 @@ class Pipeline:
                     "language": language, "timings": timings, "mapping": mapping, "committed_range": [start,committed_end],
                     "coverage_kind": "verified_no_speech" if no_speech else "complete"}
 
-def worker_entry(inbox, outbox, models: str, temp: str):
-    pipeline = Pipeline(Path(models), Path(temp))
+def worker_entry(inbox, outbox, models: str, temp: str, gemma: str | None = None):
+    pipeline = Pipeline(Path(models), Path(temp), gemma=Path(gemma) if gemma else None)
     while True:
         job = inbox.get()
         if job is None: break

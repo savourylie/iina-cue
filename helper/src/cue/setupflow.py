@@ -7,6 +7,7 @@ revision. Partial files stay beside the destination until the hash matches.
 from __future__ import annotations
 import hashlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -15,7 +16,8 @@ import urllib.request
 from pathlib import Path
 from .core import CueError
 
-ACTIONS = frozenset({"start", "resume", "cancel", "verify", "smoke"})
+MODEL_ACTIONS = frozenset({"model_download", "model_cancel", "model_use", "model_remove"})
+ACTIONS = frozenset({"start", "resume", "cancel", "verify", "smoke"}) | MODEL_ACTIONS
 _ATTEMPTS = 4
 
 
@@ -56,6 +58,40 @@ def partial_path(dest: Path) -> Path:
 
 
 _verified: dict[tuple[str, int, int], bool] = {}
+_MARKERS = ".verified.json"
+# The download thread and status requests on the helper's HTTP threads update the
+# same small JSON files; each update is a read-modify-write that must not interleave.
+_file_lock = threading.Lock()
+
+
+def _replace_json(path: Path, data: dict) -> None:
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    temporary.write_text(json.dumps(data))
+    temporary.replace(path)
+
+
+def _load_markers(models: Path) -> dict:
+    path = models / _MARKERS
+    if path.is_symlink() or not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_markers(models: Path, update: dict) -> None:
+    """Remember files whose full hash matched, by size and modification time.
+    A later status call trusts an unchanged file instead of hashing gigabytes again."""
+    with _file_lock:
+        data = _load_markers(models)
+        data.update(update)
+        _replace_json(models / _MARKERS, {k: v for k, v in data.items() if v is not None})
+
+
+def _expected(item: dict) -> str:
+    return item.get("sha256") or item.get("git_blob")
 
 
 def _digest_matches(path: Path, item: dict) -> bool:
@@ -73,7 +109,7 @@ def _digest_matches(path: Path, item: dict) -> bool:
     return digest.hexdigest() == expected
 
 
-def _installed(path: Path, item: dict) -> bool:
+def _installed(path: Path, item: dict, models: Path | None = None, relative: str | None = None) -> bool:
     if path.is_symlink() or not path.is_file():
         return False
     info = path.stat()
@@ -81,15 +117,28 @@ def _installed(path: Path, item: dict) -> bool:
         return False
     key = (str(path), info.st_mtime_ns, info.st_size)
     known = _verified.get(key)
+    stamp = [info.st_size, info.st_mtime_ns, _expected(item)]
+    if known is None and models is not None and _load_markers(models).get(relative) == stamp:
+        known = True
     if known is None:
         known = _digest_matches(path, item)
-        _verified[key] = known
+        if known and models is not None:
+            _save_markers(models, {relative: stamp})
+    _verified[key] = known
     return known
+
+
+def _remember(models: Path, asset: dict, item: dict) -> None:
+    """Record a file that _fetch has just verified before moving it into place."""
+    dest = destination(models, asset, item)
+    info = dest.stat()
+    _save_markers(models, {f"{asset['folder']}/{item['path']}": [info.st_size, info.st_mtime_ns, _expected(item)]})
+    _verified[(str(dest), info.st_mtime_ns, info.st_size)] = True
 
 
 def _have(models: Path, asset: dict, item: dict) -> tuple[str, int]:
     dest = destination(models, asset, item)
-    if _installed(dest, item):
+    if _installed(dest, item, models, f"{asset['folder']}/{item['path']}"):
         return "installed", item["bytes"]
     partial = partial_path(dest)
     if partial.is_file() and not partial.is_symlink():
@@ -230,11 +279,71 @@ def write_speech(path: Path) -> None:
         raise CueError("SMOKE_FAILED", "the system voice could not write the test clip")
 
 
+def speech_models(manifest: dict) -> list[dict]:
+    """The speech models Cue can use. E2B is always first-run setup's model."""
+    return manifest.get("speech_models") or [{"id": "e2b", "asset": "gemma", "file": "gemma-4-E2B-it.litertlm",
+                                               "min_ram_bytes": 16 * 2 ** 30}]
+
+
+def default_speech_model(manifest: dict) -> str:
+    return manifest.get("default_speech_model", "e2b")
+
+
+def speech_model(manifest: dict, model_id: object) -> dict:
+    for choice in speech_models(manifest):
+        if choice["id"] == model_id:
+            return choice
+    raise CueError("INVALID_REQUEST")
+
+
+def find_asset(manifest: dict, name: str) -> tuple[dict, bool]:
+    """An asset by name, and whether it is optional (downloaded only on request)."""
+    for asset in manifest["assets"]:
+        if asset["name"] == name:
+            return asset, False
+    for asset in manifest.get("optional_assets", []):
+        if asset["name"] == name:
+            return asset, True
+    raise CueError("INVALID_REQUEST")
+
+
+def speech_model_path(models: Path, manifest: dict, model_id: str) -> Path:
+    choice = speech_model(manifest, model_id)
+    asset, _ = find_asset(manifest, choice["asset"])
+    item = next((item for item in asset["files"] if item["path"] == choice["file"]), {"path": choice["file"]})
+    return destination(models, asset, item)
+
+
+def speech_model_complete(models: Path, manifest: dict, model_id: str) -> bool:
+    """The model's files are in place at their pinned sizes. Their hashes were checked
+    before the model could be chosen; this cheap check runs at every helper start."""
+    choice = speech_model(manifest, model_id)
+    asset, _ = find_asset(manifest, choice["asset"])
+    paths = [(destination(models, asset, item), item["bytes"]) for item in asset["files"]]
+    return all(path.is_file() and not path.is_symlink() and path.stat().st_size == size for path, size in paths)
+
+
+def machine_memory() -> int:
+    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+
+
+def compile_caches(models: Path, filename: str) -> list[Path]:
+    """LiteRT-LM's caches for one model file, named "<file>_<mtime>_<size>...", in models/compiled."""
+    compiled = models / "compiled"
+    if not compiled.is_dir():
+        return []
+    return [path for path in compiled.iterdir() if path.name.startswith(f"{filename}_")]
+
+
 class Setup:
-    def __init__(self, models: Path, manifest_path: Path, run_job=None):
+    def __init__(self, models: Path, manifest_path: Path, run_job=None, try_model=None, current_model=None):
         self.models = models
         # Sends one job to the supervisor's persistent worker and returns its reply.
         self.run_job = run_job
+        # try_model(model_id, clip) restarts the worker with that model, runs the smoke
+        # job, and keeps the model only if it passes. current_model() is the one in use.
+        self.try_model = try_model
+        self.current_model = current_model
         self.manifest_path = manifest_path
         self.progress_path = models / ".setup-progress.json"
         self.cancel = threading.Event()
@@ -246,11 +355,10 @@ class Setup:
         return json.loads(self.manifest_path.read_text())
 
     def _save(self, **fields) -> None:
-        current = _read_progress(self.progress_path)
-        current.update(fields)
-        temporary = self.progress_path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(current))
-        temporary.replace(self.progress_path)
+        with _file_lock:
+            current = _read_progress(self.progress_path)
+            current.update(fields)
+            _replace_json(self.progress_path, current)
 
     def status(self) -> dict:
         from .core import digest
@@ -263,7 +371,36 @@ class Setup:
         if body["progress"]["phase"] in {"downloading", "smoking"} and not alive:
             body["progress"]["phase"] = "interrupted"
         body["model_manifest"] = digest(self.manifest())
+        body["speech_models"] = self._models_status(_read_progress(self.progress_path), alive)
         return body
+
+    def _selected(self, manifest: dict) -> str:
+        return self.current_model() if self.current_model else default_speech_model(manifest)
+
+    def _models_status(self, saved: dict, alive: bool) -> dict:
+        manifest = self.manifest()
+        memory = machine_memory()
+        selected = self._selected(manifest)
+        models = []
+        for choice in speech_models(manifest):
+            asset, optional = find_asset(manifest, choice["asset"])
+            have = [_have(self.models, asset, item) for item in asset["files"]]
+            state = ("installed" if all(s == "installed" for s, _ in have)
+                     else "partial" if any(s != "missing" for s, _ in have) else "missing")
+            download = sum(item["bytes"] for item in asset["files"])
+            # Disk needed: the download plus the compile cache LiteRT-LM writes on first use.
+            models.append({"id": choice["id"], "bytes": download, "disk_bytes": download + choice.get("cache_bytes", 0),
+                           "bytes_done": sum(b for _, b in have), "state": state, "optional": optional,
+                           "min_ram_bytes": choice["min_ram_bytes"], "fits_memory": memory >= choice["min_ram_bytes"],
+                           "selected": choice["id"] == selected})
+        download = saved.get("model_download") if isinstance(saved.get("model_download"), dict) else None
+        trial = saved.get("model_trial") if isinstance(saved.get("model_trial"), dict) else None
+        # A saved in-flight phase with no live thread means the helper stopped mid-way.
+        if download and download.get("phase") == "downloading" and not alive:
+            download = {**download, "phase": "interrupted"}
+        if trial and trial.get("phase") == "smoking" and not alive:
+            trial = {**trial, "phase": "interrupted"}
+        return {"selected": selected, "ram_bytes": memory, "models": models, "download": download, "trial": trial}
 
     def _require_space(self) -> None:
         needed = bytes_needed(self.manifest(), self.models)
@@ -302,6 +439,8 @@ class Setup:
             return self.status()
         if action == "smoke":
             return self._start_smoke()
+        if action in MODEL_ACTIONS:
+            return self._model_action(action, body.get("model"))
         self._require_space()
         with self._lock:
             if self._thread and self._thread.is_alive():
@@ -312,8 +451,92 @@ class Setup:
             self._thread.start()
         return self.status()
 
+    def _model_action(self, action: str, model_id: object) -> dict:
+        manifest = self.manifest()
+        choice = speech_model(manifest, model_id)
+        asset, optional = find_asset(manifest, choice["asset"])
+        if action == "model_cancel":
+            self.cancel.set()
+            return self.status()
+        if action == "model_remove":
+            # E2B belongs to first-run setup and is never removed here.
+            if not optional:
+                raise CueError("INVALID_REQUEST")
+            if self._selected(manifest) == choice["id"]:
+                raise CueError("MODEL_IN_USE")
+            with self._lock:
+                if self._thread and self._thread.is_alive():
+                    raise CueError("SETUP_BUSY")
+                for item in asset["files"]:
+                    dest = destination(self.models, asset, item)
+                    dest.unlink(missing_ok=True)
+                    partial_path(dest).unlink(missing_ok=True)
+                    # The compile cache can be as large as the model; removing frees both.
+                    for cache in compile_caches(self.models, item["path"]):
+                        cache.unlink(missing_ok=True)
+                _save_markers(self.models, {f"{asset['folder']}/{item['path']}": None for item in asset["files"]})
+            return self.status()
+        if machine_memory() < choice["min_ram_bytes"]:
+            raise CueError("LOW_MEMORY", str(choice["min_ram_bytes"]))
+        if action == "model_download":
+            if not optional:
+                raise CueError("INVALID_REQUEST")
+            needed = sum(item["bytes"] - have for item in asset["files"]
+                         for state, have in [_have(self.models, asset, item)] if state != "installed")
+            if needed and not compile_caches(self.models, choice["file"]):
+                needed += choice.get("cache_bytes", 0)
+            if needed and disk_free(self.models) < needed:
+                raise CueError("DISK_FULL", str(needed))
+            with self._lock:
+                if self._thread and self._thread.is_alive():
+                    return self.status()
+                self.cancel = threading.Event()
+                self._save(model_download={"model": choice["id"], "phase": "downloading", "error": None})
+                self._thread = threading.Thread(target=self._download_model, args=(choice["id"], asset), name="cue-model", daemon=True)
+                self._thread.start()
+            return self.status()
+        # model_use: the model must be complete and verified before a trial.
+        if not all(_have(self.models, asset, item)[0] == "installed" for item in asset["files"]):
+            raise CueError("MODEL_NOT_INSTALLED")
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                raise CueError("SETUP_BUSY")
+            self._save(model_trial={"model": choice["id"], "phase": "smoking", "reason": None})
+            self._thread = threading.Thread(target=self._trial, args=(choice["id"],), name="cue-model-trial", daemon=True)
+            self._thread.start()
+        return self.status()
+
+    def _download_model(self, model_id: str, asset: dict) -> None:
+        try:
+            for item in asset["files"]:
+                if self.cancel.is_set():
+                    raise CueError("CANCELLED")
+                if _have(self.models, asset, item)[0] == "installed":
+                    continue
+                self._save(model_download={"model": model_id, "phase": "downloading", "file": item["path"], "error": None})
+                url = source_url(asset["repository"], asset["revision"], item["path"])
+                _fetch(url, destination(self.models, asset, item), item["bytes"], item, self.cancel)
+                _remember(self.models, asset, item)
+            self._save(model_download={"model": model_id, "phase": "idle", "error": None})
+        except CueError as exc:
+            phase = "cancelled" if exc.code == "CANCELLED" else "error"
+            self._save(model_download={"model": model_id, "phase": phase, "error": None if phase == "cancelled" else {"code": exc.code, "detail": str(exc)}})
+
+    def _trial(self, model_id: str) -> None:
+        try:
+            clip = self.models.parent / "smoke-clip.wav"
+            write_speech(clip)
+            result = self.try_model(model_id, clip) if self.try_model else {"passed": False, "reason": "no inference worker"}
+        except CueError as exc:
+            result = {"passed": False, "reason": str(exc) or exc.code}
+        except Exception as exc:
+            result = {"passed": False, "reason": exc.__class__.__name__}
+        self._save(model_trial={"model": model_id, "phase": "passed" if result["passed"] else "failed",
+                                "reason": result.get("reason"), "seconds": result.get("seconds")})
+
     def _start_smoke(self) -> dict:
-        gemma = self.models / "gemma" / "gemma-4-E2B-it.litertlm"
+        manifest = self.manifest()
+        gemma = speech_model_path(self.models, manifest, self._selected(manifest))
         aligner = self.models / "aligner" / "model.safetensors"
         if gemma.is_symlink() or aligner.is_symlink() or not gemma.is_file() or not aligner.is_file():
             result = {"passed": False, "reason": "models are not installed"}

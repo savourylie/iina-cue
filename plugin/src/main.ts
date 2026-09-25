@@ -2,6 +2,7 @@ import {rpc, disposeClient} from "./client";
 import {type PreflightFacts} from "./install-runtime";
 import {installPublishedRuntime, MODEL_BYTES, openCreditLink, readMacFacts, RUNTIME_ARCHIVE_BYTES, RUNTIME_MINIMUM_MACOS} from "./runtime-install";
 import {createSetupController} from "./setup-controller";
+import {modelRows, modelsBusy, type ModelAction, type ModelsStatus} from "./speech-models";
 import {acceptSnapshot, actionErrorStatus, coverageStrip, errorStatus, holeAt, languageName, offStatus, originalLanguageChoice, ownedTrack, partialFailureStatus, PlaybackIntent, preparationStatus, readyStatus, remuxFilename, statusText, targetSubtitleExists} from "./control";
 import type {CueStatus} from "./control";
 import {has, sidebarStrings, t} from "./strings";
@@ -384,14 +385,38 @@ const setupController = createSetupController({
   wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
 });
 
+// Speech models in Advanced. Polls only while the helper downloads or tries one.
+let speechModels: ModelsStatus | null = null;
+let speechModelError: {model: string; code: string} | null = null;
+let speechModelPoll = false;
+async function refreshSpeechModels() {
+  try { speechModels = (await rpc<{speech_models?: ModelsStatus}>("GET", "/setup")).speech_models ?? null; }
+  catch { speechModels = null; }
+  if (sidebarLoaded) iina.sidebar.postMessage("cue-models", modelRows(speechModels, speechModelError));
+  if (modelsBusy(speechModels) && !speechModelPoll) {
+    speechModelPoll = true;
+    setTimeout(() => { speechModelPoll = false; void refreshSpeechModels(); }, 1000);
+  }
+}
+const MODEL_ACTIONS: Record<ModelAction, string> = {download: "model_download", cancel: "model_cancel", use: "model_use", remove: "model_remove"};
+async function speechModelAction(data: {action?: string; model?: string}) {
+  const action = MODEL_ACTIONS[data.action as ModelAction];
+  if (!action || typeof data.model !== "string") return;
+  speechModelError = null;
+  try { await rpc("POST", "/setup/actions", {action, model: data.model}); }
+  catch (error) { speechModelError = {model: data.model, code: String(error).replace(/^Error: /, "")}; }
+  await refreshSpeechModels();
+}
+
 function setupSidebar() {
   if (sidebarLoaded) return;
   // IINA throws when loadFile runs before its native window exists. Defer to
   // window-loaded or a user action; never abort timer/event registration.
   iina.sidebar.loadFile("sidebar.html");
   sidebarLoaded = true;
-  iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); void setupController.refresh(); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
+  iina.sidebar.onMessage("ready", () => { iina.sidebar.postMessage("cue-strings", sidebarStrings()); void setupController.refresh(); void refreshSpeechModels(); refreshStatus(); setRemuxStatus(remuxStatus); syncRemuxDraft(); syncSettings(); });
   iina.sidebar.onMessage("start-setup", () => { void setupController.start(); });
+  iina.sidebar.onMessage("model", (data: {action?: string; model?: string}) => { void speechModelAction(data); });
   iina.sidebar.onMessage("open-link", (data: {link?: unknown}) => { openCreditLink(data?.link, (file, args) => iina.utils.exec(file, args)); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
     if (data.action === "set-enabled" && typeof data.value === "boolean") {

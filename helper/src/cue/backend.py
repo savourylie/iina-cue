@@ -35,8 +35,10 @@ def check_target_script(sources: list[str], results: list[str], target: str) -> 
         raise CueError("TRANSLATION_FAILED", "Japanese kana left in the translation")
 
 class Backend:
-    def __init__(self, models: Path):
+    def __init__(self, models: Path, gemma: Path | None = None):
         self.models = models
+        # The selected speech model's file; E2B unless the user chose another in Advanced.
+        self.gemma = gemma or models / "gemma" / "gemma-4-E2B-it.litertlm"
         self.engine = None
         self.aligner = None
         self.detector = None
@@ -45,7 +47,7 @@ class Backend:
         if self.engine is not None: return
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        gemma = self.models / "gemma" / "gemma-4-E2B-it.litertlm"
+        gemma = self.gemma
         aligner = self.models / "aligner"
         if not gemma.is_file() or not (aligner / "model.safetensors").is_file():
             raise CueError("SETUP_REQUIRED", "Run setup-models after reviewing model sources and disk requirements")

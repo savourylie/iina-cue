@@ -86,5 +86,59 @@
       "sha256": "a53a59001894c58e6bdb5b9b227709f91a2e3e556baa7d85acf9c55402ba5cf5",
       "reason": "actual audio conversation fails: TF_LITE_AUDIO_ENCODER_HW not found"
     }
-  ]
+  ],
+  "optional_assets": [
+    {
+      "name": "gemma-e4b",
+      "repository": "litert-community/gemma-4-E4B-it-litert-lm",
+      "revision": "2eee7ac325f20eb8c9ac1d0e972f7c84663062da",
+      "folder": "gemma-e4b",
+      "files": [
+        {
+          "path": "gemma-4-E4B-it.litertlm",
+          "bytes": 3659530240,
+          "sha256": "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0",
+          "git_blob": null
+        }
+      ]
+    },
+    {
+      "name": "gemma-12b",
+      "repository": "litert-community/gemma-4-12B-it-litert-lm",
+      "revision": "7a0b1ce0ea821bcd01c5f72af84155e02191152f",
+      "folder": "gemma-12b",
+      "files": [
+        {
+          "path": "gemma-4-12B-it.litertlm",
+          "bytes": 6883278368,
+          "sha256": "58fd31b778ca2c21c80d634fb34fc5a89d11d563a38dfd3cbf1b40dbf252a8b6",
+          "git_blob": null
+        }
+      ]
+    }
+  ],
+  "speech_models": [
+    {
+      "id": "e2b",
+      "asset": "gemma",
+      "file": "gemma-4-E2B-it.litertlm",
+      "min_ram_bytes": 17179869184,
+      "cache_bytes": 901578472
+    },
+    {
+      "id": "e4b",
+      "asset": "gemma-e4b",
+      "file": "gemma-4-E4B-it.litertlm",
+      "min_ram_bytes": 17179869184,
+      "cache_bytes": 2319929280
+    },
+    {
+      "id": "12b",
+      "asset": "gemma-12b",
+      "file": "gemma-4-12B-it.litertlm",
+      "min_ram_bytes": 25769803776,
+      "cache_bytes": 5991500024
+    }
+  ],
+  "default_speech_model": "e2b"
 }

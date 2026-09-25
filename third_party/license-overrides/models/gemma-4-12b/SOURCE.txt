@@ -1,0 +1,7 @@
+Repository: litert-community/gemma-4-12B-it-litert-lm
+Revision: 7a0b1ce0ea821bcd01c5f72af84155e02191152f
+Model card license field: apache-2.0
+Gated: no
+This revision's file list has no LICENSE file.
+The LICENSE file beside this note is the Apache License, Version 2.0, which that field names.
+This note is not legal advice.
