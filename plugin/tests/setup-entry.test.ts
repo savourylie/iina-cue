@@ -57,7 +57,7 @@ test('sidebar ready posts setup and start-setup runs the published install', asy
   assert.equal(setup?.primary, 'Download');
   const manifest = JSON.parse(readFileSync('models/manifest.json', 'utf8')) as {assets: {files: {bytes: number}[]}[]};
   const models = manifest.assets.reduce((sum, asset) => sum + asset.files.reduce((inner, file) => inner + file.bytes, 0), 0);
-  const release = JSON.parse(readFileSync('release/runtime-0.1.8.json', 'utf8')) as {size: number};
+  const release = JSON.parse(readFileSync('release/runtime-0.1.9.json', 'utf8')) as {size: number};
   assert.equal(setup?.detail, `Needs about ${((models + release.size) / 1e9).toFixed(1)} GB of free disk space.`);
   messages.get('start-setup')!({});
   // Preflight reads the Mac with sysctl, sw_vers and df first; those are not installs.
