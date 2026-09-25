@@ -11,7 +11,7 @@ The IINA plugin archive contains this project's JavaScript, HTML, and manifest. 
 - `THIRD_PARTY_NOTICES.md` — this file.
 - `python/LICENSE.txt` — the CPython license from the standalone interpreter.
 - `packages/<distribution>/` — license files for every third-party distribution installed in that runtime. `licenses/index.txt` lists each distribution, its version, and whether the file came from the wheel or from an exact-version override. The build fails when a third-party distribution has no recoverable license file.
-- `models/` — license text for the pinned Gemma 4 E2B and Qwen3 ForcedAligner artifacts. The weights are not inside the runtime. Downloading them remains a separate consent step.
+- `models/` — license text for the pinned Gemma 4 E2B and Qwen3 ForcedAligner artifacts, and for the Silero VAD model. The Gemma and Qwen weights are not inside the runtime; downloading them remains a separate consent step. The Silero VAD model is inside the runtime as `vad/silero_vad.onnx`.
 - `ffmpeg/` — present when the static LGPL FFmpeg build is included. It contains FFmpeg's LGPL-2.1 text, the source URL, the SHA-256, the version, and the configure flags.
 - `common/MPL-2.0.txt` — the Mozilla Public License 2.0. The certifi and tqdm wheels incorporate that license by reference; their own files are still copied under `packages/`.
 
@@ -24,6 +24,10 @@ The `iina-cue` distribution is listed as first-party. This repository does not s
 Gemma 4 E2B is `litert-community/gemma-4-E2B-it-litert-lm` at revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`, pinned in `models/manifest.json`. The model card at that revision declares `license: apache-2.0`. The repository is not gated. That revision does not contain a LICENSE file. `licenses/models/gemma-4-e2b/LICENSE` is the Apache License, Version 2.0, which that declaration names. The older page at https://ai.google.dev/gemma/terms does not describe this artifact.
 
 Qwen3-ForcedAligner-0.6B is the upstream repository `Qwen/Qwen3-ForcedAligner-0.6B`. Its model card declares `license: apache-2.0` and the repository is not gated. Cue does not pin a separate upstream revision. The runtime uses the pinned MLX conversion `mlx-community/Qwen3-ForcedAligner-0.6B-4bit` at revision `2f652af86ae0c73fe189b9429225c908ce4bf020`. That card also declares `license: apache-2.0`, the repository is not gated, and the revision does not contain a LICENSE file. Its README says the weights were converted from the Qwen repository. `licenses/models/qwen3-forced-aligner-0.6b/LICENSE` and `licenses/models/qwen3-forced-aligner-0.6b-4bit/LICENSE` are the Apache License, Version 2.0.
+
+## Silero VAD
+
+The runtime carries `vad/silero_vad.onnx`, 2,327,524 bytes, SHA-256 `1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3`. It is the file `silero_vad/data/silero_vad.onnx` from the silero-vad 6.2.3 wheel on PyPI, SHA-256 `7b7f5436cfcb02fae583a05b512ea96467fd449fe54cb49a5e4f06c51a1e43b8`, published by the Silero Team (https://github.com/snakers4/silero-vad). The wheel's license is the MIT License, Copyright (c) 2020-present Silero Team. `licenses/models/silero-vad/LICENSE` is that file, and `licenses/models/silero-vad/SOURCE.txt` records the URL and both hashes. The silero-vad package itself is not installed. It runs through onnxruntime, whose wheel license is copied under `licenses/packages/`.
 
 ## FFmpeg
 
@@ -43,7 +47,7 @@ The LGPL-3.0 text says a combined work is accompanied by both that license and t
 
 certifi's wheel declares MPL-2.0. tqdm's wheel declares `MPL-2.0 AND MIT`. tqdm's license file says the files attributed to Casper da Costa-Luis are MPL-2.0 and other parts are MIT. Those wheel files are copied under `licenses/packages/`. They point at MPL-2.0 instead of including the full license; `licenses/common/MPL-2.0.txt` is that text.
 
-These exact versions declare Apache-2.0, or carry an Apache classifier, but ship no license file: Cython 3.3.0, dyNET38 2.2, litert-lm-api 0.17.1, sentencepiece 0.2.2, and tokenizers 0.23.2. The build copies the Apache License, Version 2.0, for those versions only. Another version with no license file fails the build.
+These exact versions declare Apache-2.0, or carry an Apache classifier, but ship no license file: Cython 3.3.0, dyNET38 2.2, flatbuffers 25.12.19 (required by onnxruntime), litert-lm-api 0.17.1, sentencepiece 0.2.2, and tokenizers 0.23.2. The build copies the Apache License, Version 2.0, for those versions only. Another version with no license file fails the build.
 
 ## Development tools
 

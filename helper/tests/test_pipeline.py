@@ -1,3 +1,4 @@
+import pytest
 from dataclasses import asdict
 import numpy as np
 import soundfile as sf
@@ -5,7 +6,15 @@ from cue.core import CueError, Settings, Unit
 from cue.media import Media
 from cue.pipeline import Pipeline
 
-def setup_pipeline(monkeypatch,tmp_path,silent=False):
+class StubVad:
+    """Answers the pipeline's speech question without the Silero model."""
+    def __init__(self,speech=True):
+        self.speech=speech; self.calls=0
+    def has_speech(self,audio):
+        self.calls+=1
+        return self.speech,{'vad_max_prob':.9 if self.speech else .02,'vad_speech_ms':500 if self.speech else 0}
+
+def setup_pipeline(monkeypatch,tmp_path,silent=False,speech=True):
     def extract(media,start,end,dest):
         samples=np.zeros((end-start)*16,dtype='float32') if silent else np.full((end-start)*16,.01,dtype='float32')
         sf.write(dest,samples,16000,subtype='FLOAT')
@@ -20,6 +29,7 @@ def setup_pipeline(monkeypatch,tmp_path,silent=False):
         def align(self,a,t,l):self.calls.append('align');return [Unit(500,800,'one'),Unit(8500,9500,'two')]
         def translate(self,c,t,l):self.calls.append('translate');return c
     p.backend=Backend()
+    p.vad=StubVad(speech)
     job={'media':asdict(Media('/fixture','s',1,'key',30000,0,1,1)),
          'settings':asdict(Settings(target='original')),'range':[0,10000],'source_profile':'p'}
     return p,job
@@ -83,3 +93,44 @@ def test_unsupported_auto_lid_retries_without_loading_aligner(monkeypatch,tmp_pa
         assert False, 'unsupported auto LID must remain uncertain'
     assert p.backend.calls==['load',('asr','auto')]
     assert progress[-1][1]['code']=='pl'
+
+
+def test_window_without_speech_skips_asr_and_is_verified_no_speech(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path,speech=False)
+    result=p.run(job)
+    assert p.backend.calls==[]
+    assert p.vad.calls==1
+    assert result['coverage_kind']=='verified_no_speech'
+    assert result['committed_range']==[0,10000]
+    assert result['source']==[] and result['rendered']==[]
+    assert result['language']=={'code':'und','status':'unknown','method':'voice_activity'}
+    assert result['timings']['vad_speech_ms']==0
+
+def test_window_with_speech_goes_through_asr_as_before(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path,speech=True)
+    result=p.run(job)
+    assert p.vad.calls==1
+    assert ('asr','auto') in p.backend.calls
+    assert result['coverage_kind']=='complete'
+
+def test_digital_silence_needs_no_voice_activity_model(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path,silent=True)
+    result=p.run(job)
+    assert p.vad.calls==0
+    assert result['coverage_kind']=='verified_no_speech'
+
+def test_cached_transcript_is_not_checked_again(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path,speech=False)
+    job['cached_source']={'cues':[{'id':'stable','start_ms':500,'end_ms':800,'text':'hello'}],'language':{'code':'en'}}
+    result=p.run(job)
+    assert p.vad.calls==0
+    assert result['coverage_kind']=='complete'
+
+def test_missing_voice_activity_model_is_a_setup_error(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    p.vad=None
+    p.vad_model=tmp_path/'missing.onnx'
+    with pytest.raises(CueError) as exc:
+        p.run(job)
+    assert exc.value.code=='SETUP_REQUIRED'
+    assert p.backend.calls==[]

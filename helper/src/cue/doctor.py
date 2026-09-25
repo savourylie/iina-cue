@@ -23,9 +23,15 @@ def command(args):
         return r.stdout.strip() if r.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired): return None
 
+def _vad_ready() -> bool:
+    from .bootstrap import vad_model_path
+    from .vad import VAD_MODEL_SHA256, file_sha256
+    path = vad_model_path()
+    return path.is_file() and not path.is_symlink() and file_sha256(path) == VAD_MODEL_SHA256
+
 def doctor(models: Path) -> dict:
     versions = {}
-    for name in ("litert-lm-api", "mlx", "mlx-audio", "numpy", "lingua-language-detector", "transformers", "soundfile"):
+    for name in ("litert-lm-api", "mlx", "mlx-audio", "numpy", "lingua-language-detector", "transformers", "soundfile", "onnxruntime"):
         try: versions[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError: versions[name] = None
     iina = Path("/Applications/IINA.app/Contents/Info.plist")
@@ -42,6 +48,7 @@ def doctor(models: Path) -> dict:
             "embedded_mpv": "not_run: inspect mpv-version through smoke plugin",
             "ffmpeg": _ffmpeg_version(),
             "packages": versions,
-            "model_assets": {"gemma": (models/"gemma/gemma-4-E2B-it.litertlm").is_file(), "aligner": (models/"aligner/model.safetensors").is_file()},
+            "model_assets": {"gemma": (models/"gemma/gemma-4-E2B-it.litertlm").is_file(), "aligner": (models/"aligner/model.safetensors").is_file(),
+                             "vad": _vad_ready()},
             "free_disk_bytes": shutil.disk_usage(models.parent if models.parent.exists() else Path.cwd()).free,
             "live_inference": "not_run", "telemetry": False}

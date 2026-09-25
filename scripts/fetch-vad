@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Put the pinned Silero VAD model and its MIT license in a folder.
+
+Usage: scripts/fetch-vad <destination-folder>
+
+The model comes from the official silero-vad 6.2.3 wheel on PyPI. PyPI never
+replaces a published file, and every byte is checked against the SHA-256
+values in helper/src/cue/vad.py: the wheel, the model, and the license. The
+wheel itself is not installed; it would pull in PyTorch.
+"""
+from __future__ import annotations
+import hashlib
+import io
+import sys
+import urllib.request
+import zipfile
+from pathlib import Path
+
+PROJECT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT / "helper" / "src"))
+from cue.vad import (VAD_LICENSE_MEMBER, VAD_LICENSE_SHA256, VAD_MODEL_MEMBER,  # noqa: E402
+                     VAD_MODEL_SHA256, VAD_WHEEL_SHA256, VAD_WHEEL_URL)
+
+
+def fail(message: str) -> None:
+    print(f"fetch-vad: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def wheel_bytes() -> bytes:
+    cache = PROJECT / ".cache" / "silero-vad" / VAD_WHEEL_URL.rsplit("/", 1)[1]
+    if cache.is_file() and sha256(cache.read_bytes()) == VAD_WHEEL_SHA256:
+        return cache.read_bytes()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    print(f"fetch-vad: downloading {VAD_WHEEL_URL}", file=sys.stderr)
+    with urllib.request.urlopen(VAD_WHEEL_URL, timeout=60) as response:
+        data = response.read()
+    if sha256(data) != VAD_WHEEL_SHA256:
+        fail("the silero-vad wheel does not match its pinned SHA-256")
+    partial = cache.with_suffix(".partial")
+    partial.write_bytes(data)
+    partial.replace(cache)
+    return data
+
+
+def write(path: Path, data: bytes) -> None:
+    partial = path.with_name(path.name + ".partial")
+    partial.write_bytes(data)
+    partial.replace(path)
+
+
+def main(argv: list[str]) -> None:
+    if len(argv) != 1:
+        fail("usage: scripts/fetch-vad <destination-folder>")
+    destination = Path(argv[0])
+    if destination.is_symlink():
+        fail(f"refusing a symlinked destination: {destination}")
+    with zipfile.ZipFile(io.BytesIO(wheel_bytes())) as wheel:
+        model = wheel.read(VAD_MODEL_MEMBER)
+        license_text = wheel.read(VAD_LICENSE_MEMBER)
+    if sha256(model) != VAD_MODEL_SHA256:
+        fail("silero_vad.onnx does not match its pinned SHA-256")
+    if sha256(license_text) != VAD_LICENSE_SHA256:
+        fail("the Silero VAD license does not match its pinned SHA-256")
+    destination.mkdir(parents=True, exist_ok=True)
+    write(destination / "silero_vad.onnx", model)
+    write(destination / "LICENSE", license_text)
+    write(destination / "SOURCE.txt", (
+        "Silero VAD model (MIT License, Copyright (c) 2020-present Silero Team)\n"
+        f"source={VAD_WHEEL_URL}\n"
+        f"wheel_sha256={VAD_WHEEL_SHA256}\n"
+        f"member={VAD_MODEL_MEMBER}\n"
+        f"sha256={VAD_MODEL_SHA256}\n"
+        "project=https://github.com/snakers4/silero-vad\n").encode())
+    print(f"fetch-vad: {destination / 'silero_vad.onnx'}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

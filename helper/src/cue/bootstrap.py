@@ -12,7 +12,7 @@ from .core import CueError
 from .storage import private_dir
 
 PROJECT = Path(__file__).resolve().parents[3]
-HELPER_VERSION = "0.1.6"
+HELPER_VERSION = "0.1.7"
 _INSTALLED_ON = {"1", "true", "yes"}
 _INSTALLED_OFF = {"0", "false", "no"}
 
@@ -71,6 +71,13 @@ def runtime_tree() -> Path:
 
 def bundled_bin_dir() -> Path:
     return runtime_tree() / "bin"
+
+def vad_model_path() -> Path:
+    # Installed Cue ships the model inside its notarized runtime. A checkout
+    # keeps the copy scripts/fetch-vad verified, beside its other runtime files.
+    if installed_mode():
+        return runtime_tree() / "vad" / "silero_vad.onnx"
+    return runtime_root() / "vad" / "silero_vad.onnx"
 
 def model_manifest_path() -> Path:
     # Development keeps the checkout file so profile hashes do not change.

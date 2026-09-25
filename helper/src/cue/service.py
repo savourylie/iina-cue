@@ -16,6 +16,7 @@ from .core import Cue, CueError, Settings, continuous_end, digest, next_window, 
 from .bootstrap import HELPER_VERSION, model_manifest_path
 from .media import Media, installed_ffmpeg_record
 from .pipeline import worker_entry
+from .vad import VAD_ID
 from .remux import remux, validate_destination
 from .storage import Cache, atomic_write, private_dir
 
@@ -331,7 +332,7 @@ class Supervisor:
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
-                                         "sentence-cues-v3"])
+                                         "sentence-cues-v3", VAD_ID])
                 profile = digest([source_profile, settings.target, "translate-v2"])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position)
                 self.cache.register(source_profile, media.signature, "original")
