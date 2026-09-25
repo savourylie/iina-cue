@@ -1,7 +1,7 @@
 # Cue development
 
 - Keep the user's existing specifications and README edits.
-- Local seekable media only; no cloud, Eloquent, or larger model substitution.
+- Local seekable media only; no cloud or Eloquent. Gemma 4 E2B stays the default model; a larger model (Gemma 4 E4B or 12B) runs only when the user explicitly chooses and downloads it in Advanced. Never substitute a model silently.
 - One persistent inference subprocess; no model load per chunk/window.
 - Source timestamps come from forced alignment. Never invent or distribute times.
 - Verify mpv track mapping against FFprobe. Unknown language is a valid state.
