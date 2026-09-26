@@ -40,11 +40,10 @@ test('an older installed helper is offered an update with its size, and nothing 
   });
   await controller.refresh();
   const offer = posts[posts.length - 1];
-  assert.equal(offer.showCard, true);
+  assert.equal(offer.showCard, false, 'an offer is only a button, which the user can ignore');
   assert.equal(offer.showControls, true, 'captions keep working with the installed helper');
-  assert.equal(offer.title, "Update Cue's helper");
-  assert.equal(offer.primary, 'Update');
-  assert.match(offer.detail, /284 MB download/);
+  assert.equal(offer.updateButton, 'Update Cue');
+  assert.match(offer.updateHint, /284 MB download/);
   assert.equal(installs, 0);
   assert.deepEqual(helper.state.calls, ['GET /setup']);
 });
@@ -89,13 +88,36 @@ test('pressing Update replaces the runtime, then the new helper runs the test cl
   assert.equal(helper.state.smoked, 1, 'the new helper is tried before Cue calls itself ready');
   const running = posts.find((view) => view.bytes === '142 MB of 284 MB (50%)');
   assert.ok(running);
-  assert.equal(running.showControls, false, 'captions wait while the helper is replaced');
-  assert.equal(running.detail, 'Downloading the update');
-  assert.ok(posts.some((view) => view.detail === 'Checking and installing the update. This takes about half a minute.'));
+  assert.equal(running.showControls, true, 'each window turns its own captions off and on');
+  assert.equal(running.detail, 'Downloading the update. Captions keep working meanwhile.');
+  assert.equal(running.progress, 50);
+  const installing = posts.find((view) => view.detail === 'Installing the update. Captions pause for about a minute.');
+  assert.ok(installing);
+  assert.equal(installing.indeterminate, true);
   const last = posts[posts.length - 1];
   assert.equal(last.ready, true);
   assert.equal(last.showCard, false);
   assert.equal(controller.swapping(), false);
+});
+
+test('a run reads the Mac\'s facts once, so progress is not held up behind the download', async () => {
+  const helper = installedHelper('0.1.6');
+  let factReads = 0;
+  let finished = 0;
+  const controller = createSetupController({
+    rpc: helper.rpc, post: () => {}, facts: async () => { factReads++; return facts; }, wait: async () => {},
+    installRuntime: async (onProgress, onUnpack) => {
+      for (const done of [1e6, 2e6, 3e6]) onProgress(done, runtime.bytes);
+      onUnpack();
+      helper.state.version = '0.1.9';
+      return {ok: true};
+    },
+    helper: helper.helper, runtime, updateFinished: () => { finished++; },
+  });
+  await controller.start();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(factReads, 1);
+  assert.equal(finished, 1, 'windows are told the update ended, so their captions come back');
 });
 
 test('a refused or failed update keeps the old helper usable and offers Retry', async () => {
@@ -114,7 +136,7 @@ test('a refused or failed update keeps the old helper usable and offers Retry', 
   assert.equal(helper.state.smoked, 0);
   // Reopening the sidebar offers the update again.
   await controller.refresh();
-  assert.equal(posts[posts.length - 1].primary, 'Update');
+  assert.equal(posts[posts.length - 1].updateButton, 'Update Cue');
 });
 
 test('an updated runtime whose helper does not start says so, and Retry reinstalls it', async () => {

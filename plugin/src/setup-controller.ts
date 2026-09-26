@@ -27,6 +27,8 @@ export interface SetupHost {
   helper?(): {version: string | null; installed: boolean} | null;
   /** The runtime version this plugin installs, and its download size. */
   runtime?: {version: string; bytes: number};
+  /** An update run has ended, whether or not it replaced the helper. */
+  updateFinished?(): void;
 }
 
 /** Helper phases that end a model download without finishing it. */
@@ -56,8 +58,11 @@ export function createSetupController(host: SetupHost) {
     try { return await host.rpc("GET", "/setup"); } catch { return null; }
   }
 
+  // Facts are read with system tools through IINA's exec, which answers one call at a time:
+  // during a download or unpack they would wait for it. A run reuses the facts it began with.
+  let facts: PreflightFacts | null = null;
   async function gate(reported: SetupStatus | null) {
-    const facts = await host.facts();
+    if (!running || !facts) facts = await host.facts();
     // Once the helper answers, the runtime is on disk and it knows the model bytes still missing.
     // An update keeps the models, so while its helper is down only the runtime is fetched.
     const bytesNeeded = reported?.bytes_needed ?? (updating && host.runtime ? host.runtime.bytes : facts.bytesNeeded);
@@ -160,7 +165,10 @@ export function createSetupController(host: SetupHost) {
       startInstall(true);
       if (running) return;
       running = true;
-      try { return await runSetup(); } finally { running = false; updating = false; }
+      try { return await runSetup(); } finally {
+        running = false;
+        if (updating) { updating = false; host.updateFinished?.(); }
+      }
     },
   };
 }

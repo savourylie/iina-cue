@@ -8,7 +8,7 @@ import type {CueStatus} from "./control";
 import {has, sidebarStrings, t} from "./strings";
 import type {StringKey} from "./strings";
 import {mediaSnapshot, number, paused, SubtitleRenderer, tracks} from "./player";
-import type {Snapshot} from "./types";
+import type {ChildGlobal, Snapshot} from "./types";
 import {rendererSmoke} from "./smoke";
 import {SubtitleSize, SubtitleStyle, validSubtitleSize} from "./style";
 
@@ -118,7 +118,8 @@ async function stop(forRestart = false) {
   if (!forRestart) status(offStatus());
   if (previous) { try { await rpc("DELETE", `/sessions/${previous.session_id}`); } catch {} }
 }
-async function start() {
+/** hold: false resumes captions without pausing playback, after a helper update the user did not start here. */
+async function start(options: {hold?: boolean} = {}) {
   traceEvent("start",{position:number("time-pos")});
   setupSidebar();
   const requestedGeneration = generation + 1;
@@ -127,7 +128,7 @@ async function start() {
   const token = generation;
   try {
     const media = mediaSnapshot();
-    enabled = true; hold(); status({tone:"working", title:t("status.starting"), detail:t("status.startingDetail")}, true);
+    enabled = true; if (options.hold !== false) hold(); status({tone:"working", title:t("status.starting"), detail:t("status.startingDetail")}, true);
     const created = await rpc<Snapshot>("POST", "/sessions", {...media,
       request_id: `${Date.now()}-${generation}`, settings: {target: target(), source: iina.preferences.get("source")}});
     if (generation !== token || !enabled) { await rpc("DELETE", `/sessions/${created.session_id}`); return; }
@@ -355,6 +356,72 @@ for (const target of ["original", "zh-TW", "zh-CN", "en", "ja", "ko"]) menu(t("m
 for (const [label, source] of sourceChoices) menu(t("menu.source", {label}), () => setting("source", source));
 menu(t("menu.prioritize"), () => { if (session) void rpc("POST", `/sessions/${session.session_id}/actions`, {action: "prioritize"}).catch(showActionError); });
 
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** A file's size through IINA's file API, which answers while an exec such as curl runs. */
+function fileSize(path: string): number | null {
+  try {
+    const handle = iina.file.handle(path, "read");
+    try { handle.seekToEnd(); return handle.offset(); } finally { handle.close(); }
+  } catch { return null; }
+}
+
+// A helper update turns captions off in every IINA window before the old helper stops,
+// and on again when the new one has passed its test clip. Windows talk through the
+// plugin's global instance (global.ts); this id stops a window from acting on its own
+// broadcast, which it has already handled directly.
+const globalApi = (iina as unknown as {global?: ChildGlobal}).global;
+const windowId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+/** Captions this window turned off for an update, to turn back on afterwards. */
+let pausedForUpdate = false;
+function announceUpdate(phase: "stop" | "resume") {
+  try { globalApi?.postMessage("cue-update", {phase, origin: windowId}); } catch {}
+}
+/** release: another window's update needs this window's lease gone; the updating window's stopHelper releases its own. */
+async function pauseForUpdate(release = true) {
+  if (enabled || session) {
+    pausedForUpdate = true;
+    await stop();
+    status({tone:"info", title:t("status.updatePaused"), detail:t("status.updatePausedDetail")}, true);
+  }
+  if (release) disposeClient();
+}
+async function resumeAfterUpdate() {
+  if (!pausedForUpdate) return;
+  pausedForUpdate = false;
+  if (!enabled) await start({hold: false});
+}
+try {
+  globalApi?.onMessage("cue-update", (data: {phase?: string; origin?: string}) => {
+    if (data?.origin === windowId) return;
+    if (data?.phase === "stop") void pauseForUpdate();
+    else if (data?.phase === "resume") void resumeAfterUpdate();
+  });
+  globalApi?.postMessage("cue-hello", {});
+} catch {}
+
+/**
+ * Runs after the update has downloaded and passed its checksum. An MKV copy is the
+ * user's work and is never stopped. Other windows get a moment to release the helper;
+ * if it still refuses, their captions come back and nothing is replaced.
+ */
+async function stopEveryWindow(): Promise<{ok: true} | {ok: false; reason: string}> {
+  if (remuxStatus.state === "running") return {ok: false, reason: t("sidebar.updateBusyCopy")};
+  announceUpdate("stop");
+  await pauseForUpdate(false);
+  let code = "";
+  for (const wait of [0, 500, 1000, 2000, 3000]) {
+    await delay(wait);
+    const stopped = await stopHelper();
+    if (stopped.ok) return {ok: true};
+    code = stopped.code;
+    if (code === "REMUX_ACTIVE") break;
+  }
+  announceUpdate("resume");
+  void resumeAfterUpdate();
+  return {ok: false, reason: t(code === "REMUX_ACTIVE" ? "sidebar.updateBusyCopy" : "sidebar.updateBusyWindow")};
+}
+
 const resolveSupportPath = (path: string) => {
   const utils = iina.utils as {resolvePath?: (path: string) => string | null | undefined};
   return typeof utils.resolvePath === "function" ? utils.resolvePath(path) : null;
@@ -376,25 +443,20 @@ const setupController = createSetupController({
   installRuntime: (onProgress, onUnpack, update) => installPublishedRuntime({
     onProgress,
     onUnpack,
-    wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    wait: delay,
     resolve: resolveSupportPath,
     exec: (file, args) => iina.utils.exec(file, args),
+    fileSize,
     remuxActive: remuxStatus.state === "running",
-    sessions: session ? 1 : 0,
-    ...(update ? {
-      busyReason: t("sidebar.updateBusy"),
-      // Checked again: the download can take minutes, and captions may have started meanwhile.
-      // The helper itself refuses while another window or an MKV copy uses it.
-      beforeSwap: async () => {
-        if (session || remuxStatus.state === "running") return {ok: false as const, reason: t("sidebar.updateBusy")};
-        const stopped = await stopHelper();
-        return stopped.ok ? {ok: true as const} : {ok: false as const, reason: t("sidebar.updateBusy")};
-      },
-    } : {}),
+    // An update turns this window's captions off by itself, right before the swap.
+    sessions: update ? 0 : session ? 1 : 0,
+    ...(update ? {busyReason: t("sidebar.updateBusyCopy"), beforeSwap: stopEveryWindow} : {}),
   }),
-  wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+  wait: delay,
   helper: helperIdentity,
   runtime: {version: RUNTIME_VERSION, bytes: RUNTIME_ARCHIVE_BYTES},
+  // Captions come back whether or not the update went through.
+  updateFinished: () => { announceUpdate("resume"); void resumeAfterUpdate(); },
 });
 
 // Speech models in Advanced. Polls only while the helper downloads or tries one.
@@ -435,7 +497,9 @@ function setupSidebar() {
   iina.sidebar.onMessage("open-link", (data: {link?: unknown}) => { openCreditLink(data?.link, (file, args) => iina.utils.exec(file, args)); });
   iina.sidebar.onMessage("action", (data: {action: string; target?: string; value?: boolean | number; filename?: string}) => {
     if (data.action === "set-enabled" && typeof data.value === "boolean") {
-      if (data.value && !enabled) void start();
+      // While the helper is replaced, the choice waits for the new one.
+      if (setupController.swapping() || pausedForUpdate) { pausedForUpdate = data.value; if (data.value) status({tone:"info", title:t("status.updatePaused"), detail:t("status.updatePausedDetail")}, true); else status(offStatus()); }
+      else if (data.value && !enabled) void start();
       else if (!data.value) void stop();
     }
     else if (data.action === "retry") void start();

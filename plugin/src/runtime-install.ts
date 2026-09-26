@@ -112,6 +112,11 @@ export async function installPublishedRuntime(deps: {
   sessions: number;
   /** Bytes of the archive on disk so far, about once a second while curl runs. */
   onProgress?: (done: number, total: number) => void;
+  /**
+   * A file's size without starting a process. IINA waits for each exec in turn, so a
+   * size check through exec would only answer after curl has finished.
+   */
+  fileSize?: (path: string) => number | null;
   /** The download is complete; checking and unpacking take tens of seconds. */
   onUnpack?: () => void;
   wait?: (ms: number) => Promise<void>;
@@ -129,7 +134,8 @@ export async function installPublishedRuntime(deps: {
   if (!support || !support.startsWith("/")) return {ok: false, reason: t("sidebar.setupNoFolder")};
   const partial = `${support}/${RUNTIME_PARTIAL}`;
   await deps.exec("/bin/sh", ["-c", CLEAR_STALE_PARTIALS_SCRIPT, "cue-clear", support, partial]).catch(() => undefined);
-  const size = async () => Number((await deps.exec("/usr/bin/stat", ["-f%z", partial]).catch(() => ({stdout: ""}))).stdout);
+  const size = async () => deps.fileSize ? deps.fileSize(partial) ?? 0
+    : Number((await deps.exec("/usr/bin/stat", ["-f%z", partial]).catch(() => ({stdout: ""}))).stdout);
   // A download that finished before a refused swap is not fetched again; the checksum still decides.
   let downloaded = await size() === RUNTIME_ARCHIVE_BYTES;
   for (const url of downloaded ? [] : RUNTIME_ARCHIVE_URLS) {

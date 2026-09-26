@@ -157,7 +157,7 @@ test('with a running helper, setup calls /v1/setup once-prefixed and does not do
   assert.ok(!execs.includes('/usr/bin/curl'), 'a running helper means the runtime is not downloaded again');
 });
 
-test('an installed older helper is offered the update, and Update stops it only after the verified download', async () => {
+test('an installed older helper is offered the update; Update turns captions off only for the swap and back on after', async () => {
   const events = new Map<string, () => void>();
   const messages = new Map<string, (data: unknown) => void>();
   const posted: [string, any][] = [];
@@ -175,6 +175,11 @@ test('an installed older helper is offered the update, and Update stops it only 
     instance_id: helper().instance_id, files_ready: true, bytes_total: 100, bytes_needed: 0, free_disk_bytes: 9e9,
     progress: {phase: 'idle', bytes_done: 100, bytes_total: 100}, smoke: swapped && !smoked ? null : {passed: true, reason: 'ok'},
   });
+  const snapshot = () => ({
+    instance_id: helper().instance_id, session_id: `session-${helper().instance_id}`, seek_epoch: 0, snapshot_revision: 1, profile_revision: 1,
+    state: 'preparing', stage: '', target: 'original', prepared_ranges: [], installed_ranges: [], buffer_wall_ms: 0,
+    language: {code: 'und', status: 'unknown'}, artifact: null, error: null, ready: false, duration_ms: 60000,
+  });
   const answer = (method: string, url: string, body?: {action?: string}) => {
     const {pathname, port} = new URL(url);
     if (Number(port) !== helper().port || stopping) throw new Error('connection refused');
@@ -182,16 +187,21 @@ test('an installed older helper is offered the update, and Update stops it only 
     if (pathname === '/v1/clients') return {data: {instance_id, client_id: `client-${instance_id}`}};
     if (pathname === '/v1/client' && method === 'DELETE') { steps.push('release lease'); return {data: {instance_id, ok: true}}; }
     if (pathname === '/v1/shutdown') { steps.push('shutdown'); stopping = true; return {data: {instance_id, stopping: true}}; }
+    if (pathname === '/v1/sessions' && method === 'POST') { steps.push(`captions on ${instance_id}`); return {data: snapshot()}; }
+    if (pathname.startsWith('/v1/sessions/') && method === 'DELETE') { steps.push('captions off'); return {data: {instance_id, ok: true}}; }
+    if (pathname.startsWith('/v1/sessions/')) return {data: snapshot()};
     if (pathname === '/v1/setup/actions' && body?.action === 'smoke') { steps.push(`smoke on ${instance_id}`); smoked = true; }
     return {data: status()};
   };
   const iina = {
     menu: {item: (title: string, action: () => void) => ({title, action, items: [] as unknown[], addSubMenuItem(item: unknown) { this.items.push(item); return this; }}), addItem: () => {}},
     event: {on: (name: string, callback: () => void) => { events.set(name, callback); return name; }},
-    mpv: {getString: () => '55', getNumber: () => 0, getFlag: () => false, set: () => {}, command: () => {}, getNative: () => []},
-    preferences: {get: () => undefined},
-    file: {exists: (path: string) => installed.has(path), write: () => {}},
-    core: {osd: () => {}},
+    // A playing film with one audio track, so captions can start.
+    mpv: {getString: (name: string) => name === 'path' ? '/Movies/film.mkv' : '55', getNumber: () => 0, getFlag: () => false, set: () => {}, command: () => {},
+      getNative: (name: string) => name === 'track-list' ? [{id: 1, type: 'audio', selected: true, 'ff-index': 1, codec: 'aac', 'demux-channel-count': 2}] : []},
+    preferences: {get: () => undefined, set: () => {}, sync: () => {}},
+    file: {exists: (path: string) => installed.has(path), write: () => {}, handle: () => { throw new Error('no file'); }},
+    core: {osd: () => {}, status: {path: '/Movies/film.mkv'}},
     console: {log: () => {}},
     http: {
       get: async (url: string) => answer('GET', url),
@@ -220,24 +230,31 @@ test('an installed older helper is offered the update, and Update stops it only 
       postMessage: (name: string, data: any) => { posted.push([name, data]); },
     },
   };
-  vm.runInNewContext(source, {iina, setInterval: () => 1, setTimeout: () => 1, clearTimeout: () => {}, clearInterval: () => {}});
+  // Timers fire right away: the update waits briefly between attempts to stop the helper.
+  vm.runInNewContext(source, {iina, setInterval: () => 1, setTimeout: (fn: () => void) => { setImmediate(fn); return 1; }, clearTimeout: () => {}, clearInterval: () => {}});
   events.get('iina.window-loaded')!();
   messages.get('ready')!({});
   const setupPosts = () => posted.filter(([name]) => name === 'cue-setup').map(([, view]) => view);
-  for (let i = 0; i < 50 && !setupPosts().some((view) => view.primary === 'Update'); i++) await new Promise<void>(resolve => setImmediate(resolve));
-  const offer = setupPosts().find((view) => view.primary === 'Update');
+  const settle = async (done: () => boolean) => { for (let i = 0; i < 400 && !done(); i++) await new Promise<void>(resolve => setImmediate(resolve)); };
+  await settle(() => setupPosts().some((view) => view.updateButton));
+  const offer = setupPosts().find((view) => view.updateButton);
   assert.ok(offer, JSON.stringify(setupPosts()));
-  assert.equal(offer.title, "Update Cue's helper");
+  assert.equal(offer.updateButton, 'Update Cue');
+  assert.equal(offer.showCard, false);
   assert.equal(offer.showControls, true);
+  // Captions are on in this window when the user presses Update.
+  messages.get('action')!({action: 'set-enabled', value: true});
+  await settle(() => steps.includes('captions on helper-old'));
   assert.ok(!steps.includes('download'), 'nothing is downloaded before the button');
   messages.get('start-setup')!({});
-  for (let i = 0; i < 200 && !setupPosts().some((view) => view.ready); i++) await new Promise<void>(resolve => setImmediate(resolve));
-  assert.equal(setupPosts()[setupPosts().length - 1].ready, true, steps.join(' > '));
+  await settle(() => steps.includes('captions on helper-new'));
   assert.deepEqual(steps, [
-    'start 0.1.6', 'download', 'verify', 'release lease', 'shutdown', 'swap runtime', `start ${RUNTIME_VERSION}`, 'smoke on helper-new',
+    'start 0.1.6', 'captions on helper-old', 'download', 'verify', 'captions off', 'release lease', 'shutdown',
+    'swap runtime', `start ${RUNTIME_VERSION}`, 'smoke on helper-new', 'captions on helper-new',
   ]);
+  assert.equal(setupPosts().filter((view) => view.ready).length >= 1, true);
   // The new helper's speech models are listed without reopening the sidebar.
   const finished = posted.findIndex(([name, view]) => name === 'cue-setup' && view.ready);
-  for (let i = 0; i < 50 && !posted.slice(finished).some(([name]) => name === 'cue-models'); i++) await new Promise<void>(resolve => setImmediate(resolve));
+  await settle(() => posted.slice(finished).some(([name]) => name === 'cue-models'));
   assert.ok(posted.slice(finished).some(([name]) => name === 'cue-models'));
 });

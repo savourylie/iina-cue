@@ -74,13 +74,26 @@
   .speech-models{margin:10px 0 8px;padding:0 8px;border:0;min-width:0}
   .speech-models legend{padding:0;font-size:11px;font-weight:600;letter-spacing:.02em;opacity:.62}
   .model{margin-top:10px}
-  .model .option{margin-top:0}
+  .model-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+  .model .option{margin-top:0;min-width:0}
   .model-note{display:block;margin:2px 0 0 21px;font-size:12px;line-height:1.4;opacity:.75}
   .model-note[data-tone="error"]{opacity:1;color:var(--text-error)}
   .model progress{display:block;width:calc(100% - 21px);margin:6px 0 0 21px;accent-color:AccentColor}
   .model-bytes{display:block;margin-left:21px;font-size:12px;opacity:.75;font-variant-numeric:tabular-nums}
-  .model-actions{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0 21px}
-  .model-credits{margin:10px 0 0;font-size:12px;line-height:1.4;opacity:.75}
+  /* Model actions sit at the end of the name row, flat like the other Advanced actions. */
+  .model-actions{display:flex;flex:none;gap:2px;margin:-2px -6px 0 0}
+  .model-actions button{padding:2px 6px;border:0;border-radius:5px;background:transparent;color:var(--accent);color:AccentColor;font-size:12px;cursor:pointer;white-space:nowrap}
+  .model-actions button:hover{background:var(--fill-hover)}
+  .model-credits{margin:10px 0 0;font-size:12px;line-height:1.4}
+  .model-credits summary{padding:2px 0;font-weight:500;opacity:.75}
+  .model-credits p{margin:4px 0 0;opacity:.75}
+  /* An available update is a small button at the top right; the controls stay put. */
+  .update-row{display:flex;justify-content:flex-end;margin:-6px 0 6px}
+  .update-button{padding:2px 10px;border:0;border-radius:999px;background:var(--accent);background:AccentColor;color:#fff;font-size:11px;font-weight:600;cursor:pointer}
+  .update-row[hidden],#setup-intro:empty{display:none}
+  #setup-progress{display:block;width:100%;accent-color:AccentColor}
+  #setup-progress[hidden]{display:none}
+  #setup-card:not([hidden])+#normal-controls{margin-top:16px;padding-top:14px;border-top:1px solid var(--separator)}
   .model-actions:empty,.model-note:empty,.model-bytes:empty,.model progress[hidden],#speech-models[hidden]{display:none}
   .remux-form input[aria-invalid="true"]{outline:1px solid var(--text-error);outline-offset:0}
   .remux-reveal{margin-top:8px}
@@ -96,6 +109,7 @@
   @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
 <h1 data-i18n="sidebar.title">Cue subtitles</h1>
+<div id="update-row" class="update-row" hidden><button id="update-button" class="update-button" type="button" data-i18n="sidebar.updateButton">Update Cue</button></div>
 <section id="setup-card" hidden>
   <h2 id="setup-title" data-i18n="sidebar.setupTitle">Set up Cue</h2>
   <p id="setup-intro" data-i18n="sidebar.setupIntro">Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.</p>
@@ -170,7 +184,7 @@
   <fieldset id="speech-models" class="speech-models" hidden>
     <legend data-i18n="sidebar.speechModel">Speech model</legend>
     <div id="speech-model-rows"></div>
-    <p id="speech-model-credits" class="model-credits"><span data-i18n="model.creditsLead">Larger model:</span> <a href="#" data-link="gemma-e4b" data-i18n="model.creditE4b">Gemma 4 E4B (Google, Apache 2.0)</a>.</p>
+    <details id="speech-model-credits" class="model-credits"><summary data-i18n="model.credits">Credits</summary><p><span data-i18n="model.creditsLead">Larger model:</span> <a href="#" data-link="gemma-e4b" data-i18n="model.creditE4b">Gemma 4 E4B (Google, Apache 2.0)</a>.</p></details>
   </fieldset>
   <div id="advanced-actions" class="advanced-actions" role="group" aria-label="Advanced actions" data-i18n-attr="aria-label:sidebar.advancedActions">
     <button type="button" data-action="remux" data-i18n="sidebar.remux">Save a copy as MKV (reset timestamps)…</button>
@@ -315,7 +329,7 @@
   function modelNode(row){
     if(modelNodes[row.id])return modelNodes[row.id];
     const box=document.createElement('div');box.className='model';
-    box.innerHTML='<label class="option"><input type="radio" name="speech-model"><span><span class="model-name"></span><span class="option-hint model-description"></span><span class="option-hint model-facts"></span></span></label><span class="model-note" role="status"></span><progress max="100" hidden></progress><span class="model-bytes"></span><div class="model-actions"></div>';
+    box.innerHTML='<div class="model-head"><label class="option"><input type="radio" name="speech-model"><span><span class="model-name"></span><span class="option-hint model-description"></span><span class="option-hint model-facts"></span></span></label><div class="model-actions"></div></div><span class="model-note" role="status"></span><progress max="100" hidden></progress><span class="model-bytes"></span>';
     const radio=box.querySelector('input');radio.value=row.id;
     radio.addEventListener('change',()=>{if(radio.checked&&!modelRowsById[row.id]?.checked)iina.postMessage('model',{action:'use',model:row.id});});
     const node={box,radio,name:box.querySelector('.model-name'),description:box.querySelector('.model-description'),facts:box.querySelector('.model-facts'),note:box.querySelector('.model-note'),progress:box.querySelector('progress'),bytes:box.querySelector('.model-bytes'),actions:box.querySelector('.model-actions'),actionKey:null};
@@ -338,22 +352,27 @@
   });
   iina.onMessage('cue-setup',data=>{
     document.getElementById('setup-card').hidden=!data.showCard;
-    // An offered update leaves captions usable; setup and a running update replace the controls.
+    // First-run setup replaces the controls; an update never does.
     document.getElementById('normal-controls').hidden=data.showControls===false;
+    const update=document.getElementById('update-button');
+    document.getElementById('update-row').hidden=!data.updateButton;
+    if(data.updateButton){update.textContent=data.updateButton;update.title=data.updateHint||'';}
     if(data.title)document.getElementById('setup-title').textContent=data.title;
-    if(data.intro)document.getElementById('setup-intro').textContent=data.intro;
+    document.getElementById('setup-intro').textContent=data.intro||'';
     document.getElementById('setup-credits').hidden=data.credits===false;
     document.getElementById('setup-detail').textContent=data.detail||'';
     document.getElementById('setup-bytes').textContent=data.bytes||'';
+    // A step without a byte count shows a moving bar instead of none.
     const progress=document.getElementById('setup-progress');
-    progress.hidden=data.progress==null;
-    if(data.progress!=null)progress.value=data.progress;
+    progress.hidden=data.progress==null&&!data.indeterminate;
+    if(data.progress!=null)progress.value=data.progress;else progress.removeAttribute('value');
     const button=document.getElementById('setup-primary');
     button.hidden=!data.primary;
     if(data.primary)button.textContent=data.primary;
     if(data.announce)document.getElementById('status-announce').textContent=data.announce;
   });
   document.getElementById('setup-primary').addEventListener('click',()=>iina.postMessage('start-setup',{}));
+  document.getElementById('update-button').addEventListener('click',()=>iina.postMessage('start-setup',{}));
   // A link would navigate this sidebar. The plugin opens the model page in the browser instead.
   for(const link of document.querySelectorAll('#setup-credits a[data-link],#speech-model-credits a[data-link]'))link.addEventListener('click',event=>{event.preventDefault();iina.postMessage('open-link',{link:link.dataset.link});});
   document.querySelectorAll('#advanced-actions button[data-action]').forEach(button=>button.addEventListener('click',()=>iina.postMessage('action',{action:button.dataset.action})));
