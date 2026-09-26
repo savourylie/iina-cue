@@ -31,6 +31,12 @@ Cue listens with Gemma 4 E2B. Under Advanced in the Cue sidebar, Speech model al
 
 To switch models, turn off AI subtitles in every IINA window, then choose the model. Cue tries a short spoken clip with it first. If the clip does not work, Cue keeps the model you had. Remove deletes Gemma 4 E4B and its cache. Gemma 4 E2B stays installed.
 
+## Updating Cue's helper
+
+The helper that runs the speech models is updated separately from the plugin. When the plugin needs a newer helper, the Cue sidebar shows Update Cue's helper with the download size. Nothing downloads until you press Update. Captions keep working until then.
+
+Turn off AI subtitles in every IINA window first, and wait for any MKV copy to finish. Cue does not replace a helper that is in use; it says so and offers Retry. The update keeps your speech models and subtitles. If the download stops or does not match its published checksum, the old helper keeps working. When the update is in place, Cue tries a short spoken clip with the new helper.
+
 ## If something goes wrong
 
 An unsupported Mac, including an Intel Mac or a system older than macOS 14.0, is refused before the download. The sidebar gives the reason. Cue does not start a download that the Mac cannot run.

@@ -22,4 +22,4 @@ export interface ParentGlobal {
   postMessage(target: string, name: string, data: unknown): void;
   onMessage(name: string, callback: (data: any, sender: string) => void): void;
 }
-export type Connection = {host: string; port: number; token: string; protocol_version: number; instance_id: string};
+export type Connection = {host: string; port: number; token: string; protocol_version: number; instance_id: string; helper_version?: string};

@@ -164,7 +164,7 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   assert.ok(script);
   const elements = new Map<string, any>();
   function element(id: string) {
-    if (!elements.has(id)) elements.set(id, {hidden: id === 'setup-card', textContent: '', value: 0, dataset: {}, listeners: new Map(), addEventListener(name: string, fn: any) {this.listeners.set(name, fn);}});
+    if (!elements.has(id)) elements.set(id, {hidden: id === 'setup-card', textContent: '', value: 0, title: '', dataset: {}, listeners: new Map(), addEventListener(name: string, fn: any) {this.listeners.set(name, fn);}, removeAttribute(name: string) { this[name] = undefined; }});
     return elements.get(id);
   }
   const messages = new Map<string, (data: any) => void>();
@@ -203,6 +203,74 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   assert.equal(done.ready, true);
   assert.equal(element('setup-card').hidden, true);
   assert.equal(element('normal-controls').hidden, false);
+});
+
+test('an update is a small button that can be ignored, then a short status with progress above the controls', () => {
+  const html = readFileSync('plugin/sidebar.html', 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  // The button sits above everything else, and a showing status block is separated from the controls.
+  assert.ok(html.indexOf('id="update-row"') < html.indexOf('id="setup-card"'));
+  assert.match(html, /#setup-card:not\(\[hidden\]\)\+#normal-controls\{margin-top:16px/);
+  const elements = new Map<string, any>();
+  const element = (id: string) => {
+    if (!elements.has(id)) elements.set(id, {hidden: id === 'setup-card' || id === 'update-row', textContent: '', value: 0, title: '', dataset: {}, listeners: new Map(), addEventListener(name: string, fn: any) {this.listeners.set(name, fn);}, removeAttribute(name: string) { this[name] = undefined; }});
+    return elements.get(id);
+  };
+  const messages = new Map<string, (data: any) => void>();
+  const posted: [string, any][] = [];
+  vm.runInNewContext(script, {
+    setTimeout: () => 0, clearTimeout: () => {},
+    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}})},
+    iina: {onMessage: (name: string, fn: any) => messages.set(name, fn), postMessage: (name: string, data: any) => posted.push([name, data])},
+  });
+  const show = (phase: Parameters<typeof setupView>[0]['phase'], extra: Partial<Parameters<typeof setupView>[0]> = {}) => {
+    const view = setupView({phase, mode: 'update', updateBytes: 283_954_324, ...extra});
+    messages.get('cue-setup')!(view);
+    return view;
+  };
+  const offer = show('update');
+  assert.equal(element('update-row').hidden, false);
+  assert.equal(element('update-button').textContent, 'Update Cue');
+  assert.match(element('update-button').title, /284 MB download/);
+  assert.equal(element('setup-card').hidden, true, 'no card until the user starts the update');
+  assert.equal(element('normal-controls').hidden, false);
+  assert.equal(offer.announce, "An update for Cue's helper is available");
+  assert.equal(posted.some(([name]) => name === 'start-setup'), false, 'nothing starts without the button');
+  element('update-button').listeners.get('click')();
+  assert.equal(posted[posted.length - 1][0], 'start-setup');
+  const starting = show('runtime', {previous: 'update'});
+  assert.equal(element('update-row').hidden, true);
+  assert.equal(element('setup-card').hidden, false);
+  assert.equal(element('normal-controls').hidden, false, 'captions keep working while the update downloads');
+  assert.equal(element('setup-title').textContent, "Updating Cue's helper");
+  assert.equal(element('setup-intro').textContent, '');
+  assert.equal(element('setup-credits').hidden, true);
+  assert.equal(starting.detail, 'Downloading the update. Captions keep working meanwhile.');
+  assert.equal(element('setup-progress').hidden, false, 'a moving bar before the first byte count');
+  assert.equal(element('setup-progress').value, undefined);
+  const running = show('runtime', {bytesDone: 142_000_000, bytesTotal: 283_954_324, previous: 'runtime'});
+  assert.equal(running.bytes, '142 MB of 284 MB (50%)');
+  assert.equal(element('setup-progress').value, 50);
+  show('unpacking', {previous: 'runtime'});
+  assert.equal(element('setup-detail').textContent, 'Installing the update. Captions pause for about a minute.');
+  assert.equal(element('setup-progress').hidden, false);
+  assert.equal(element('setup-progress').value, undefined, 'unpacking has no byte count');
+  const failed = show('failed', {reason: 'An MKV copy is using Cue\'s helper. Wait for it to finish, then retry.', previous: 'unpacking'});
+  assert.equal(element('setup-title').textContent, "Cue's helper was not updated");
+  assert.equal(element('normal-controls').hidden, false);
+  assert.equal(element('setup-progress').hidden, true);
+  assert.equal(failed.primary, 'Retry');
+  assert.equal(failed.announce, 'The update did not finish');
+  assert.equal(show('done', {previous: 'smoke'}).announce, "Cue's helper is up to date");
+  assert.equal(element('setup-card').hidden, true);
+  assert.equal(element('update-row').hidden, true);
+  // First-run setup still replaces the controls, with its own heading, intro and credits.
+  messages.get('cue-setup')!(setupView({phase: 'download', diskBytes: 3_834_972_052}));
+  assert.equal(element('setup-title').textContent, 'Set up Cue');
+  assert.match(element('setup-intro').textContent, /downloads about 3\.8 GB/);
+  assert.equal(element('setup-credits').hidden, false);
+  assert.equal(element('normal-controls').hidden, true);
 });
 
 test('with nothing left to download, setup says so and offers Continue', () => {

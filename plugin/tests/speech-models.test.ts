@@ -100,8 +100,11 @@ test('the sidebar has the speech model group and sends the chosen action', () =>
   assert.match(html, /iina\.onMessage\('cue-models'/);
   assert.match(html, /iina\.postMessage\('model',\{action:'use',model:row\.id\}\)/);
   assert.match(html, /iina\.postMessage\('model',\{action:a\.action,model:row\.id\}\)/);
-  // The larger model is credited beside its download, and the link opens through the plugin.
+  // The larger model is credited beside its download, folded away until opened, and the link opens through the plugin.
   const group = html.slice(html.indexOf('<fieldset id="speech-models"'), html.indexOf('</fieldset>'));
+  assert.match(group, /<details id="speech-model-credits" class="model-credits"><summary[^>]*>Credits<\/summary>/);
   assert.match(group, /data-link="gemma-e4b"[^>]*>Gemma 4 E4B \(Google, Apache 2\.0\)</);
+  // Actions end the model's name row instead of hanging below its text.
+  assert.match(html, /<div class="model-head"><label class="option">.*<\/label><div class="model-actions"><\/div><\/div>/);
   assert.match(html, /querySelectorAll\('#setup-credits a\[data-link\],#speech-model-credits a\[data-link\]'\)/);
 });
