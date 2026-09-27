@@ -29,6 +29,11 @@ def system_message(target: str) -> str:
             "Preserve meaning, names, numbers and negation. Never summarize or add commentary. Keep each subtitle concise and readable in at most two short lines. "
             "A subtitle may continue the previous one; translate it so the sequence reads naturally, and keep sentence boundaries within each id.")
 
+def safe_key(name: str) -> str:
+    """A JSON key the constrained decoder can force. It forces keys byte by byte, and the
+    tokenizer writes a space as ▁, so a key with a space can never be emitted."""
+    return re.sub(r"\s+", "_", name)
+
 def names_parse(raw: str, aliases: list[Cue], names: tuple) -> tuple[dict[str, str], dict[str, str]]:
     """Split an object reply into validated cue texts and best-effort reported names."""
     try:
@@ -39,12 +44,13 @@ def names_parse(raw: str, aliases: list[Cue], names: tuple) -> tuple[dict[str, s
         raise CueError("TRANSLATION_FAILED", "invalid translation object") from exc
     texts = translation_parse(json.dumps(data["cues"], ensure_ascii=False), aliases)
     found = data.get("names") if isinstance(data.get("names"), dict) else {}
+    original = {safe_key(name): name for name in names}
     kept = {}
     for key, value in found.items():
-        if isinstance(key, str) and isinstance(value, str) and key in names:
+        if isinstance(key, str) and isinstance(value, str) and key in original:
             value = clean_text(value)
             if 1 <= len(value) <= 16:
-                kept[key] = value
+                kept[original[key]] = value
     return texts, kept
 
 def translation_schema(ids: list[str], forbid_kana: bool = False, names=(), name_pattern: str | None = None) -> dict:
@@ -59,8 +65,9 @@ def translation_schema(ids: list[str], forbid_kana: bool = False, names=(), name
     if not names:
         return cues
     rendering = {"type": "string", "minLength": 1, "maxLength": 16, **({"pattern": name_pattern} if name_pattern else {})}
-    return {"type": "object", "properties": {"cues": cues, "names": {"type": "object", "properties": {name: rendering for name in names},
-            "required": list(names), "additionalProperties": False}}, "required": ["cues", "names"], "additionalProperties": False}
+    keys = [safe_key(name) for name in names]
+    return {"type": "object", "properties": {"cues": cues, "names": {"type": "object", "properties": {key: rendering for key in keys},
+            "required": keys, "additionalProperties": False}}, "required": ["cues", "names"], "additionalProperties": False}
 
 def check_target_script(sources: list[str], results: list[str], target: str) -> None:
     # Numeric or name-only cues can stay unchanged; a batch with speech needs some target script.
@@ -198,10 +205,11 @@ class Backend:
             batch_context = replace(context, previous=tuple(previous[-6:]), new_names=wanted)
             try:
                 texts, found = self._translate_batch(batch, target, batch_context)
-            except CueError:
+            except (CueError, RuntimeError):
                 # Decoding is deterministic, so the same prompt fails the same way again. The retry
                 # sends each cue alone with the same context, asks for no names, and keeps kana out
-                # where the target forbids it.
+                # where the target forbids it. An engine error on the names request (a constraint
+                # the decoder cannot satisfy) takes the same path instead of ending the session.
                 retry = replace(batch_context, new_names=())
                 texts = [self._translate_batch([cue], target, retry, forbid_kana=target in NO_KANA_TARGETS, check=False)[0][0] for cue in batch]
                 # A name-only cue may stay in Latin letters, so the script rule applies to the batch.

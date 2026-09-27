@@ -242,3 +242,26 @@ def test_transcription_gets_a_names_hint_only_when_names_are_known(tmp_path):
     backend.transcribe(tmp_path/'a.wav','en',names=['Nash','Hansen'])
     assert 'Proper names' not in prompts[0]
     assert prompts[1].endswith(' Proper names that may be spoken, spell them this way if heard: Nash, Hansen.')
+
+def test_multi_word_names_get_space_free_schema_keys_and_map_back(tmp_path):
+    # The constrained decoder forces JSON keys byte by byte, and this tokenizer writes a
+    # space as ▁, so a key with a space can never be emitted. Keys use underscores instead.
+    backend=Backend(tmp_path);calls=[]
+    def send(prompt,max_tokens,schema=None,system=None):
+        calls.append((prompt,schema));return '{"cues":[{"id":"1","text":"他在惠勒實驗室。"}],"names":{"Wheeler_Labs":"惠勒實驗室"}}'
+    backend.send=send
+    cues,names=backend.translate([Cue('a',0,1,'He is at Wheeler Labs.')],'zh-TW','en',TranslationContext(new_names=('Wheeler Labs',)))
+    prompt,schema=calls[0]
+    assert list(schema['properties']['names']['properties'])==['Wheeler_Labs'] and schema['properties']['names']['required']==['Wheeler_Labs']
+    assert '"names": ["Wheeler Labs"]' in prompt
+    assert names=={'Wheeler Labs':'惠勒實驗室'} and [c.text for c in cues]==['他在惠勒實驗室。']
+
+def test_an_engine_error_on_the_names_call_falls_back_to_the_per_cue_retry(tmp_path):
+    backend=Backend(tmp_path);calls=[]
+    def send(prompt,max_tokens,schema=None,system=None):
+        calls.append(schema['type'])
+        if schema['type']=='object': raise RuntimeError('Parser Error: token doesn\'t satisfy the grammar')
+        return '[{"id":"1","text":"納許來了"}]'
+    backend.send=send
+    cues,names=backend.translate([Cue('a',0,1,'Nash came.')],'zh-TW','en',TranslationContext(new_names=('Nash',)))
+    assert calls==['object','array'] and names=={} and [c.text for c in cues]==['納許來了']
