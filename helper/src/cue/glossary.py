@@ -1,9 +1,12 @@
 """Per-film glossary: name heuristics, prompt selection and read-only user files."""
 from __future__ import annotations
+from functools import lru_cache
 import json
 from pathlib import Path
 import re
 from .core import _sentence_end, digest
+
+DATA_DIR = Path(__file__).parent / "data"
 
 LATIN_SOURCES = {"en", "de", "es", "fr", "it", "pt"}
 MAX_NEW_NAMES = 6
@@ -18,7 +21,26 @@ STOPWORDS = {"I", "Mr", "Mrs", "Ms", "Dr", "Prof", "Sir", "Madam", "Oh", "Ah", "
              "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
              "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December",
              "The", "A", "An", "And", "But", "So", "Then", "Now", "What", "Why", "How", "Who", "When", "Where", "Which", "If",
-             "Because", "You", "We", "They", "He", "She", "It", "This", "That", "There", "Here", "Not", "Just", "Very"}
+             "Because", "You", "We", "They", "He", "She", "It", "This", "That", "There", "Here", "Not", "Just", "Very",
+             "Professor", "Doctor", "Mister", "Miss", "Ma'am", "Captain", "Sergeant", "Officer", "Father", "Mother", "Uncle", "Aunt",
+             "English", "American", "French", "German", "Spanish", "Italian", "Japanese", "Chinese", "Korean", "Russian", "British", "European",
+             "Nobody", "Everybody", "Everyone", "Someone", "Somebody", "Anyone", "Anybody", "Nothing", "Something", "Everything", "Anything", "Alright"}
+
+def common_words(texts) -> set[str]:
+    """Words the source writes in lowercase somewhere. A capitalised twin of one is not a name."""
+    return {word.lower() for text in texts for word in WORD.findall(text) if word[:1].islower()}
+
+def is_common_word(name: str, common: set[str]) -> bool:
+    return name.split()[0].lower() in common
+
+@lru_cache(maxsize=None)
+def builtin_glossary(target: str) -> dict[str, str]:
+    """Cue's built-in renderings of common names for a target, or {} when it has none. Read-only."""
+    path = DATA_DIR / f"names-{target}.json"
+    if not path.is_file():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {key: value for key, value in data.items() if isinstance(key, str) and isinstance(value, str)}
 
 def levenshtein(a: str, b: str) -> int:
     previous = list(range(len(b) + 1))
@@ -104,6 +126,7 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
     """
     if language not in LATIN_SOURCES:
         return [], {}
+    common = common_words([*texts, *previous_texts])
     non_initial: set[str] = set()
     for text in [*texts, *previous_texts]:
         for tokens, initial in _runs(text):
@@ -118,7 +141,7 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
             if not tokens:
                 continue
             candidate = " ".join(tokens)
-            if candidate in seen:
+            if candidate in seen or is_common_word(candidate, common):
                 continue
             seen.add(candidate)
             match = match_name(candidate, known)
@@ -139,11 +162,12 @@ MAX_TEXT = 64
 KANA = re.compile("[぀-ヿ]")
 NO_KANA_TARGETS = {"zh-TW", "zh-CN", "ko"}
 
-def select_entries(user: dict[str, str], learned: list, texts, previous_texts) -> dict[str, str]:
-    """Entries worth showing for one batch: the relevant ones, then the most recent, at most 40, user first."""
+def select_entries(user: dict[str, str], learned: list, texts, previous_texts, builtin: dict[str, str] | None = None) -> dict[str, str]:
+    """Entries worth showing for one batch: the relevant ones (user, then built-in, then learned),
+    then the most recent learned ones, at most 40."""
     corpus = " ".join([*texts, *previous_texts])
     folded = corpus.casefold()
-    ordered = [*user.items(), *((source, rendering) for source, rendering, *_ in learned)]
+    ordered = [*user.items(), *(builtin or {}).items(), *((source, rendering) for source, rendering, *_ in learned)]
     keys = [source for source, _ in ordered]
     tokens = {_candidate(match.group()) for match in WORD.finditer(corpus)}
     matched = {match_name(token, keys) for token in tokens} - {None}

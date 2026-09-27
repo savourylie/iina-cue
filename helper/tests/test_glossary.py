@@ -1,6 +1,7 @@
 import json
 import pytest
-from cue.glossary import glossary_hash, load_user_glossary, match_name, names_hint, proper_nouns, select_entries
+import re
+from cue.glossary import builtin_glossary, common_words, glossary_hash, load_user_glossary, match_name, names_hint, proper_nouns, select_entries
 
 def test_proper_nouns_find_names_and_phrases_but_not_sentence_starts_or_stopwords():
     texts=["Hansen won the Carnegie scholarship.","Well, he has his sights set on Wheeler Labs.","Nash. Oh, Mr. Sol is here."]
@@ -98,3 +99,22 @@ def test_a_capitalised_word_after_an_opening_quote_dash_or_ellipsis_opens_a_sent
 
 def test_a_trailing_apostrophe_is_not_part_of_a_name():
     assert proper_nouns(["Take Peros' car and Hansen's hat."],[],{},'en')==(['Peros','Hansen'],{})
+
+def test_a_capitalised_word_seen_in_lowercase_elsewhere_is_not_a_name():
+    assert proper_nouns(["Seriously, Wheeler, this is it."],["I mean it seriously."],{},'en')==(['Wheeler'],{})
+    assert common_words(["We take it seriously.","Seriously?"])=={'take','it','seriously'}
+
+def test_titles_nationalities_and_indefinite_pronouns_are_not_names():
+    assert proper_nouns(["Ask Professor Hansen about the English test, Everybody."],[],{},'en')==(['Hansen'],{})
+    assert proper_nouns(["Yes, Ma'am. Nothing else, Doctor."],[],{},'en')==([],{})
+
+def test_the_builtin_zh_tw_name_table_is_large_and_clean():
+    table=builtin_glossary('zh-TW')
+    assert len(table)>=300 and table['John']=='約翰' and table['Wheeler']=='惠勒' and table['Hansen']=='漢森'
+    assert all(re.fullmatch(r'[㐀-鿿·]+',v) for v in table.values())
+    assert all(1<=len(k)<=64 and k==k.strip() for k in table)
+    assert builtin_glossary('ko')=={}
+
+def test_select_entries_puts_relevant_builtin_entries_after_user_and_before_learned():
+    chosen=select_entries({'Nash':'納許'},[['Bender','本德',5]],["John and Nash met Bender."],[],{'John':'約翰','Mary':'瑪麗'})
+    assert list(chosen)==['Nash','John','Bender'] and 'Mary' not in chosen

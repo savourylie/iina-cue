@@ -274,8 +274,22 @@ def test_jobs_carry_previous_lines_and_the_glossary_and_learned_names_are_stored
     assert job['range'][0]==20000
     assert [c['id'] for c in job['previous_source']]==[f's{i}' for i in range(2,14)]
     assert [c['id'] for c in job['previous_rendered']]==[f'r{i}' for i in range(2,8)]
-    assert job['glossary']=={'user':{'Nash':'納許'},'learned':[['Hansen','漢森',0]]}
+    assert job['glossary']['user']=={'Nash':'納許'} and job['glossary']['learned']==[['Hansen','漢森',0]]
     sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
-                    'committed_range':[20000,30000],'names':{'Nash':'納什','Sol':'索爾'}}})
+                    'committed_range':[20000,30000],'names':{'Nash':'納什','Parcher':'帕徹'}}})
     sup.tick()
-    assert sup.cache.names(s.media.signature,'zh-TW')==[['Sol','索爾',20000],['Hansen','漢森',0]]
+    # Sol would be pinned by the built-in table; Parcher is not in it.
+    assert sup.cache.names(s.media.signature,'zh-TW')==[['Parcher','帕徹',20000],['Hansen','漢森',0]]
+
+def test_learned_names_skip_builtin_keys_and_words_the_film_uses_in_lowercase(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously.')],{'code':'en'})
+    sup.tick()
+    job=sup.inbox.get_nowait()
+    assert job['glossary']['builtin']['John']=='約翰'
+    sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
+                    'committed_range':[20000,30000],'names':{'Seriously':'認真','John':'約翰','Nash':'納許'}}})
+    sup.tick()
+    assert sup.cache.names(s.media.signature,'zh-TW')==[['Nash','納許',20000]]

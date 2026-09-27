@@ -35,3 +35,10 @@ def test_dump_report_uses_the_latest_profiles_for_the_media(tmp_path):
     assert 'Nash => 納許  mentions 1 consistent 1/1' in report
     assert 'captions with fewer than 3 source words: 1 of 1' in report
     assert dump_report(cache,'media','ja',{})=='no cached captions for this media and target ja'
+
+def test_dump_report_counts_builtin_renderings_as_established(tmp_path):
+    cache=Cache(tmp_path/'cache')
+    cache.register('src','media','original');cache.register('tgt','media','zh-TW')
+    cache.put('src',0,1000,[Cue('s',0,500,'Hello John.')],{'code':'en'})
+    cache.put('tgt',0,1000,[Cue('t',0,500,'哈囉，約翰。')],{'code':'en'})
+    assert 'John => 約翰  mentions 1 consistent 1/1' in dump_report(cache,'media','zh-TW',{})

@@ -20,14 +20,15 @@ def build_context(units: list[Cue], continues: frozenset[str], job: dict, langua
     previous_rendered = [Cue(**c) for c in job.get("previous_rendered", [])]
     previous = pair_previous(previous_source, previous_rendered)[-6:]
     glossary = job.get("glossary") or {}
-    user, learned = glossary.get("user", {}), glossary.get("learned", [])
+    user, builtin, learned = glossary.get("user", {}), glossary.get("builtin", {}), glossary.get("learned", [])
     known = {source: rendering for source, rendering, *_ in reversed(learned)}
+    known.update(builtin)
     known.update(user)
     texts = [u.text for u in units]
     previous_texts = [source for source, _ in previous]
     new_names, variants = proper_nouns(texts, previous_texts, known, language)
-    taken = frozenset([*user.values(), *(rendering for _, rendering, *_ in learned)])
-    return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts),
+    taken = frozenset([*user.values(), *builtin.values(), *(rendering for _, rendering, *_ in learned)])
+    return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts, builtin),
                               variants=variants, new_names=tuple(new_names), continues=continues, taken=taken)
 
 class Pipeline:

@@ -265,3 +265,10 @@ def test_a_phantom_after_left_context_words_is_not_shown_either(monkeypatch,tmp_
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Smith needs revision.']
     assert result['timings']['seam_dropped']==1
+
+def test_build_context_uses_the_builtin_table_as_known_names_and_taken_renderings():
+    from cue.pipeline import build_context
+    job={'glossary':{'user':{},'builtin':{'John':'約翰','Hansen':'漢森'},'learned':[]},'previous_source':[],'previous_rendered':[]}
+    context=build_context([Cue('u1',0,1000,'Thank you, Mr. Hanson. John is here.')],frozenset(),job,'en')
+    assert context.new_names==() and context.variants=={'Hanson':'Hansen'}
+    assert context.glossary=={'John':'約翰','Hansen':'漢森'} and '約翰' in context.taken

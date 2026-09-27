@@ -14,7 +14,7 @@ import time
 from urllib.parse import parse_qs
 from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
 from .bootstrap import HELPER_VERSION, model_manifest_path
-from .glossary import glossary_hash, load_user_glossary
+from .glossary import builtin_glossary, common_words, glossary_hash, is_common_word, load_user_glossary
 from .media import Media, installed_ffmpeg_record
 from .pipeline import worker_entry, MIN_KEPT_MS
 from .vad import VAD_ID
@@ -260,7 +260,17 @@ class Supervisor:
                         self.cache.put(job["profile"], *committed, [Cue(**c) for c in r["rendered"]], r["language"])
                         # A rendering is a fact about the film, not about a playback position, so
                         # names from a stale seek epoch are kept too. User entries always win.
-                        learned = {k: v for k, v in r.get("names", {}).items() if k not in job.get("glossary", {}).get("user", {})}
+                        glossary = job.get("glossary", {})
+                        pinned = set(glossary.get("user", {})) | set(glossary.get("builtin", {}))
+                        learned = {k: v for k, v in r.get("names", {}).items() if k not in pinned}
+                        if learned:
+                            # A word the film writes in lowercase somewhere is not a name.
+                            try:
+                                _, source_cues, _ = self.cache.read(job["source_profile"])
+                                common = common_words([c.text for c in source_cues])
+                                learned = {k: v for k, v in learned.items() if not is_common_word(k, common)}
+                            except CueError:
+                                pass
                         if learned:
                             self.cache.add_names(job["media"]["signature"], job["settings"]["target"], learned, committed[0])
                         if s and s.epoch == job["epoch"] and s.profile == job["profile"]:
@@ -325,7 +335,8 @@ class Supervisor:
                 s.error = {"code":exc.code}; s.state = "error"; return
             job["previous_source"] = [asdict(c) for c in previous_source if c.end_ms <= job["range"][0]][-12:]
             job["previous_rendered"] = [asdict(c) for c in previous_rendered if c.end_ms <= job["range"][0]][-6:]
-            job["glossary"] = {"user": s.user_glossary, "learned": self.cache.names(s.media.signature, s.settings.target)[:500]}
+            job["glossary"] = {"user": s.user_glossary, "builtin": builtin_glossary(s.settings.target),
+                               "learned": self.cache.names(s.media.signature, s.settings.target)[:500]}
             self.inbox.put_nowait(job)
             self.busy = {**job, "started": now, "media_obj": s.media}
             s.state = "preparing"

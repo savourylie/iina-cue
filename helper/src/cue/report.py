@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from .core import Cue, join_texts, stamp
-from .glossary import proper_nouns
+from .glossary import builtin_glossary, proper_nouns
 from .storage import Cache
 
 def latest_profile(cache: Cache, media: str, target: str) -> str | None:
@@ -78,7 +78,7 @@ def dump_report(cache: Cache, media_signature: str, target: str, user_glossary: 
     rendered_chunks = chunks(cache, profile)
     rendered = [c for _, _, cues in rendered_chunks for c in cues]
     learned = {s: r for s, r, *_ in reversed(cache.names(media_signature, target))}
-    glossary = {**learned, **user_glossary}
+    glossary = {**learned, **builtin_glossary(target), **user_glossary}
     lines = [f"source profile {source_profile[:12]}  target profile {profile[:12]} ({target})",
              *side_by_side(source, rendered_chunks, from_ms, to_ms), "", "--- names ---"]
     for row in name_table(source, rendered, glossary, source_language(cache, source_profile)):

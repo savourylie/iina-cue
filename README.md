@@ -75,5 +75,5 @@ scripts/cue-helper shutdown
 - 100 次真 IINA 重載已通過，不累積軌道；全螢幕閃爍與 20 分鐘順播尚待驗收。
 - 一支使用者指定的 14:03 本機影片暴露純數字 cue 的翻譯誤判，以及接合先前快取時的對齊文字衝突。兩處已修正；本機 helper 從 20 秒逐段處理到片尾，IINA 已載入該區間的原文字幕，並在尾段看見字幕。尚未宣稱整片連續播放驗收。
 - 完整安裝器、LRU 上限、睡眠喚醒復原、模型自動下載 UI、簽署／公證仍未交付。
-- 譯名表：模型在翻譯時回報新專名的譯法，先到先贏，存在快取裡；影片旁的 `<片名>.cue-glossary.json` 或 `~/Library/Application Support/Cue/glossary.json` 可以覆蓋，格式 `{"zh-TW": {"Nash": "納許"}}`。只讀不寫；改檔案後該片譯文重做，原文沿用。日文、韓文、中文、俄文來源不自動偵測專名。
+- 譯名表：內建約 650 個常見英文名和姓氏的台灣慣用譯法（`helper/src/cue/data/names-zh-TW.json`），其餘由模型在翻譯時回報新專名的譯法，先到先贏，存在快取裡；影片原文裡曾以小寫出現的字不當名字；影片旁的 `<片名>.cue-glossary.json` 或 `~/Library/Application Support/Cue/glossary.json` 可以覆蓋，格式 `{"zh-TW": {"Nash": "納許"}}`。只讀不寫；改檔案後該片譯文重做，原文沿用。日文、韓文、中文、俄文來源不自動偵測專名。
 - 這一版把原文快取 key 升到 sentence-cues-v4、譯文 key 升到 translate-v3：已看過的影片下次播放會重新轉錄與翻譯一次。
