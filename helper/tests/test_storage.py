@@ -1,3 +1,4 @@
+import sqlite3
 import pytest
 from cue.core import Cue, CueError
 from cue.storage import Cache, atomic_write
@@ -49,3 +50,25 @@ def test_only_stretches_without_speech_report_an_unknown_language(tmp_path):
     cache=Cache(tmp_path/'cache');cache.register('p','media','original')
     cache.put('p',0,16000,[],{'code':'und','status':'unknown','method':'voice_activity'})
     assert cache.read('p')[2]['code']=='und'
+
+def test_learned_names_keep_the_first_rendering_and_clear_with_the_film(tmp_path):
+    cache=Cache(tmp_path/'cache');cache.register('p','media','zh-TW')
+    assert cache.add_names('media','zh-TW',{'Nash':'納許','Hansen':'漢森'},120000)==2
+    assert cache.add_names('media','zh-TW',{'Nash':'納什','Sol':'索爾'},136000)==1
+    assert cache.names('media','zh-TW')==[['Sol','索爾',136000],['Hansen','漢森',120000],['Nash','納許',120000]]
+    assert cache.names('media','ja')==[]
+    assert cache.add_names('media','zh-TW',{},0)==0
+    cache.clear_media('media')
+    assert cache.names('media','zh-TW')==[]
+
+def test_a_version_one_cache_gains_the_glossary_table(tmp_path):
+    root=tmp_path/'cache';root.mkdir()
+    db=sqlite3.connect(root/'cache.sqlite3')
+    db.executescript("""CREATE TABLE chunks (profile TEXT NOT NULL, start INTEGER NOT NULL, end INTEGER NOT NULL,
+        payload TEXT NOT NULL, updated REAL NOT NULL DEFAULT (unixepoch()), PRIMARY KEY(profile, start, end));
+      CREATE TABLE profiles (profile TEXT PRIMARY KEY, media TEXT NOT NULL, target TEXT NOT NULL);
+      PRAGMA user_version=1;""")
+    db.close()
+    cache=Cache(root)
+    assert cache.db.execute('PRAGMA user_version').fetchone()[0]==2
+    assert cache.add_names('m','zh-TW',{'Nash':'納許'},0)==1

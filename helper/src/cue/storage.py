@@ -43,7 +43,12 @@ class Cache:
             PRIMARY KEY(profile, start, end));
           CREATE TABLE IF NOT EXISTS profiles (
             profile TEXT PRIMARY KEY, media TEXT NOT NULL, target TEXT NOT NULL);
-          PRAGMA user_version=1;
+          CREATE TABLE IF NOT EXISTS glossary (
+            media TEXT NOT NULL, target TEXT NOT NULL, source TEXT NOT NULL,
+            rendering TEXT NOT NULL, first_ms INTEGER NOT NULL,
+            updated REAL NOT NULL DEFAULT (unixepoch()),
+            PRIMARY KEY(media, target, source));
+          PRAGMA user_version=2;
         """)
 
     def register(self, profile: str, media: str, target: str):
@@ -77,9 +82,23 @@ class Cache:
             deduped.append(c)
         return ranges_merge(ranges), deduped, language
 
+    def add_names(self, media: str, target: str, names: dict[str, str], first_ms: int) -> int:
+        """Remember the first rendering seen for each source spelling; later ones are ignored."""
+        with self.db:
+            before = self.db.total_changes
+            self.db.executemany("INSERT OR IGNORE INTO glossary (media,target,source,rendering,first_ms) VALUES (?,?,?,?,?)",
+                                [(media, target, source, rendering, first_ms) for source, rendering in names.items()])
+            return self.db.total_changes - before
+
+    def names(self, media: str, target: str) -> list[list]:
+        """Learned renderings, most recently added first: [source, rendering, first_ms]."""
+        return [list(row) for row in self.db.execute(
+            "SELECT source,rendering,first_ms FROM glossary WHERE media=? AND target=? ORDER BY rowid DESC", (media, target))]
+
     def clear_media(self, media: str):
         with self.db:
             self.db.execute("DELETE FROM chunks WHERE profile IN (SELECT profile FROM profiles WHERE media=?)", (media,))
+            self.db.execute("DELETE FROM glossary WHERE media=?", (media,))
             self.db.execute("DELETE FROM profiles WHERE media=?", (media,))
 
     def status(self):
