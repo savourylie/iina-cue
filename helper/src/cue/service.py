@@ -15,7 +15,7 @@ from urllib.parse import parse_qs
 from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
 from .bootstrap import HELPER_VERSION, model_manifest_path
 from .media import Media, installed_ffmpeg_record
-from .pipeline import worker_entry
+from .pipeline import worker_entry, MIN_KEPT_MS
 from .vad import VAD_ID
 from .remux import remux, validate_destination
 from .storage import Cache, atomic_write, private_dir
@@ -295,7 +295,8 @@ class Supervisor:
             if window is None: s.state = "idle"; return
             self.start_worker()
             job = {"job_id": opaque(), "session": s.id, "epoch": s.epoch, "source_profile": s.source_profile,
-                   "profile": s.profile, "media": asdict(s.media), "settings": asdict(s.settings), "range": list(window), "attempt": 1 if retry else 0}
+                   "profile": s.profile, "media": asdict(s.media), "settings": asdict(s.settings), "range": list(window), "attempt": 1 if retry else 0,
+                   "min_commit_ms": s.settings.startup_ms if window[0] == s.position else MIN_KEPT_MS}
             s.retry_window = None
             if retry: job["settings"]["context_ms"] = max(s.settings.context_ms,2000)
             # Reuse a complete source chunk even when a new target/session starts

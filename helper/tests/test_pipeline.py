@@ -165,3 +165,35 @@ def test_nothing_aligned_before_the_collapse_fails_the_window(monkeypatch,tmp_pa
     with pytest.raises(CueError) as exc:
         p.run(job)
     assert exc.value.code=='ALIGNMENT_FAILED'
+
+def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[0,8000];job['min_commit_ms']=2000
+    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's"
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
+    result=p.run(job)
+    assert result['committed_range']==[0,3000]
+    assert [c['text'] for c in result['source']]==['Not one of us.']
+    assert result['timings']['held_back_ms']==4000
+
+def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_cached(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[0,8000]
+    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's"
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
+    job['min_commit_ms']=8000
+    result=p.run(job)
+    assert result['committed_range']==[0,7000] and [c['text'] for c in result['source']]==['Not one of us.',"He's"]
+    assert 'held_back_ms' not in result['timings']
+    job['min_commit_ms']=2000
+    job['following_source']=[{'id':'r','start_ms':8000,'end_ms':8500,'text':'later'}]
+    result=p.run(job)
+    assert result['committed_range']==[0,8000] and len(result['source'])==2
+
+def test_no_hold_back_after_a_collapse(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[0,8000];job['min_commit_ms']=2000
+    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's going"
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],6200)
+    result=p.run(job)
+    assert result['committed_range']==[0,6200] and len(result['source'])==2

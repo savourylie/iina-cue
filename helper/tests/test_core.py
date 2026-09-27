@@ -2,7 +2,7 @@ import json
 import pytest
 from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
 from cue.core import coalesce_quantized_units, coalesce_until_collapse, restore_transcript
-from cue.core import TranslationContext, join_texts, pair_previous, sentence_units
+from cue.core import TranslationContext, hold_back, join_texts, pair_previous, sentence_units
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
     assert Settings(target='zh-CN').target == 'zh-CN'
@@ -217,3 +217,22 @@ def test_translation_context_defaults_are_empty():
     context=TranslationContext()
     assert context.previous==() and context.glossary=={} and context.variants=={}
     assert context.new_names==() and context.continues==frozenset()
+
+def test_hold_back_leaves_an_unfinished_trailing_sentence_for_the_next_window():
+    cues=[Cue('a',500,2500,'Not a single one of us.'),Cue('b',3000,3400,"He's")]
+    assert hold_back(cues,0,4000,2000)==([cues[0]],3000)
+
+def test_hold_back_does_nothing_when_the_window_ends_on_a_sentence_or_the_tail_is_too_long():
+    assert hold_back([Cue('a',500,2500,'Done.')],0,4000,2000) is None
+    tail=[Cue('a',500,2500,'Done.'),Cue('b',3000,9000,'and then he kept talking without a pause')]
+    assert hold_back(tail,0,9500,2000) is None
+    assert hold_back(tail,0,9500,2000,max_hold_ms=7000)==([tail[0]],3000)
+    assert hold_back([],0,4000,2000) is None
+
+def test_hold_back_keeps_the_minimum_committed_stretch():
+    cues=[Cue('a',500,1500,'Short.'),Cue('b',1600,3000,"He's")]
+    assert hold_back(cues,0,4000,2000) is None
+    assert hold_back(cues,0,4000,1000)==([cues[0]],1600)
+    # With no sentence end at all, everything from the first cue on is the tail.
+    cues=[Cue('a',2500,3000,"He's"),Cue('b',3100,4000,'going')]
+    assert hold_back(cues,0,5000,2000)==([],2500)

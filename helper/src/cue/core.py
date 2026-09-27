@@ -246,6 +246,25 @@ def pair_previous(previous_source: list[Cue], previous_rendered: list[Cue], tole
             pairs.append((join_texts(texts), rendered.text))
     return pairs
 
+HOLD_MAX_MS = 5000
+
+def hold_back(cues: list[Cue], start: int, committed_end: int, min_commit_ms: int, max_hold_ms: int = HOLD_MAX_MS) -> tuple[list[Cue], int] | None:
+    """Leave an unfinished trailing sentence for the next window.
+
+    Returns the cues to keep and the new committed end, a measured cue start, or
+    None when the window ends on a sentence, the tail is longer than max_hold_ms,
+    or too little would stay committed.
+    """
+    if not cues or _sentence_end(cues[-1].text):
+        return None
+    k = len(cues)
+    while k > 0 and not _sentence_end(cues[k-1].text):
+        k -= 1
+    hold_start = cues[k].start_ms
+    if committed_end - hold_start > max_hold_ms or hold_start - start < min_commit_ms:
+        return None
+    return cues[:k], hold_start
+
 @dataclass(frozen=True)
 class TranslationContext:
     """What the translator sees besides the batch. Every field is optional."""

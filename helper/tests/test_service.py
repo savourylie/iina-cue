@@ -229,3 +229,17 @@ def test_ready_looks_past_holes_but_the_caption_buffer_does_not(sup):
     assert snap['buffer_media_ms']==1000
     s.failed=[]
     assert sup.snapshot(s)['ready'] is False
+
+def test_first_window_at_the_playhead_keeps_the_startup_floor_and_later_windows_the_minimum(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.tick()
+    first=sup.inbox.get_nowait()
+    assert first['range']==[0,10000] and first['min_commit_ms']==8000
+    sup.busy=None
+    sup.cache.put(s.source_profile,0,10000,[Cue('a',0,500,'hi')],{'code':'en'})
+    sup.cache.put(s.profile,0,10000,[Cue('a',0,500,'hi')],{'code':'en'})
+    sup.tick()
+    second=sup.inbox.get_nowait()
+    assert second['range']==[10000,26000] and second['min_commit_ms']==2000

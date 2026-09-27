@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, assemble, validate_units, reconcile_boundary, restore_transcript
+from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, assemble, hold_back, validate_units, reconcile_boundary, restore_transcript
 from .media import Media, extract
 from .vad import SileroVad
 
@@ -119,6 +119,14 @@ class Pipeline:
                                 raise CueError("ALIGNMENT_FAILED", "cached right boundary time conflict")
                             last=source[-1]; source[-1]=Cue(last.id,last.start_ms,next_start,last.text)
                             timings["boundary_reused_ms"] += overlap
+                    if known_right is None and end != media.duration_ms and cut is None:
+                        held = hold_back(source, start, committed_end, job.get("min_commit_ms", MIN_KEPT_MS))
+                        if held is not None:
+                            # The next window re-transcribes the unfinished sentence together
+                            # with its continuation. The dropped cues are not cached anywhere.
+                            source, hold_start = held
+                            timings["held_back_ms"] = committed_end - hold_start
+                            committed_end = hold_start
                 report("translating", language)
                 t = time.monotonic(); rendered = self.backend.translate(source, settings.target, language["code"]); timings["translate_s"] = time.monotonic()-t
             else:
