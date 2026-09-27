@@ -293,3 +293,18 @@ def test_learned_names_skip_builtin_keys_and_words_the_film_uses_in_lowercase(su
                     'committed_range':[20000,30000],'names':{'Seriously':'認真','John':'約翰','Nash':'納許'}}})
     sup.tick()
     assert sup.cache.names(s.media.signature,'zh-TW')==[['Nash','納許',20000]]
+
+def test_names_the_supervisor_skips_are_logged_with_the_reason(sup,monkeypatch,capsys):
+    s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously.')],{'code':'en'})
+    sup.cache.add_names(s.media.signature,'zh-TW',{'Baker':'貝克'},0)
+    sup.tick();job=sup.inbox.get_nowait()
+    sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
+                    'committed_range':[20000,30000],'names':{'Seriously':'認真','John':'約翰','Bender':'貝克','Nash':'納許'}}})
+    capsys.readouterr()
+    sup.tick()
+    events=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
+    skipped=[e for e in events if e.get('event')=='names_skipped']
+    assert skipped==[{'event':'names_skipped','pinned':['John'],'common':['Seriously'],'owned':['Bender']}]

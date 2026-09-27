@@ -294,3 +294,9 @@ def test_a_rendering_owned_anywhere_in_the_ledger_is_not_learned_for_another_nam
     backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"嘿，約翰·納西。"}],"names":{"Nash":"約翰"}}'
     cues,names=backend.translate([Cue('a',0,1,'Hey, Nash.')],'zh-TW','en',TranslationContext(new_names=('Nash',),taken=frozenset({'約翰'})))
     assert names=={}
+
+def test_translate_reports_which_names_the_model_returned_and_which_were_rejected(tmp_path):
+    backend=Backend(tmp_path)
+    backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"來吧，本德。"}],"names":{"Bender":"班德","Nash":"納什"}}'
+    cues,names=backend.translate([Cue('a',0,1,'Come on, Bender. Nash?')],'zh-TW','en',TranslationContext(new_names=('Bender','Nash')))
+    assert names=={} and backend.names_report=={'reported':{'Bender':'班德','Nash':'納什'},'accepted':{},'rejected':{'Bender':'班德','Nash':'納什'}}

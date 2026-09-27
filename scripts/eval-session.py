@@ -8,6 +8,7 @@ Only the media file you name is read; nothing else is searched or uploaded.
 """
 from __future__ import annotations
 import argparse
+from collections import Counter
 import json
 import os
 import time
@@ -65,7 +66,8 @@ def main() -> None:
                    "asr_s_mean": round(sum(w.get("asr_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "align_s_mean": round(sum(w.get("align_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "peak_rss_gb": round(max((w.get("process_peak_rss_bytes", 0) for w in windows), default=0) / 2**30, 2),
-                   "speech_model": sup.speech_model}
+                   "speech_model": sup.speech_model,
+                   "names_rejected_by_worker": dict(Counter(f"{k} → {v}" for w in windows for k, v in w.get("names_rejected", {}).items()))}
         signature, path = s.media.signature, s.media.path
         sup.request("DELETE", base, {}, client); sup.stop_worker()
     print(json.dumps(summary, ensure_ascii=False), flush=True)

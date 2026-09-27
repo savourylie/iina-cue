@@ -161,6 +161,10 @@ class Pipeline:
                     rendered, names = self.backend.translate(source, settings.target, code)
                 timings["translate_s"] = time.monotonic()-t
                 timings["names_learned"] = len(names)
+                report = getattr(self.backend, "names_report", None)
+                if report and report.get("reported"):
+                    timings["names_reported"] = list(report["reported"])
+                    timings["names_rejected"] = dict(report.get("rejected", {}))
             else:
                 rendered, names = [], {}
             timings["pipeline_s"] = time.monotonic()-started

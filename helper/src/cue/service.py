@@ -262,17 +262,25 @@ class Supervisor:
                         # names from a stale seek epoch are kept too. User entries always win.
                         glossary = job.get("glossary", {})
                         pinned = set(glossary.get("user", {})) | set(glossary.get("builtin", {}))
-                        learned = {k: v for k, v in r.get("names", {}).items() if k not in pinned}
+                        reported = r.get("names", {})
+                        learned = {k: v for k, v in reported.items() if k not in pinned}
+                        skipped = {"pinned": [k for k in reported if k in pinned], "common": [], "owned": []}
                         if learned:
                             # A word the film writes in lowercase somewhere is not a name.
                             try:
                                 _, source_cues, _ = self.cache.read(job["source_profile"])
                                 common = common_words([c.text for c in source_cues])
-                                learned = {k: v for k, v in learned.items() if not is_common_word(k, common)}
+                                skipped["common"] = [k for k in learned if is_common_word(k, common)]
+                                learned = {k: v for k, v in learned.items() if k not in skipped["common"]}
                             except CueError:
                                 pass
                         if learned:
-                            self.cache.add_names(job["media"]["signature"], job["settings"]["target"], learned, committed[0])
+                            media_key, target = job["media"]["signature"], job["settings"]["target"]
+                            self.cache.add_names(media_key, target, learned, committed[0])
+                            stored = {source for source, *_ in self.cache.names(media_key, target)}
+                            skipped["owned"] = [k for k in learned if k not in stored]
+                        if any(skipped.values()):
+                            print(json.dumps({"event": "names_skipped", **skipped}, ensure_ascii=False), flush=True)
                         if s and s.epoch == job["epoch"] and s.profile == job["profile"]:
                             s.timings = r["timings"]
                             try: self.publish(s); s.state = "running"

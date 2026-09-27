@@ -110,6 +110,9 @@ class Backend:
         self.engine = None
         self.aligner = None
         self.detector = None
+        # What the last translate call learned: every rendering the model reported, the
+        # accepted ones, and the rejected ones. Read by the pipeline for its timings.
+        self.names_report = {"reported": {}, "accepted": {}, "rejected": {}}
 
     def load(self):
         if self.engine is not None: return
@@ -224,6 +227,7 @@ class Backend:
         previous = list(context.previous)
         translated: list[Cue] = []
         names: dict[str, str] = {}
+        reported: dict[str, str] = {}
         for offset in range(0, len(cues), BATCH_UNITS):
             batch = cues[offset:offset + BATCH_UNITS]
             wanted = tuple(n for n in context.new_names if any(n in c.text for c in batch))
@@ -240,9 +244,11 @@ class Backend:
                 # A name-only cue may stay in Latin letters, so the script rule applies to the batch.
                 check_target_script([c.text for c in batch], texts, target)
                 found = {}
+            reported.update(found)
             names.update(accept_names(found, texts, batch_context.glossary, names, batch_context.taken))
             translated.extend(Cue(c.id, c.start_ms, c.end_ms, text) for c, text in zip(batch, texts))
             previous.extend((c.text, text) for c, text in zip(batch, texts))
+        self.names_report = {"reported": reported, "accepted": dict(names), "rejected": {k: v for k, v in reported.items() if k not in names}}
         return translated, names
 
     def _translate_batch(self, batch: list[Cue], target: str, context: TranslationContext, forbid_kana: bool = False, check: bool = True) -> tuple[list[str], dict[str, str]]:

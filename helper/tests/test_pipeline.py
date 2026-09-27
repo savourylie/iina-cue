@@ -272,3 +272,14 @@ def test_build_context_uses_the_builtin_table_as_known_names_and_taken_rendering
     context=build_context([Cue('u1',0,1000,'Thank you, Mr. Hanson. John is here.')],frozenset(),job,'en')
     assert context.new_names==() and context.variants=={'Hanson':'Hansen'}
     assert context.glossary=={'John':'約翰','Hansen':'漢森'} and '約翰' in context.taken
+
+def test_rejected_name_reports_reach_the_timings(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['settings']=asdict(Settings(target='zh-TW'));job['range']=[10000,18000];job['min_commit_ms']=2000
+    p.backend.transcribe=lambda audio,source='auto',names=():"Come on, Bender."
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Come'),Unit(1900,2200,'on'),Unit(2300,2900,'Bender')],None)
+    def translate(c,t,l,context=None):
+        p.backend.names_report={'reported':{'Bender':'班德'},'accepted':{},'rejected':{'Bender':'班德'}};return c,{}
+    p.backend.translate=translate
+    result=p.run(job)
+    assert result['timings']['names_reported']==['Bender'] and result['timings']['names_rejected']=={'Bender':'班德'}
