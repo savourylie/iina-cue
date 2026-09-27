@@ -2,6 +2,7 @@ import json
 import pytest
 from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
 from cue.core import coalesce_quantized_units, coalesce_until_collapse, restore_transcript
+from cue.core import TranslationContext, join_texts, pair_previous, sentence_units
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
     assert Settings(target='zh-CN').target == 'zh-CN'
@@ -175,3 +176,44 @@ def test_punctuation_is_restored_on_a_prefix_only():
     restored=restore_transcript(units,'Hello, world. 「More」 words',prefix=True)
     assert [u.text for u in restored]==['Hello,',' world.']
     assert [(u.start_ms,u.end_ms) for u in restored]==[(0,100),(100,200)]
+
+def test_sentence_units_merge_fragments_until_a_sentence_ends():
+    cues=[Cue('a',0,500,"He's"),Cue('b',600,1500,'going to get her.'),Cue('c',1600,2500,'So then we go'),Cue('d',2500,3200,'for her friends.')]
+    units,continues=sentence_units(cues,'zh-TW')
+    assert [(u.start_ms,u.end_ms,u.text) for u in units]==[(0,1500,"He's going to get her."),(1600,3200,'So then we go for her friends.')]
+    assert continues==frozenset()
+    assert units[0].id!=units[1].id and len(units[0].id)==24
+    # The id depends on the target, so zh-TW and ja units of the same source never collide in a cache.
+    assert sentence_units(cues,'ja')[0][0].id!=units[0].id
+
+def test_sentence_units_split_on_a_long_pause_a_duration_cap_and_width_and_flag_continuations():
+    pause=[Cue('a',0,400,'Wait'),Cue('b',2000,2400,'for me.')]
+    units,continues=sentence_units(pause,'zh-TW')
+    assert [u.text for u in units]==['Wait','for me.'] and continues=={units[1].id}
+    long=[Cue(str(i),i*2000,i*2000+1900,'word') for i in range(5)]
+    units,continues=sentence_units(long,'zh-TW')
+    assert [(u.start_ms,u.end_ms) for u in units]==[(0,5900),(6000,9900)]
+    assert continues=={units[1].id}
+    wide=[Cue('a',0,1000,'x'*50),Cue('b',1000,2000,'y'*50)]
+    assert len(sentence_units(wide,'zh-TW')[0])==2
+
+def test_sentence_units_without_any_punctuation_still_stop_at_seven_seconds():
+    cues=[Cue(str(i),i*1000,i*1000+900,f'w{i}') for i in range(10)]
+    units,continues=sentence_units(cues,'zh-TW')
+    assert [(u.start_ms,u.end_ms) for u in units]==[(0,6900),(7000,9900)]
+    assert continues=={units[1].id}
+
+def test_join_texts_keeps_spaces_between_words_but_not_between_cjk():
+    assert join_texts(['Hello','world.'])=='Hello world.'
+    assert join_texts(['火車','明天'])=='火車明天'
+    assert join_texts(['見到 約翰','Nash'])=='見到約翰 Nash'
+
+def test_pair_previous_matches_rendered_cues_to_the_source_cues_inside_their_span():
+    source=[Cue('a',0,500,"He's"),Cue('b',600,1500,'going to get her.'),Cue('c',1600,2500,'Later.')]
+    rendered=[Cue('u',0,1500,'他會追到她。'),Cue('v',1600,2500,'之後。'),Cue('w',9000,9500,'孤兒')]
+    assert pair_previous(source,rendered)==[("He's going to get her.",'他會追到她。'),('Later.','之後。')]
+
+def test_translation_context_defaults_are_empty():
+    context=TranslationContext()
+    assert context.previous==() and context.glossary=={} and context.variants=={}
+    assert context.new_names==() and context.continues==frozenset()

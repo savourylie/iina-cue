@@ -1,6 +1,6 @@
 """Pure timeline, alignment, coverage and subtitle contracts."""
 from __future__ import annotations
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 import math
@@ -199,6 +199,62 @@ def _weak_ending(text: str) -> bool:
         "in", "on", "at", "by", "as", "is", "are", "was", "were", "have", "has",
         "had", "will", "would", "can", "could", "should", "not", "i"})
 
+def join_texts(texts: list[str]) -> str:
+    """Join cue or unit texts: spaces between words, none between CJK characters."""
+    text = " ".join(t.strip() for t in texts if t and t.strip())
+    return re.sub(r"(?<=[\u3000-\u9fff]) (?=[\u3000-\u9fff])", "", text).strip()
+
+SENTENCE_GAP_MS = 1500
+SENTENCE_MAX_MS = 7000
+SENTENCE_MAX_WIDTH = 84
+
+def sentence_units(cues: list[Cue], target: str) -> tuple[list[Cue], frozenset[str]]:
+    """Merge fragment cues into sentence units for translation.
+
+    A unit's times are the first cue's measured start and the last cue's measured
+    end; nothing is estimated. Returns the units and the ids of units that continue
+    the previous unit, where the split came from a pause or a cap, not punctuation.
+    """
+    groups: list[list[Cue]] = []
+    current: list[Cue] = []
+    for cue in cues:
+        if current and (_sentence_end(current[-1].text)
+                        or cue.start_ms - current[-1].end_ms > SENTENCE_GAP_MS
+                        or cue.end_ms - current[0].start_ms > SENTENCE_MAX_MS
+                        or _subtitle_width(join_texts([c.text for c in [*current, cue]])) > SENTENCE_MAX_WIDTH):
+            groups.append(current); current = []
+        current.append(cue)
+    if current:
+        groups.append(current)
+    units: list[Cue] = []
+    continues: set[str] = set()
+    for index, group in enumerate(groups):
+        unit = Cue(digest([target, *(c.id for c in group)])[:24], group[0].start_ms, group[-1].end_ms,
+                   join_texts([c.text for c in group]))
+        units.append(unit)
+        if index and not _sentence_end(groups[index-1][-1].text):
+            continues.add(unit.id)
+    return units, frozenset(continues)
+
+def pair_previous(previous_source: list[Cue], previous_rendered: list[Cue], tolerance_ms: int = 80) -> list[tuple[str, str]]:
+    """Pair earlier rendered cues with the source cues inside their measured span."""
+    pairs = []
+    for rendered in previous_rendered:
+        texts = [c.text for c in previous_source
+                 if c.start_ms >= rendered.start_ms - tolerance_ms and c.end_ms <= rendered.end_ms + tolerance_ms]
+        if texts:
+            pairs.append((join_texts(texts), rendered.text))
+    return pairs
+
+@dataclass(frozen=True)
+class TranslationContext:
+    """What the translator sees besides the batch. Every field is optional."""
+    previous: tuple[tuple[str, str], ...] = ()          # (source text, rendered text), oldest first, at most 6
+    glossary: dict[str, str] = field(default_factory=dict)  # source spelling -> rendering, already selected, at most 40
+    variants: dict[str, str] = field(default_factory=dict)  # misheard spelling -> established source spelling
+    new_names: tuple[str, ...] = ()                     # candidates to report in "names", at most 6
+    continues: frozenset[str] = frozenset()             # unit ids that continue the previous unit
+
 def assemble(units: list[Unit], zero_ms: int, core_start: int, core_end: int, source_key: str, *, verbatim: bool = False) -> list[Cue]:
     owned = [u for u in units if core_start <= zero_ms + (u.start_ms + u.end_ms) / 2 < core_end]
     groups: list[list[Unit]] = []
@@ -206,8 +262,7 @@ def assemble(units: list[Unit], zero_ms: int, core_start: int, core_end: int, so
     def rendered(group: list[Unit]) -> str:
         if verbatim:
             return "".join(unit.text for unit in group).strip()
-        text = " ".join(unit.text for unit in group)
-        return re.sub(r"(?<=[\u3000-\u9fff]) (?=[\u3000-\u9fff])", "", text).strip()
+        return join_texts([unit.text for unit in group])
     for u in owned:
         if current and u.start_ms - current[-1].end_ms > 600:
             groups.append(current); current = []
