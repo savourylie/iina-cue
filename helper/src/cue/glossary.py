@@ -115,3 +115,80 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
             elif limit is None or len(new) < limit:
                 new.append(candidate)
     return new, variants
+
+MAX_PROMPT_ENTRIES = 40
+RECENT_ENTRIES = 10
+MAX_HINT_NAMES = 20
+MAX_FILE_BYTES = 256 * 1024
+MAX_ENTRIES = 1000
+MAX_TEXT = 64
+KANA = re.compile("[぀-ヿ]")
+NO_KANA_TARGETS = {"zh-TW", "zh-CN", "ko"}
+
+def select_entries(user: dict[str, str], learned: list, texts, previous_texts) -> dict[str, str]:
+    """Entries worth showing for one batch: the relevant ones, then the most recent, at most 40, user first."""
+    corpus = " ".join([*texts, *previous_texts])
+    folded = corpus.casefold()
+    ordered = [*user.items(), *((source, rendering) for source, rendering, *_ in learned)]
+    keys = [source for source, _ in ordered]
+    tokens = {_candidate(match.group()) for match in WORD.finditer(corpus)}
+    matched = {match_name(token, keys) for token in tokens} - {None}
+    chosen: dict[str, str] = {}
+    for source, rendering in ordered:
+        if source.casefold() in folded or source in matched:
+            chosen.setdefault(source, rendering)
+    for source, rendering, *_ in learned[:RECENT_ENTRIES]:
+        chosen.setdefault(source, rendering)
+    return dict(list(chosen.items())[:MAX_PROMPT_ENTRIES])
+
+def names_hint(user: dict[str, str], learned: list) -> list[str]:
+    """Source spellings for the ASR prompt: user entries first, then the most recent learned ones."""
+    names = list(user)
+    names.extend(source for source, *_ in learned if source not in user)
+    return names[:MAX_HINT_NAMES]
+
+def glossary_hash(mapping: dict[str, str]) -> str:
+    return digest(mapping) if mapping else "none"
+
+def sidecar_path(media_path: str) -> Path:
+    video = Path(media_path)
+    return video.with_name(video.stem + ".cue-glossary.json")
+
+def _log_invalid(scope: str) -> None:
+    print(json.dumps({"event": "glossary_invalid", "scope": scope}), flush=True)
+
+def _read_section(path: Path, target: str, scope: str, log) -> dict[str, str]:
+    """One target's entries from a user file, or {} when the file is absent or invalid."""
+    if path.is_symlink():
+        log(scope); return {}
+    if not path.exists():
+        return {}
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
+            raise ValueError("not a regular file within the size limit")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or sum(len(v) for v in data.values() if isinstance(v, dict)) > MAX_ENTRIES:
+            raise ValueError("shape")
+        section = data.get(target, {})
+        if not isinstance(section, dict):
+            raise ValueError("section")
+        clean: dict[str, str] = {}
+        for key, value in section.items():
+            if not (isinstance(key, str) and isinstance(value, str) and 1 <= len(key) <= MAX_TEXT and 1 <= len(value) <= MAX_TEXT):
+                raise ValueError("entry")
+            if target in NO_KANA_TARGETS and KANA.search(value):
+                raise ValueError("kana in a target that forbids it")
+            clean[key] = value
+        return clean
+    except (OSError, ValueError):
+        log(scope)
+        return {}
+
+def load_user_glossary(media_path: str, root: Path, target: str, log=None) -> dict[str, str]:
+    """Merged user entries for one target. The sidecar next to the video overrides the global file.
+    Both files are only ever read."""
+    log = log or _log_invalid
+    merged: dict[str, str] = {}
+    merged.update(_read_section(root / "glossary.json", target, "global", log))
+    merged.update(_read_section(sidecar_path(media_path), target, "sidecar", log))
+    return merged
