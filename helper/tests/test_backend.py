@@ -299,4 +299,11 @@ def test_translate_reports_which_names_the_model_returned_and_which_were_rejecte
     backend=Backend(tmp_path)
     backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"來吧，本德。"}],"names":{"Bender":"班德","Nash":"納什"}}'
     cues,names=backend.translate([Cue('a',0,1,'Come on, Bender. Nash?')],'zh-TW','en',TranslationContext(new_names=('Bender','Nash')))
-    assert names=={} and backend.names_report=={'reported':{'Bender':'班德','Nash':'納什'},'accepted':{},'rejected':{'Bender':'班德','Nash':'納什'}}
+    assert names=={} and backend.names_report=={'reported':{'Bender':'班德','Nash':'納什'},'accepted':{},'rejected':{'Bender':'班德','Nash':'納什'},'fallback':False}
+
+def test_a_names_request_that_fell_back_is_reported(tmp_path):
+    backend=Backend(tmp_path)
+    replies=iter(['not json','[{"id":"1","text":"納許來了"}]'])
+    backend.send=lambda prompt,max_tokens,schema=None,system=None:next(replies)
+    backend.translate([Cue('a',0,1,'Nash came.')],'zh-TW','en',TranslationContext(new_names=('Nash',)))
+    assert backend.names_report['fallback'] is True and backend.names_report['reported']=={}

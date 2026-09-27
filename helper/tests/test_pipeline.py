@@ -270,8 +270,9 @@ def test_build_context_uses_the_builtin_table_as_known_names_and_taken_rendering
     from cue.pipeline import build_context
     job={'glossary':{'user':{},'builtin':{'John':'約翰','Hansen':'漢森'},'learned':[]},'previous_source':[],'previous_rendered':[]}
     context=build_context([Cue('u1',0,1000,'Thank you, Mr. Hanson. John is here.')],frozenset(),job,'en')
-    assert context.new_names==() and context.variants=={'Hanson':'Hansen'}
-    assert context.glossary=={'John':'約翰','Hansen':'漢森'} and '約翰' in context.taken
+    # Built-in names never claim a near miss: Hanson is a new name here, and only John appears as written.
+    assert context.new_names==('Hanson',) and context.variants=={}
+    assert context.glossary=={'John':'約翰'} and '約翰' in context.taken
 
 def test_rejected_name_reports_reach_the_timings(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
@@ -283,3 +284,9 @@ def test_rejected_name_reports_reach_the_timings(monkeypatch,tmp_path):
     p.backend.translate=translate
     result=p.run(job)
     assert result['timings']['names_reported']==['Bender'] and result['timings']['names_rejected']=={'Bender':'班德'}
+
+def test_build_context_never_treats_a_new_name_as_a_misheard_builtin_name():
+    from cue.pipeline import build_context
+    job={'glossary':{'user':{},'builtin':{'Becker':'貝克'},'learned':[]},'previous_source':[],'previous_rendered':[]}
+    context=build_context([Cue('u1',0,1000,'Come on, Bender.')],frozenset(),job,'en')
+    assert context.new_names==('Bender',) and context.variants=={} and context.glossary=={}

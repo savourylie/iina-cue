@@ -67,7 +67,8 @@ def main() -> None:
                    "align_s_mean": round(sum(w.get("align_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "peak_rss_gb": round(max((w.get("process_peak_rss_bytes", 0) for w in windows), default=0) / 2**30, 2),
                    "speech_model": sup.speech_model,
-                   "names_rejected_by_worker": dict(Counter(f"{k} → {v}" for w in windows for k, v in w.get("names_rejected", {}).items()))}
+                   "names_rejected_by_worker": dict(Counter(f"{k} → {v}" for w in windows for k, v in w.get("names_rejected", {}).items())),
+                   "names_fallback_windows": sum(1 for w in windows if w.get("names_fallback"))}
         signature, path = s.media.signature, s.media.path
         sup.request("DELETE", base, {}, client); sup.stop_worker()
     print(json.dumps(summary, ensure_ascii=False), flush=True)

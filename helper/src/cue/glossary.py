@@ -125,16 +125,23 @@ def _runs(text: str) -> list[tuple[list[str], bool]]:
         i = j
     return runs
 
-def proper_nouns(texts, previous_texts, known, language: str, limit: int | None = MAX_NEW_NAMES) -> tuple[list[str], dict[str, str]]:
+def proper_nouns(texts, previous_texts, known, language: str, limit: int | None = MAX_NEW_NAMES,
+                 exact: dict[str, str] | None = None) -> tuple[list[str], dict[str, str]]:
     """New proper-noun candidates in texts, and misheard spellings of known names.
 
     Latin-script sources only. A capitalised word that opens a sentence ("Meet",
     "Ask", or a name) counts only when the same word also appears mid-sentence in
     texts or previous_texts; otherwise the run starts at the next token, so
-    "Meet John Nash." yields "John Nash". Returns (new_names, {misheard: established}).
+    "Meet John Nash." yields "John Nash". `known` names (user and learned) also
+    match misheard spellings; `exact` names (the built-in table) match exactly
+    only, because near misses among hundreds of common names are mostly wrong.
+    Returns (new_names, {misheard: established}).
     """
     if language not in LATIN_SOURCES:
         return [], {}
+    exact = exact or {}
+    def establish(token: str) -> str | None:
+        return token if token in exact else match_name(token, known)
     common = common_words([*texts, *previous_texts])
     non_initial: set[str] = set()
     for text in [*texts, *previous_texts]:
@@ -149,12 +156,12 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
                 tokens = tokens[1:]
             if not tokens:
                 continue
-            if len(tokens) > 1 and any(match_name(token, known) is not None for token in tokens):
+            if len(tokens) > 1 and any(establish(token) is not None for token in tokens):
                 # A phrase with established parts is not learned whole: misheard parts
                 # become variant notes and only the unknown parts are asked for alone.
                 pieces = []
                 for token in tokens:
-                    match = match_name(token, known)
+                    match = establish(token)
                     if match is None:
                         pieces.append(token)
                     elif match != token:
@@ -165,7 +172,7 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
                 if candidate in seen or is_common_word(candidate, common):
                     continue
                 seen.add(candidate)
-                match = match_name(candidate, known)
+                match = establish(candidate)
                 if match == candidate:
                     continue
                 if match is not None:
@@ -187,14 +194,16 @@ def select_entries(user: dict[str, str], learned: list, texts, previous_texts, b
     """Entries worth showing for one batch: the relevant ones (user, then built-in, then learned),
     then the most recent learned ones, at most 40."""
     corpus = " ".join([*texts, *previous_texts])
-    folded = corpus.casefold()
     ordered = [*user.items(), *(builtin or {}).items(), *((source, rendering) for source, rendering, *_ in learned)]
-    keys = [source for source, _ in ordered]
+    # Misheard spellings only ever map to user and learned names; built-in names must appear as written.
+    fuzzy_keys = [*user, *(source for source, *_ in learned)]
     tokens = {_candidate(match.group()) for match in WORD.finditer(corpus)}
-    matched = {match_name(token, keys) for token in tokens} - {None}
+    matched = {match_name(token, fuzzy_keys) for token in tokens} - {None}
+    def present(key: str) -> bool:
+        return re.search(rf"(?<![^\W\d_]){re.escape(key)}(?![^\W\d_])", corpus, re.IGNORECASE) is not None
     chosen: dict[str, str] = {}
     for source, rendering in ordered:
-        if source.casefold() in folded or source in matched:
+        if source in matched or present(source):
             chosen.setdefault(source, rendering)
     for source, rendering, *_ in learned[:RECENT_ENTRIES]:
         chosen.setdefault(source, rendering)

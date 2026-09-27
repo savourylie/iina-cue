@@ -22,11 +22,10 @@ def build_context(units: list[Cue], continues: frozenset[str], job: dict, langua
     glossary = job.get("glossary") or {}
     user, builtin, learned = glossary.get("user", {}), glossary.get("builtin", {}), glossary.get("learned", [])
     known = {source: rendering for source, rendering, *_ in reversed(learned)}
-    known.update(builtin)
     known.update(user)
     texts = [u.text for u in units]
     previous_texts = [source for source, _ in previous]
-    new_names, variants = proper_nouns(texts, previous_texts, known, language)
+    new_names, variants = proper_nouns(texts, previous_texts, known, language, exact=builtin)
     taken = frozenset([*user.values(), *builtin.values(), *(rendering for _, rendering, *_ in learned)])
     return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts, builtin),
                               variants=variants, new_names=tuple(new_names), continues=continues, taken=taken)
@@ -161,10 +160,12 @@ class Pipeline:
                     rendered, names = self.backend.translate(source, settings.target, code)
                 timings["translate_s"] = time.monotonic()-t
                 timings["names_learned"] = len(names)
-                report = getattr(self.backend, "names_report", None)
-                if report and report.get("reported"):
+                report = getattr(self.backend, "names_report", None) or {}
+                if report.get("reported"):
                     timings["names_reported"] = list(report["reported"])
                     timings["names_rejected"] = dict(report.get("rejected", {}))
+                if report.get("fallback"):
+                    timings["names_fallback"] = True
             else:
                 rendered, names = [], {}
             timings["pipeline_s"] = time.monotonic()-started

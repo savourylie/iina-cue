@@ -131,3 +131,15 @@ def test_one_lowercased_mention_does_not_veto_a_name_the_film_capitalises():
     assert common_words(["Nash is here.","nash said no.","Nash again.","Seriously?","I mean it seriously."])=={'is','here','said','no','again','mean','it','seriously'}
     assert proper_nouns(["Hey, Nash."],["nash said no.","Nash again."],{},'en')==(['Nash'],{})
     assert proper_nouns(["Name Bender, atomic physics."],[],{},'en')==(['Bender'],{})
+
+def test_builtin_names_match_exactly_only_while_learned_names_still_match_misheard_spellings():
+    exact={'Becker':'貝克','Hansen':'漢森'}
+    assert proper_nouns(["Come on, Bender."],[],{},'en',exact=exact)==(['Bender'],{})
+    assert proper_nouns(["Hi, Becker."],[],{},'en',exact=exact)==([],{})
+    assert proper_nouns(["Hi, Hanson."],[],{'Hansen':'漢森'},'en',exact=exact)==([],{'Hanson':'Hansen'})
+    assert proper_nouns(["Meet John Nash."],["I saw Nash."],{},'en',exact={'John':'約翰'})==(['Nash'],{})
+
+def test_select_entries_injects_builtin_entries_on_whole_word_matches_only():
+    builtin={'Becker':'貝克','Bender':'本德','Ann':'安'}
+    assert select_entries({},[],["Come on, Bender. Don't annoy me."],[],builtin)=={'Bender':'本德'}
+    assert select_entries({},[['Hansen','漢森',0]],["Thank you, Mr. Hanson."],[],builtin)=={'Hansen':'漢森'}

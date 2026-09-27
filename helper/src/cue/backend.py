@@ -112,7 +112,7 @@ class Backend:
         self.detector = None
         # What the last translate call learned: every rendering the model reported, the
         # accepted ones, and the rejected ones. Read by the pipeline for its timings.
-        self.names_report = {"reported": {}, "accepted": {}, "rejected": {}}
+        self.names_report = {"reported": {}, "accepted": {}, "rejected": {}, "fallback": False}
 
     def load(self):
         if self.engine is not None: return
@@ -228,6 +228,7 @@ class Backend:
         translated: list[Cue] = []
         names: dict[str, str] = {}
         reported: dict[str, str] = {}
+        fallback = False
         for offset in range(0, len(cues), BATCH_UNITS):
             batch = cues[offset:offset + BATCH_UNITS]
             wanted = tuple(n for n in context.new_names if any(n in c.text for c in batch))
@@ -239,6 +240,7 @@ class Backend:
                 # sends each cue alone with the same context, asks for no names, and keeps kana out
                 # where the target forbids it. An engine error on the names request (a constraint
                 # the decoder cannot satisfy) takes the same path instead of ending the session.
+                fallback = fallback or bool(batch_context.new_names)
                 retry = replace(batch_context, new_names=())
                 texts = [self._translate_batch([cue], target, retry, forbid_kana=target in NO_KANA_TARGETS, check=False)[0][0] for cue in batch]
                 # A name-only cue may stay in Latin letters, so the script rule applies to the batch.
@@ -248,7 +250,8 @@ class Backend:
             names.update(accept_names(found, texts, batch_context.glossary, names, batch_context.taken))
             translated.extend(Cue(c.id, c.start_ms, c.end_ms, text) for c, text in zip(batch, texts))
             previous.extend((c.text, text) for c, text in zip(batch, texts))
-        self.names_report = {"reported": reported, "accepted": dict(names), "rejected": {k: v for k, v in reported.items() if k not in names}}
+        self.names_report = {"reported": reported, "accepted": dict(names), "rejected": {k: v for k, v in reported.items() if k not in names},
+                             "fallback": fallback}
         return translated, names
 
     def _translate_batch(self, batch: list[Cue], target: str, context: TranslationContext, forbid_kana: bool = False, check: bool = True) -> tuple[list[str], dict[str, str]]:
