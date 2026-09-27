@@ -87,3 +87,14 @@ def test_user_entries_are_validated(tmp_path):
 def test_accented_names_in_other_latin_sources_are_whole_tokens():
     assert proper_nouns(["Hola, José y André están aquí.","Chloé est là."],[],{},'es')==(['José','André'],{})
     assert match_name('Andre',{'André':'安德烈'})=='André'
+
+def test_hyphenated_and_inner_apostrophe_names_stay_whole():
+    assert proper_nouns(["I met Jean-Luc there."],[],{},'en')==(['Jean-Luc'],{})
+    assert proper_nouns(["Ask McCoy about O'Brien."],[],{},'en')==(['McCoy'],{})
+
+def test_a_capitalised_word_after_an_opening_quote_dash_or_ellipsis_opens_a_sentence():
+    assert proper_nouns(['"Meet me at five."','- Meet me at five.','Well… Meet me later.','Wait... Meet me.'],[],{},'en')==([],{})
+    assert proper_nouns(['"Nash, meet me at five."'],['I saw Nash.'],{},'en')==(['Nash'],{})
+
+def test_a_trailing_apostrophe_is_not_part_of_a_name():
+    assert proper_nouns(["Take Peros' car and Hansen's hat."],[],{},'en')==(['Peros','Hansen'],{})

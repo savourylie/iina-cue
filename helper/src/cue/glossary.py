@@ -8,8 +8,11 @@ from .core import _sentence_end, digest
 LATIN_SOURCES = {"en", "de", "es", "fr", "it", "pt"}
 MAX_NEW_NAMES = 6
 # Whole words in any Latin-script language: letters, with inner apostrophes or hyphens.
-WORD = re.compile(r"[^\W\d_][^\W\d_'’\-]*")
-POSSESSIVE = re.compile(r"['’]s$")
+WORD = re.compile(r"[^\W\d_](?:[^\W\d_]|['’\-])*")
+# A possessive or a bare trailing apostrophe is not part of the name (Hansen's, Peros').
+POSSESSIVE = re.compile(r"['’]s?$")
+# Characters that open a quotation or a dialogue line; the word after them starts a sentence.
+OPENERS = "\"“‘'([{「『—–-"
 STOPWORDS = {"I", "Mr", "Mrs", "Ms", "Dr", "Prof", "Sir", "Madam", "Oh", "Ah", "Well", "Yeah", "Yes", "No", "Okay", "OK",
              "God", "Jesus", "Christ", "Hey", "Hi", "Hello", "Wow", "Please", "Thank", "Thanks", "Sorry",
              "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -80,8 +83,10 @@ def _runs(text: str) -> list[tuple[list[str], bool]]:
         match = words[i]
         if not _is_name_token(match.group(), shouting):
             i += 1; continue
-        before = text[:match.start()].strip()
-        initial = not before or _sentence_end(before)
+        raw = text[:match.start()].strip()
+        opened = bool(raw) and raw[-1] in OPENERS
+        before = raw.rstrip(OPENERS).rstrip()
+        initial = not before or opened or _sentence_end(before) or before.endswith("…")
         run, end, j = [_candidate(match.group())], match.end(), i + 1
         while j < len(words) and len(run) < 3 and _is_name_token(words[j].group(), shouting) and text[end:words[j].start()].isspace():
             run.append(_candidate(words[j].group())); end = words[j].end(); j += 1

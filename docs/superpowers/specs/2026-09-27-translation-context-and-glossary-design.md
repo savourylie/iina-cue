@@ -150,7 +150,7 @@ Retry: unchanged shape. When the batch call fails validation, each unit is trans
 
 - Whole words of Unicode letters (José, Jean-Luc, McCoy): capitalised, at least three characters, letters with inner apostrophes or hyphens; or an all-capital acronym of 2–5 letters. A candidate is a maximal run of 1–3 such tokens; stop-list tokens cannot start or end a run.
 - Stop list (exact, case-sensitive): I, Mr, Mrs, Ms, Dr, Prof, Sir, Madam, Oh, Ah, Well, Yeah, Yes, No, Okay, OK, God, Jesus, Christ, Hey, Hi, Hello, Wow, Please, Thank, Thanks, Sorry, day and month names, and Title-Case function words (The, A, An, And, But, So, Then, Now, What, Why, How, Who, When, Where, Which, If, Because, You, We, They, He, She, It, This, That, There, Here, Not, Just, Very).
-- A single-token run at the start of a sentence (start of the text, or after `.`, `!`, `?`, `…`) counts only if the same token also appears in a non-initial position in `texts` or `previous_texts`. Runs of two or more tokens count anywhere.
+- A run at the start of a sentence (start of the text, or after `.`, `!`, `?`, `…`, or after an opening quote, bracket or dialogue dash) drops its first token unless that token also appears in a non-initial position in `texts` or `previous_texts`. A possessive or a bare trailing apostrophe is not part of a name (Hansen's, Peros'); inner apostrophes and hyphens are (Jean-Luc).
 - A candidate equal to a key in `known` is dropped. A candidate that `match_name` maps to a key with a different spelling is dropped from `new_names` and recorded in `variants` as `{candidate: key}`.
 - `new_names` is in order of first appearance, deduplicated, at most 6.
 
