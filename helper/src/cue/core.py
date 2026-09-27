@@ -130,21 +130,30 @@ def validate_units(units: list[Unit], duration_ms: int, source: str, prefix: boo
 
 SEAM_MS = 100
 PHANTOM_MS = 100
+MAX_SEAM_DROPS = 3
 
 def drop_seam_phantom(units: list[Unit], core_start: int, seam_ms: int = SEAM_MS, max_ms: int = PHANTOM_MS) -> tuple[list[Unit], int]:
-    """Drop a first unit the aligner squeezed onto the window seam.
+    """Drop phantom words the aligner squeezed onto the window seam.
 
     Fresh ASR over the left context re-hears the previous window's last word, or
     mishears a later one, and the aligner puts that token in a tiny bin at the core
-    start. Its time is not real, so it is not shown. A lone unit is kept: there is
-    nothing else to show. Returns the remaining units and the number dropped.
+    start. Its time is not real, so it is not shown. Words aligned inside the left
+    context belong to the previous window, so the test starts at the first unit whose
+    midpoint lies at or after the core start. A chain of tiny units on the seam goes
+    together, at most three, and the last owned unit is always kept. Returns the
+    remaining units and the number dropped.
     """
-    if len(units) < 2:
-        return units, 0
-    first = units[0]
-    if abs(first.start_ms - core_start) <= seam_ms and first.end_ms - first.start_ms <= max_ms:
-        return units[1:], 1
-    return units, 0
+    owned = next((i for i, u in enumerate(units) if (u.start_ms + u.end_ms) / 2 >= core_start), len(units))
+    kept, rest = units[:owned], units[owned:]
+    dropped = 0
+    seam_end = core_start + seam_ms
+    while len(rest) > 1 and dropped < MAX_SEAM_DROPS:
+        first = rest[0]
+        if first.end_ms - first.start_ms <= max_ms and core_start - seam_ms <= first.start_ms <= seam_end:
+            rest = rest[1:]; dropped += 1; seam_end = first.end_ms + seam_ms
+        else:
+            break
+    return kept + rest, dropped
 
 def restore_transcript(units: list[Unit], transcript: str, prefix: bool = False) -> list[Unit] | None:
     """Put ASR punctuation back on aligned words without changing their times.

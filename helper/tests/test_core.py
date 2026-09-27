@@ -249,3 +249,17 @@ def test_longer_or_later_first_units_and_lone_units_are_kept():
     units=[Unit(3000,3080,'Oh'),Unit(6000,6400,'no')]
     assert drop_seam_phantom(units,1000)==(units,0)
     assert drop_seam_phantom([Unit(1000,1040,'year.')],1000)==([Unit(1000,1040,'year.')],0)
+
+def test_the_seam_test_applies_to_the_first_unit_this_window_owns_not_to_left_context_words():
+    # Words aligned inside the 1 s left context belong to the previous window; the phantom sits after them.
+    context=[Unit(200,600,'history'),Unit(650,990,'book.')]
+    units=[*context,Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith')]
+    assert drop_seam_phantom(units,1000)==([*context,Unit(8800,9200,'Smith')],1)
+
+def test_a_chain_of_tiny_units_on_the_seam_is_dropped_but_never_more_than_three():
+    chain=[Unit(960,1040,'Oh,'),Unit(1040,1080,'that'),Unit(1080,1120,'is'),Unit(1120,1160,'it'),Unit(6000,6400,'Later')]
+    kept,dropped=drop_seam_phantom(chain,1000)
+    assert dropped==3 and kept==[Unit(1120,1160,'it'),Unit(6000,6400,'Later')]
+    # A real word right after the seam stops the chain.
+    units=[Unit(1000,1040,"I'm"),Unit(1100,1500,'going'),Unit(1550,1900,'home')]
+    assert drop_seam_phantom(units,1000)==(units[1:],1)
