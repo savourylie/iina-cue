@@ -14,6 +14,7 @@ import time
 from urllib.parse import parse_qs
 from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
 from .bootstrap import HELPER_VERSION, model_manifest_path
+from .glossary import glossary_hash, load_user_glossary
 from .media import Media, installed_ffmpeg_record
 from .pipeline import worker_entry, MIN_KEPT_MS
 from .vad import VAD_ID
@@ -56,6 +57,7 @@ class Session:
     # cues, never counted as coverage or as silence, and retried only on request.
     failed: list[list[int]] = field(default_factory=list)
     last_failure: dict | None = None
+    user_glossary: dict = field(default_factory=dict)
 
 # Failures of one window's audio or text. Anything else (a missing model, a changed
 # file, a crashed worker) still stops the session, because the next window would fail too.
@@ -256,6 +258,11 @@ class Supervisor:
                         committed = r.get("committed_range", job["range"])
                         self.cache.put(job["source_profile"], *committed, [Cue(**c) for c in r["source"]], r["language"])
                         self.cache.put(job["profile"], *committed, [Cue(**c) for c in r["rendered"]], r["language"])
+                        # A rendering is a fact about the film, not about a playback position, so
+                        # names from a stale seek epoch are kept too. User entries always win.
+                        learned = {k: v for k, v in r.get("names", {}).items() if k not in job.get("glossary", {}).get("user", {})}
+                        if learned:
+                            self.cache.add_names(job["media"]["signature"], job["settings"]["target"], learned, committed[0])
                         if s and s.epoch == job["epoch"] and s.profile == job["profile"]:
                             s.timings = r["timings"]
                             try: self.publish(s); s.state = "running"
@@ -313,9 +320,12 @@ class Supervisor:
                     job["following_source"] = json.loads(following[1])["cues"]
             try:
                 _, previous_source, _ = self.cache.read(s.source_profile)
+                _, previous_rendered, _ = self.cache.read(s.profile)
             except CueError as exc:
                 s.error = {"code":exc.code}; s.state = "error"; return
-            job["previous_source"] = [asdict(c) for c in previous_source if c.end_ms <= job["range"][0]][-1:]
+            job["previous_source"] = [asdict(c) for c in previous_source if c.end_ms <= job["range"][0]][-12:]
+            job["previous_rendered"] = [asdict(c) for c in previous_rendered if c.end_ms <= job["range"][0]][-6:]
+            job["glossary"] = {"user": s.user_glossary, "learned": self.cache.names(s.media.signature, s.settings.target)[:500]}
             self.inbox.put_nowait(job)
             self.busy = {**job, "started": now, "media_obj": s.media}
             s.state = "preparing"
@@ -406,12 +416,13 @@ class Supervisor:
                 settings = Settings(**body.get("settings", {}))
                 media = Media.open(body["path"], body.get("track", {}))
                 position = integer(body.get("position_ms", 0), upper=media.duration_ms)
+                user_glossary = load_user_glossary(media.path, self.root, settings.target)
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
-                                         "sentence-cues-v3", VAD_ID, self.speech_model_key()])
-                profile = digest([source_profile, settings.target, "translate-v2"])
-                s = Session(opaque(), client, media, settings, source_profile, profile, position)
+                                         "sentence-cues-v4", VAD_ID, self.speech_model_key()])
+                profile = digest([source_profile, settings.target, "translate-v3", glossary_hash(user_glossary)])
+                s = Session(opaque(), client, media, settings, source_profile, profile, position, user_glossary=user_glossary)
                 self.cache.register(source_profile, media.signature, "original")
                 self.cache.register(profile, media.signature, settings.target)
                 self.sessions[s.id] = s; self.requests[key] = s.id; self.active = s.id

@@ -243,3 +243,39 @@ def test_first_window_at_the_playhead_keeps_the_startup_floor_and_later_windows_
     sup.tick()
     second=sup.inbox.get_nowait()
     assert second['range']==[10000,26000] and second['min_commit_ms']==2000
+
+def test_session_creation_reads_user_glossary_files_and_keys_the_translation_profile_on_them(sup,monkeypatch,tmp_path):
+    video=tmp_path/'film.mp4';video.touch()
+    media=Media(str(video),'sig',1,'stream',100000,0,1,1)
+    monkeypatch.setattr(Media,'open',classmethod(lambda cls,path,hint:media))
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    # The speech model key reads the model manifest; the test is about glossary files, not models.
+    monkeypatch.setattr(sup,'speech_model_key',lambda:'gemma-e2b@test')
+    def create(request_id):
+        snap=sup.request('POST','/v1/sessions',{'request_id':request_id,'path':str(video),'settings':{'target':'zh-TW'}},'a')
+        return sup.sessions[snap['session_id']]
+    plain=create('one')
+    (tmp_path/'film.cue-glossary.json').write_text(json.dumps({'zh-TW':{'Nash':'納許'}}),encoding='utf-8')
+    pinned=create('two')
+    assert plain.user_glossary=={} and pinned.user_glossary=={'Nash':'納許'}
+    assert plain.source_profile==pinned.source_profile and plain.profile!=pinned.profile
+
+def test_jobs_carry_previous_lines_and_the_glossary_and_learned_names_are_stored(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id;s.user_glossary={'Nash':'納許'}
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    for i in range(14):
+        sup.cache.put(s.source_profile,i*1000,(i+1)*1000,[Cue(f's{i}',i*1000,i*1000+500,f'line {i}')],{'code':'en'})
+    for i in range(8):
+        sup.cache.put(s.profile,i*1000,(i+1)*1000,[Cue(f'r{i}',i*1000,i*1000+500,f'譯{i}')],{'code':'en'})
+    sup.cache.add_names(s.media.signature,'zh-TW',{'Hansen':'漢森'},0)
+    sup.tick()
+    job=sup.inbox.get_nowait()
+    assert job['range'][0]==20000
+    assert [c['id'] for c in job['previous_source']]==[f's{i}' for i in range(2,14)]
+    assert [c['id'] for c in job['previous_rendered']]==[f'r{i}' for i in range(2,8)]
+    assert job['glossary']=={'user':{'Nash':'納許'},'learned':[['Hansen','漢森',0]]}
+    sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
+                    'committed_range':[20000,30000],'names':{'Nash':'納什','Sol':'索爾'}}})
+    sup.tick()
+    assert sup.cache.names(s.media.signature,'zh-TW')==[['Sol','索爾',20000],['Hansen','漢森',0]]
