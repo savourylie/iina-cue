@@ -1,7 +1,7 @@
 # [TICKET-016] Plugin replaces an outdated runtime
 
 ## Status
-`pending`
+`done`
 
 ## Dependencies
 - Requires: #008 ✅
@@ -12,10 +12,10 @@ The plugin installs the runtime only when the helper cannot answer. Once any run
 TICKET-008 lists "When the plugin requires a newer runtime version, it is fetched and swapped in only while no MKV copy or session is using the old helper" as met. On 2026-09-25, `plugin/src` had no comparison of the helper's version, so that part was not delivered. The helper already reports `helper_version` from `ensure` and in the connection file.
 
 ## Acceptance Criteria
-- [ ] The plugin knows the runtime version it requires. When the running helper reports an older `helper_version`, setup offers an update. It explains the download size and does not start without the user pressing a button.
-- [ ] The update never replaces the runtime while a session or an MKV copy uses it. It reuses the `HELPER_RESTART_REQUIRED` rule (`maySwap`), and it stops the old helper before swapping.
-- [ ] The update keeps the downloaded models and the subtitle cache. A failed download or a checksum mismatch leaves the old runtime working.
-- [ ] A helper that is the same version or newer is left alone. A development checkout, or an explicit `bootstrap` preference, is never replaced.
+- [x] The plugin knows the runtime version it requires. When the running helper reports an older `helper_version`, setup offers an update. It explains the download size and does not start without the user pressing a button.
+- [x] The update never replaces the runtime while a session or an MKV copy uses it. It reuses the `HELPER_RESTART_REQUIRED` rule (`maySwap`), and it stops the old helper before swapping.
+- [x] The update keeps the downloaded models and the subtitle cache. A failed download or a checksum mismatch leaves the old runtime working.
+- [x] A helper that is the same version or newer is left alone. A development checkout, or an explicit `bootstrap` preference, is never replaced.
 
 ## References
 - `plugin/src/runtime-install.ts`: `installPublishedRuntime`, `maySwap`, and the unpack script's rename and rollback.

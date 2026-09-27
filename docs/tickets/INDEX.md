@@ -1,6 +1,6 @@
 # Ticket Index
 
-> **Last updated**: 2026-09-25
+> **Last updated**: 2026-09-27
 
 Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malware warning. The source is the 2026-09-24 feasibility and notarization work in this project.
 
@@ -8,9 +8,9 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 
 | Status | Count |
 | --- | --- |
-| ✅ Done | 15 |
+| ✅ Done | 16 |
 | 🔧 In Progress | 0 |
-| 📋 Pending | 3 |
+| 📋 Pending | 2 |
 | 🚫 Blocked | 1 |
 | ⏸️ Deferred | 0 |
 
@@ -35,7 +35,7 @@ Goal: anyone can install Cue without Terminal, and nothing triggers a macOS malw
 | 009 | [Sidebar "Set up Cue" flow](./009-sidebar-set-up-cue-flow.md) | `done` | #006 ✅, #008 ✅ | Follows DESIGN.md; includes credits |
 | 013 | [General-user plugin build](./013-general-user-plugin-build.md) | `done` | #009 ✅ | No build-machine path in the bundle; Terminal steps hidden |
 | 015 | [Detect stretches without speech with Silero VAD](./015-silero-vad-no-speech.md) | `done` | #001 ✅, #004 ✅, #007 ✅ | Music or quiet openings: no "Language unclear", no session error; runtime 0.1.7 |
-| 016 | [Plugin replaces an outdated runtime](./016-plugin-updates-outdated-runtime.md) | `pending` | #008 ✅ | #008's newer-runtime swap was never implemented |
+| 016 | [Plugin replaces an outdated runtime](./016-plugin-updates-outdated-runtime.md) | `done` | #008 ✅ | Update Cue button; captions pause only for the swap. This Mac went 0.1.6 → 0.1.9 in IINA |
 | 017 | [One failed window never stops captions](./017-captions-survive-failed-windows.md) | `done` | — | Constrained translation JSON, no kana in Chinese, failed windows become holes |
 | 018 | [Optional larger models in Advanced](./018-optional-larger-models.md) | `pending` | #006 ✅, #009 ✅ | Gemma 4 E4B (3.66 GB) and 12B (6.88 GB); E2B stays default |
 | 019 | [Keep the aligned part of a window when alignment collapses](./019-keep-aligned-prefix.md) | `done` | — | One unplaceable word no longer discards a 16 s window |
