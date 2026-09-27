@@ -41,6 +41,10 @@ npm run build
 scripts/benchmark --media /absolute/path/movie.mp4 --duration-ms 180000 --mode zh-TW --source en
 scripts/cue-helper cache status
 scripts/cue-helper export --media /absolute/path/movie.mp4 --target zh-TW --output /absolute/path/subtitles.srt
+scripts/cue-helper glossary show --media /absolute/path/movie.mp4 --target zh-TW
+scripts/cue-helper glossary export --media /absolute/path/movie.mp4 --target zh-TW --output "/absolute/path/movie.cue-glossary.json"
+scripts/dump-captions --media /absolute/path/movie.mp4 --target zh-TW          # 開發 checkout 的快取；IINA 用的快取加 CUE_HOME="$HOME/Library/Application Support/Cue"
+.venv/bin/python scripts/eval-session.py --media /absolute/path/movie.mp4 --from-ms 0 --to-ms 600000 --target zh-TW
 scripts/cue-helper shutdown
 ```
 
@@ -55,7 +59,7 @@ scripts/cue-helper shutdown
 - 一個共享、長駐的 inference 子程序，控制 API 可持續回應。
 - 先處理播放位置附近 10 秒，後續窗口 16 秒；達到約 60 秒前瞻後停算，最多超出一個 16 秒窗口。
 - 原文和翻譯分層快取；改目標語言時重用已完成的原文／對齊。
-- 每批最多 8 個 source cue 翻譯，保留原來 ID 與時間；不重新編造 timestamps。
+- 翻譯以句子為單位：同一句的片段 cue 合併成一條譯文 cue，起訖用實測的第一個字和最後一個字，最長 7 秒；每批最多 12 個句子單位。窗口尾端未完成的句子最多留 5 秒給下一個窗口重做。翻譯 prompt 帶前 6 句原文與譯文、本片已定譯名和電影對白語域指示；不重新編造 timestamps。
 - seek 以 epoch 隔離，過期結果可進快取，但不能回報為新位置已載入。
 
 效能數據包含真實模型與 SRT 寫入；不包含播放器安裝確認時間。dora 的腳本與環境未修改。
@@ -70,3 +74,5 @@ scripts/cue-helper shutdown
 - 100 次真 IINA 重載已通過，不累積軌道；全螢幕閃爍與 20 分鐘順播尚待驗收。
 - 一支使用者指定的 14:03 本機影片暴露純數字 cue 的翻譯誤判，以及接合先前快取時的對齊文字衝突。兩處已修正；本機 helper 從 20 秒逐段處理到片尾，IINA 已載入該區間的原文字幕，並在尾段看見字幕。尚未宣稱整片連續播放驗收。
 - 完整安裝器、LRU 上限、睡眠喚醒復原、模型自動下載 UI、簽署／公證仍未交付。
+- 譯名表：模型在翻譯時回報新專名的譯法，先到先贏，存在快取裡；影片旁的 `<片名>.cue-glossary.json` 或 `~/Library/Application Support/Cue/glossary.json` 可以覆蓋，格式 `{"zh-TW": {"Nash": "納許"}}`。只讀不寫；改檔案後該片譯文重做，原文沿用。日文、韓文、中文、俄文來源不自動偵測專名。
+- 這一版把原文快取 key 升到 sentence-cues-v4、譯文 key 升到 translate-v3：已看過的影片下次播放會重新轉錄與翻譯一次。

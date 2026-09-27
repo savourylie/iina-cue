@@ -18,4 +18,14 @@ If playback remains paused after a failure or after subtitles are ready, press p
 
 For reproducible evidence: `scripts/test`, `.venv/bin/python scripts/integration-smoke.py`, and `scripts/benchmark --media <permitted clip> ...`. The integration smoke contains only generated digital silence and cannot prove recognition quality or GPU responsiveness.
 
+## Pinning names with a glossary file
+
+Cue learns how it rendered each name the first time it appears in a film and keeps that rendering for the rest of the film. To correct or pre-seed renderings, put a JSON file next to the video named after it, for example `A Beautiful Mind (2001).cue-glossary.json` for `A Beautiful Mind (2001).mp4`, or a global `~/Library/Application Support/Cue/glossary.json`:
+
+```json
+{"zh-TW": {"Nash": "納許", "Hansen": "漢森", "Governing dynamics": "支配動力學"}}
+```
+
+One section per target language (`zh-TW`, `zh-CN`, `en`, `ja`, `ko`). The file next to the video wins over the global file, and both win over what Cue learned. Cue only reads these files. A file that is not valid JSON, has non-string entries, entries longer than 64 characters, or kana in a Chinese or Korean section is ignored and `glossary_invalid` is logged. Editing a file makes Cue translate that film again on the next start; the transcript and alignment are reused. `scripts/cue-helper glossary export --media … --target zh-TW --output …` writes what Cue learned so far in this format, ready to edit. `scripts/cue-helper cache clear --media …` also forgets the learned names.
+
 Long native modal dialogs may suspend IINA JavaScript timers. Expired helper/client leases trigger a new session at the current position. Background inference errors preserve already installed subtitle coverage; one shorter-window retry is attempted for ASR/alignment failures. A second failure is explicit.

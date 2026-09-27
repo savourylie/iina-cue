@@ -136,6 +136,8 @@ Batching: one window is normally one call. A batch holds at most 12 units; a lon
 
 Schema: with `new_names` empty, today's array schema. Otherwise an object schema: `{"type":"object","properties":{"cues": <array schema>, "names": {"type":"object","properties":{name: {"type":"string","minLength":1,"maxLength":16,"pattern": <target script>}}, "required":[names...], "additionalProperties":false}}, "required":["cues","names"], "additionalProperties":false}`. Value patterns for `names`, whole string: zh-TW and zh-CN `^[㐀-鿿·]+$` (the middle dot allows 約翰·納許); ja `^[㐀-鿿぀-ヿ・ー]+$`; ko `^[가-힯 ]+$`; en `^[^\n]+$`. The kana rule for zh and ko targets applies to cue texts as today.
 
+The keys of the `names` object are the source spellings with whitespace replaced by underscores (`Wheeler_Labs`), because llguidance forces a key byte by byte and this tokenizer writes a space as `▁`, so a key with a space can never be emitted; parsing maps the keys back. An engine error on a names request takes the per-cue retry without names, like a broken reply, never a session error.
+
 Names acceptance: a returned rendering is kept only if it appears verbatim in at least one translated text of the same batch. Anything else is dropped silently. Names are never a reason to fail a batch.
 
 Retry: unchanged shape. When the batch call fails validation, each unit is translated alone with the same system message, the same context parts 1–3, no `names` request, and the kana-forbidding pattern for zh and ko targets. The identical prompt is never resent.
