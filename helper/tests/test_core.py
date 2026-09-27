@@ -2,7 +2,7 @@ import json
 import pytest
 from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
 from cue.core import coalesce_quantized_units, coalesce_until_collapse, restore_transcript
-from cue.core import TranslationContext, hold_back, join_texts, pair_previous, sentence_units
+from cue.core import TranslationContext, drop_seam_phantom, hold_back, join_texts, pair_previous, sentence_units
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
     assert Settings(target='zh-CN').target == 'zh-CN'
@@ -236,3 +236,16 @@ def test_hold_back_keeps_the_minimum_committed_stretch():
     # With no sentence end at all, everything from the first cue on is the tail.
     cues=[Cue('a',2500,3000,"He's"),Cue('b',3100,4000,'going')]
     assert hold_back(cues,0,5000,2000)==([],2500)
+
+def test_a_tiny_first_unit_on_the_window_seam_is_dropped():
+    units=[Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs')]
+    assert drop_seam_phantom(units,1000)==(units[1:],1)
+    # The seam is fuzzy by one aligner bin: a unit starting 40 ms before the core start counts too.
+    assert drop_seam_phantom([Unit(960,1040,'ね。'),Unit(4000,4400,'そう')],1000)==([Unit(4000,4400,'そう')],1)
+
+def test_longer_or_later_first_units_and_lone_units_are_kept():
+    units=[Unit(1000,1400,'Hello'),Unit(1500,1900,'there')]
+    assert drop_seam_phantom(units,1000)==(units,0)
+    units=[Unit(3000,3080,'Oh'),Unit(6000,6400,'no')]
+    assert drop_seam_phantom(units,1000)==(units,0)
+    assert drop_seam_phantom([Unit(1000,1040,'year.')],1000)==([Unit(1000,1040,'year.')],0)

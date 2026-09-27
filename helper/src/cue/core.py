@@ -128,6 +128,24 @@ def validate_units(units: list[Unit], duration_ms: int, source: str, prefix: boo
     if not (aligned == expected or (prefix and aligned and expected.startswith(aligned))):
         raise CueError("ALIGNMENT_FAILED", "incomplete text coverage")
 
+SEAM_MS = 100
+PHANTOM_MS = 100
+
+def drop_seam_phantom(units: list[Unit], core_start: int, seam_ms: int = SEAM_MS, max_ms: int = PHANTOM_MS) -> tuple[list[Unit], int]:
+    """Drop a first unit the aligner squeezed onto the window seam.
+
+    Fresh ASR over the left context re-hears the previous window's last word, or
+    mishears a later one, and the aligner puts that token in a tiny bin at the core
+    start. Its time is not real, so it is not shown. A lone unit is kept: there is
+    nothing else to show. Returns the remaining units and the number dropped.
+    """
+    if len(units) < 2:
+        return units, 0
+    first = units[0]
+    if abs(first.start_ms - core_start) <= seam_ms and first.end_ms - first.start_ms <= max_ms:
+        return units[1:], 1
+    return units, 0
+
 def restore_transcript(units: list[Unit], transcript: str, prefix: bool = False) -> list[Unit] | None:
     """Put ASR punctuation back on aligned words without changing their times.
 

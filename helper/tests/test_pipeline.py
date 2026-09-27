@@ -244,3 +244,14 @@ def test_build_context_marks_every_ledger_rendering_as_taken():
     job={'glossary':{'user':{'Nash':'納許'},'learned':[['John','約翰',0],['Bender','本德',5]]},'previous_source':[],'previous_rendered':[]}
     context=build_context([Cue('u1',0,1000,'Hey, Nash.')],frozenset(),job,'en')
     assert context.taken==frozenset({'納許','約翰','本德'})
+
+def test_a_phantom_word_squeezed_onto_the_seam_is_not_shown(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,25000];job['min_commit_ms']=2000
+    # Fresh ASR over the left context misheard "Adam" and the aligner squeezed it into a
+    # 40 ms bin at the core start, 7.8 s before the words that were actually said.
+    p.backend.transcribe=lambda audio,source='auto',names=():"I'm Smith needs revision."
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None)
+    result=p.run(job)
+    assert [c['text'] for c in result['source']]==['Smith needs revision.']
+    assert result['timings']['seam_dropped']==1 and result['committed_range']==[10000,24000]

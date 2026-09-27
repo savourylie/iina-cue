@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
+from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -108,6 +108,9 @@ class Pipeline:
                     if punctuated is not None:
                         units = punctuated
                     timings["transcript_punctuation_restored"] = punctuated is not None
+                    units, dropped = drop_seam_phantom(units, start - zero)
+                    if dropped:
+                        timings["seam_dropped"] = dropped
                     # Retain the trailing second as a draft until the next window.
                     # If an aligned word straddles that frontier, retain all of it.
                     known_right = job.get("following_source")
