@@ -82,6 +82,9 @@ def main():
     e = commands.add_parser("export"); e.add_argument("--media", required=True); e.add_argument("--target", choices=["original","zh-TW","zh-CN","en","ja","ko"], default="zh-TW"); e.add_argument("--output", required=True)
     g = commands.add_parser("glossary"); g.add_argument("action", choices=["show", "export"]); g.add_argument("--media", required=True)
     g.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW"); g.add_argument("--output")
+    d = commands.add_parser("dump"); d.add_argument("--media", required=True)
+    d.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW")
+    d.add_argument("--from-ms", type=int, default=0); d.add_argument("--to-ms", type=int)
     args = parser.parse_args()
     try:
         if args.command == "doctor": result = doctor(models_root())
@@ -100,6 +103,10 @@ def main():
                 result = cache.status()
             elif args.command == "glossary":
                 result = glossary_command(cache, args)
+            elif args.command == "dump":
+                from .report import dump_report
+                media = Media.open(str(Path(args.media).resolve()), {})
+                print(dump_report(cache, media.signature, args.target, load_user_glossary(media.path, runtime_root(), args.target), args.from_ms, args.to_ms)); return
             else:
                 media = Media.open(str(Path(args.media).resolve()), {})
                 rows = cache.db.execute("SELECT profile FROM profiles WHERE media=? AND target=?", (media.signature,args.target)).fetchall()

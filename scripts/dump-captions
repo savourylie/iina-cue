@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# Side-by-side source/translation dump with a name-consistency table, from the checkout cache.
+# For captions made by the installed runtime: CUE_HOME="$HOME/Library/Application Support/Cue" scripts/dump-captions ...
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec "$CUE_PROJECT/scripts/cue-helper" dump "$@"
