@@ -2,7 +2,7 @@ import pytest
 from dataclasses import asdict
 import numpy as np
 import soundfile as sf
-from cue.core import CueError, Settings, Unit
+from cue.core import Cue, CueError, Settings, Unit
 from cue.media import Media
 from cue.pipeline import Pipeline
 
@@ -22,14 +22,14 @@ def setup_pipeline(monkeypatch,tmp_path,silent=False,speech=True):
     monkeypatch.setattr('cue.pipeline.extract',extract)
     p=Pipeline(tmp_path/'models',tmp_path/'temp')
     class Backend:
-        calls=[]
+        calls=[];hints=[];contexts=[]
         def load(self): self.calls.append('load')
-        def transcribe(self,a,source='auto'):self.calls.append(('asr',source));return 'one two'
+        def transcribe(self,a,source='auto',names=()):self.calls.append(('asr',source));self.hints.append(tuple(names));return 'one two'
         def language(self,t,s):return {'code':'en','status':'manual'}
         def align(self,a,t,l,partial=False):
             self.calls.append('align');units=[Unit(500,800,'one'),Unit(8500,9500,'two')]
             return (units,None) if partial else units
-        def translate(self,c,t,l):self.calls.append('translate');return c
+        def translate(self,c,t,l,context=None):self.calls.append('translate');self.contexts.append(context);return c,{}
     p.backend=Backend()
     p.vad=StubVad(speech)
     job={'media':asdict(Media('/fixture','s',1,'key',30000,0,1,1)),
@@ -51,7 +51,7 @@ def test_cached_source_skips_asr_and_alignment(monkeypatch,tmp_path):
 
 def test_pipeline_restores_asr_sentence_breaks_lost_by_aligner(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda audio,source='auto':'Hello world. Next sentence.'
+    p.backend.transcribe=lambda audio,source='auto',names=():'Hello world. Next sentence.'
     p.backend.align=lambda audio,text,language,partial=False:([
         Unit(500,800,'Hello'),Unit(850,1200,'world'),Unit(1250,1600,'Next'),Unit(1650,2000,'sentence')],None)
     result=p.run(job)
@@ -75,7 +75,7 @@ def test_existing_right_coverage_seals_draft_without_reprocessing_forever(monkey
 
 def test_crossing_word_at_cached_right_edge_is_not_given_an_invented_end(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda audio,source='auto':'one different draft'
+    p.backend.transcribe=lambda audio,source='auto',names=():'one different draft'
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'one'),Unit(8500,10500,'different draft')],None)
     job['following_source']=[{'id':'next','start_ms':10500,'end_ms':11500,'text':'already cached'}]
     result=p.run(job)
@@ -141,7 +141,7 @@ def test_missing_voice_activity_model_is_a_setup_error(monkeypatch,tmp_path):
 def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the_next(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     # Transcript "one two three": the aligner placed "one two"; "three" collapsed at 6.2 s of the span.
-    p.backend.transcribe=lambda a,source='auto':'one two three'
+    p.backend.transcribe=lambda a,source='auto',names=():'one two three'
     p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one'),Unit(1500,1900,'two')],6200)
     result=p.run(job)
     # The span starts at 0 here, so the cut is at 6.2 s of media time.
@@ -153,7 +153,7 @@ def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the
 
 def test_too_little_before_the_collapse_fails_the_window_as_before(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda a,source='auto':'one two'
+    p.backend.transcribe=lambda a,source='auto',names=():'one two'
     p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one')],1500)
     with pytest.raises(CueError) as exc:
         p.run(job)
@@ -169,7 +169,7 @@ def test_nothing_aligned_before_the_collapse_fails_the_window(monkeypatch,tmp_pa
 def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
-    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's"
+    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
     result=p.run(job)
     assert result['committed_range']==[0,3000]
@@ -179,7 +179,7 @@ def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkey
 def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_cached(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000]
-    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's"
+    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
     job['min_commit_ms']=8000
     result=p.run(job)
@@ -193,7 +193,48 @@ def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_
 def test_no_hold_back_after_a_collapse(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
-    p.backend.transcribe=lambda audio,source='auto':"Not one of us. He's going"
+    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's going"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],6200)
     result=p.run(job)
     assert result['committed_range']==[0,6200] and len(result['source'])==2
+
+def test_translation_merges_sentence_units_and_passes_context_and_names_back(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['settings']=asdict(Settings(target='zh-TW'));job['range']=[10000,18000];job['min_commit_ms']=2000
+    job['previous_source']=[{'id':'p','start_ms':8000,'end_ms':9500,'text':'We block each other.'}]
+    job['previous_rendered']=[{'id':'r','start_ms':8000,'end_ms':9500,'text':'我們互相阻擋。'}]
+    job['glossary']={'user':{'Nash':'納許'},'learned':[['Hansen','漢森',100]]}
+    # No period after "us": the assembler splits the long group at 4.5 s, and the two source cues
+    # are one sentence for the translator.
+    seen={}
+    def transcribe(audio,source='auto',names=()):
+        seen['hint']=tuple(names);return "Not one of us He's going to get her."
+    p.backend.transcribe=transcribe
+    p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Not'),Unit(1900,2200,'one'),Unit(2300,2600,'of'),Unit(2700,3500,'us'),
+        Unit(4000,4800,"He's"),Unit(4900,5300,'going'),Unit(5400,5700,'to'),Unit(5800,6100,'get'),Unit(6200,6600,'her')],None)
+    def translate(c,t,l,context=None):
+        seen['units']=c;seen['context']=context;return c,{'Sol':'索爾'}
+    p.backend.translate=translate
+    result=p.run(job)
+    assert [c['text'] for c in result['source']]==["Not one of us He's going","to get her."]
+    assert [(c['start_ms'],c['end_ms'],c['text']) for c in result['rendered']]==[(10500,15600,"Not one of us He's going to get her.")]
+    assert result['rendered'][0]['id'] not in {c['id'] for c in result['source']}
+    assert result['names']=={'Sol':'索爾'} and result['timings']['translation_units']==1 and result['timings']['names_learned']==1
+    assert seen['hint']==('Nash','Hansen')
+    context=seen['context']
+    assert context.previous==(('We block each other.','我們互相阻擋。'),)
+    assert context.glossary=={'Hansen':'漢森'} and context.variants=={} and context.new_names==() and context.continues==frozenset()
+
+def test_original_captions_keep_the_fine_cues_and_skip_context(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    result=p.run(job)
+    assert p.backend.contexts==[None] and result['names']=={} and p.backend.hints==[()]
+
+def test_build_context_reports_new_names_and_misheard_spellings():
+    from cue.pipeline import build_context
+    units=[Cue('u1',0,1000,'Thank you, Mr. Hanson.'),Cue('u2',1100,2000,'I think Bender is here.')]
+    job={'glossary':{'user':{'Nash':'納許'},'learned':[['Hansen','漢森',0]]},'previous_source':[],'previous_rendered':[]}
+    context=build_context(units,frozenset({'u2'}),job,'en')
+    assert context.new_names==('Bender',) and context.variants=={'Hanson':'Hansen'}
+    assert context.glossary=={'Hansen':'漢森'} and context.continues==frozenset({'u2'})
+    assert build_context(units,frozenset(),job,'ja').new_names==()

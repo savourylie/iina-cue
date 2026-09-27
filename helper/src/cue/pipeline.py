@@ -5,13 +5,29 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, assemble, hold_back, validate_units, reconcile_boundary, restore_transcript
+from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
+from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
 
 # A window whose alignment collapses keeps its aligned part only if that part is
 # at least this long; otherwise the window fails as a whole.
 MIN_KEPT_MS = 2000
+
+def build_context(units: list[Cue], continues: frozenset[str], job: dict, language: str) -> TranslationContext:
+    """Previous lines, glossary entries, misheard spellings and new names for one window."""
+    previous_source = [Cue(**c) for c in job.get("previous_source", [])]
+    previous_rendered = [Cue(**c) for c in job.get("previous_rendered", [])]
+    previous = pair_previous(previous_source, previous_rendered)[-6:]
+    glossary = job.get("glossary") or {}
+    user, learned = glossary.get("user", {}), glossary.get("learned", [])
+    known = {source: rendering for source, rendering, *_ in reversed(learned)}
+    known.update(user)
+    texts = [u.text for u in units]
+    previous_texts = [source for source, _ in previous]
+    new_names, variants = proper_nouns(texts, previous_texts, known, language)
+    return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts),
+                              variants=variants, new_names=tuple(new_names), continues=continues)
 
 class Pipeline:
     def __init__(self, models: Path, temp: Path, vad_model: Path | None = None, gemma: Path | None = None):
@@ -69,7 +85,9 @@ class Pipeline:
                     timings["source_cache_hit"] = True
                 else:
                     report("transcribing")
-                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source); timings["asr_s"] = time.monotonic()-t
+                    glossary = job.get("glossary") or {}
+                    hint = names_hint(glossary.get("user", {}), glossary.get("learned", []))
+                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source, names=hint); timings["asr_s"] = time.monotonic()-t
                     report("identifying_language")
                     t = time.monotonic(); language = self.backend.language(transcript, settings.source); timings["lid_s"] = time.monotonic()-t
                     if settings.source == "auto" and language["code"] not in SOURCE_LANGUAGES:
@@ -128,13 +146,22 @@ class Pipeline:
                             timings["held_back_ms"] = committed_end - hold_start
                             committed_end = hold_start
                 report("translating", language)
-                t = time.monotonic(); rendered = self.backend.translate(source, settings.target, language["code"]); timings["translate_s"] = time.monotonic()-t
+                t = time.monotonic()
+                code = language["code"]
+                if settings.target not in ("original", code) and source:
+                    units, continues = sentence_units(source, settings.target)
+                    rendered, names = self.backend.translate(units, settings.target, code, build_context(units, continues, job, code))
+                    timings["translation_units"] = len(units)
+                else:
+                    rendered, names = self.backend.translate(source, settings.target, code)
+                timings["translate_s"] = time.monotonic()-t
+                timings["names_learned"] = len(names)
             else:
-                rendered = []
+                rendered, names = [], {}
             timings["pipeline_s"] = time.monotonic()-started
             timings["rtf"] = timings["pipeline_s"] / ((committed_end-start)/1000)
             timings["process_peak_rss_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-            return {"source": [asdict(c) for c in source], "rendered": [asdict(c) for c in rendered],
+            return {"source": [asdict(c) for c in source], "rendered": [asdict(c) for c in rendered], "names": names,
                     "language": language, "timings": timings, "mapping": mapping, "committed_range": [start,committed_end],
                     "coverage_kind": "verified_no_speech" if no_speech else "complete"}
 
