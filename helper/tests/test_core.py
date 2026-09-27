@@ -187,7 +187,7 @@ def test_sentence_units_merge_fragments_until_a_sentence_ends():
     assert sentence_units(cues,'ja')[0][0].id!=units[0].id
 
 def test_sentence_units_split_on_a_long_pause_a_duration_cap_and_width_and_flag_continuations():
-    pause=[Cue('a',0,400,'Wait'),Cue('b',2000,2400,'for me.')]
+    pause=[Cue('a',0,400,'Wait'),Cue('b',4000,4400,'for me.')]
     units,continues=sentence_units(pause,'zh-TW')
     assert [u.text for u in units]==['Wait','for me.'] and continues=={units[1].id}
     long=[Cue(str(i),i*2000,i*2000+1900,'word') for i in range(5)]
@@ -263,3 +263,13 @@ def test_a_chain_of_tiny_units_on_the_seam_is_dropped_but_never_more_than_three(
     # A real word right after the seam stops the chain.
     units=[Unit(1000,1040,"I'm"),Unit(1100,1500,'going'),Unit(1550,1900,'home')]
     assert drop_seam_phantom(units,1000)==(units[1:],1)
+
+def test_a_lowercase_continuation_bridges_a_longer_pause():
+    cues=[Cue('a',0,1600,"How will it be when I'm chosen for Wheeler"),Cue('b',3680,4080,'and you are not?')]
+    units,continues=sentence_units(cues,'zh-TW')
+    assert [u.text for u in units]==["How will it be when I'm chosen for Wheeler and you are not?"] and continues==frozenset()
+    # A capitalised start after the same pause is a new sentence.
+    assert [u.text for u in sentence_units([Cue('a',0,1600,'Wait'),Cue('b',3680,4080,'Nash is here.')],'zh-TW')[0]]==['Wait','Nash is here.']
+    # The lowercase bridge has its own limit, and a finished sentence is never bridged.
+    assert [u.text for u in sentence_units([Cue('a',0,1600,'Wait'),Cue('b',5000,5400,'for me.')],'zh-TW')[0]]==['Wait','for me.']
+    assert [u.text for u in sentence_units([Cue('a',0,1600,'Wait.'),Cue('b',3680,4080,'for me.')],'zh-TW')[0]]==['Wait.','for me.']

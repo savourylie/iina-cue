@@ -232,6 +232,8 @@ def join_texts(texts: list[str]) -> str:
     return re.sub(r"(?<=[\u3000-\u9fff]) (?=[\u3000-\u9fff])", "", text).strip()
 
 SENTENCE_GAP_MS = 1500
+# A cue that starts in lowercase continues the sentence, so it bridges a longer pause.
+CONTINUATION_GAP_MS = 3000
 SENTENCE_MAX_MS = 7000
 SENTENCE_MAX_WIDTH = 84
 
@@ -245,8 +247,9 @@ def sentence_units(cues: list[Cue], target: str) -> tuple[list[Cue], frozenset[s
     groups: list[list[Cue]] = []
     current: list[Cue] = []
     for cue in cues:
+        gap_limit = CONTINUATION_GAP_MS if cue.text[:1].islower() else SENTENCE_GAP_MS
         if current and (_sentence_end(current[-1].text)
-                        or cue.start_ms - current[-1].end_ms > SENTENCE_GAP_MS
+                        or cue.start_ms - current[-1].end_ms > gap_limit
                         or cue.end_ms - current[0].start_ms > SENTENCE_MAX_MS
                         or _subtitle_width(join_texts([c.text for c in [*current, cue]])) > SENTENCE_MAX_WIDTH):
             groups.append(current); current = []
