@@ -83,3 +83,7 @@ def test_user_entries_are_validated(tmp_path):
     assert events[-1]=='global'
     assert glossary_hash({})=='none'
     assert glossary_hash({'a':'b'})==glossary_hash({'a':'b'})!=glossary_hash({'a':'c'})
+
+def test_accented_names_in_other_latin_sources_are_whole_tokens():
+    assert proper_nouns(["Hola, José y André están aquí.","Chloé est là."],[],{},'es')==(['José','André'],{})
+    assert match_name('Andre',{'André':'安德烈'})=='André'

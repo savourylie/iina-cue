@@ -52,7 +52,7 @@ def name_table(source: list[Cue], rendered: list[Cue], glossary: dict[str, str],
     candidates, _ = proper_nouns([c.text for c in source], [], {}, language, limit=None)
     rows = []
     for name in [*glossary, *[c for c in candidates if c not in glossary]]:
-        pattern = re.compile(rf"(?<![A-Za-z]){re.escape(name)}(?![A-Za-z])")
+        pattern = re.compile(rf"(?<![^\W\d_]){re.escape(name)}(?![^\W\d_])")
         mentions = [c for c in source if pattern.search(c.text)]
         if not mentions:
             continue

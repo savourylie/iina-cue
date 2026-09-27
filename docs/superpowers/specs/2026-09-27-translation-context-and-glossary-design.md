@@ -138,7 +138,7 @@ Schema: with `new_names` empty, today's array schema. Otherwise an object schema
 
 The keys of the `names` object are the source spellings with whitespace replaced by underscores (`Wheeler_Labs`), because llguidance forces a key byte by byte and this tokenizer writes a space as `▁`, so a key with a space can never be emitted; parsing maps the keys back. An engine error on a names request takes the per-cue retry without names, like a broken reply, never a session error.
 
-Names acceptance: a returned rendering is kept only if it appears verbatim in at least one translated text of the same batch. Anything else is dropped silently. Names are never a reason to fail a batch.
+Names acceptance: a returned rendering is kept only if it appears verbatim in at least one translated text of the same batch, and one rendering stands for one name: a rendering that already belongs to another key in the glossary or earlier in the window is not learned again, and when two requested names share a rendering the longest spelling keeps it. A single-token name is constrained to a pattern without the middle dot (`納什`, never `約翰·納什`). Anything else is dropped silently. Names are never a reason to fail a batch.
 
 Retry: unchanged shape. When the batch call fails validation, each unit is translated alone with the same system message, the same context parts 1–3, no `names` request, and the kana-forbidding pattern for zh and ko targets. The identical prompt is never resent.
 
@@ -148,7 +148,7 @@ Retry: unchanged shape. When the batch call fails validation, each unit is trans
 
 `core.proper_nouns(texts, previous_texts, known) -> tuple[list[str], dict[str, str]]` returns `(new_names, variants)` and is used only when the source language is Latin-script (`en, de, es, fr, it, pt`); for any other source it returns `([], {})`:
 
-- Tokens matching `^[A-Z][a-z'’\-]{2,}$` or an acronym `^[A-Z]{2,5}$`. A candidate is a maximal run of 1–3 such tokens; stop-list tokens cannot start or end a run.
+- Whole words of Unicode letters (José, Jean-Luc, McCoy): capitalised, at least three characters, letters with inner apostrophes or hyphens; or an all-capital acronym of 2–5 letters. A candidate is a maximal run of 1–3 such tokens; stop-list tokens cannot start or end a run.
 - Stop list (exact, case-sensitive): I, Mr, Mrs, Ms, Dr, Prof, Sir, Madam, Oh, Ah, Well, Yeah, Yes, No, Okay, OK, God, Jesus, Christ, Hey, Hi, Hello, Wow, Please, Thank, Thanks, Sorry, day and month names, and Title-Case function words (The, A, An, And, But, So, Then, Now, What, Why, How, Who, When, Where, Which, If, Because, You, We, They, He, She, It, This, That, There, Here, Not, Just, Very).
 - A single-token run at the start of a sentence (start of the text, or after `.`, `!`, `?`, `…`) counts only if the same token also appears in a non-initial position in `texts` or `previous_texts`. Runs of two or more tokens count anywhere.
 - A candidate equal to a key in `known` is dropped. A candidate that `match_name` maps to a key with a different spelling is dropped from `new_names` and recorded in `variants` as `{candidate: key}`.

@@ -199,7 +199,7 @@ def test_new_names_are_requested_in_a_constrained_object_and_kept_only_when_used
     assert 'Return ONLY a JSON object with "cues" and "names"' in prompt
     assert schema['type']=='object' and schema['required']==['cues','names']
     assert schema['properties']['names']['required']==['Hanson','Saw']
-    assert schema['properties']['names']['properties']['Saw']=={'type':'string','minLength':1,'maxLength':16,'pattern':'^[㐀-鿿·]+$'}
+    assert schema['properties']['names']['properties']['Saw']=={'type':'string','minLength':1,'maxLength':16,'pattern':'^[\u3400-\u9fff]+$'}
     assert schema['properties']['cues']['prefixItems'][1]['properties']['id']['const']=='2'
     assert [c.text for c in cues]==['漢森先生，謝謝。','索爾在這裡。']
     assert names=={'Hanson':'漢森'}
@@ -265,3 +265,24 @@ def test_an_engine_error_on_the_names_call_falls_back_to_the_per_cue_retry(tmp_p
     backend.send=send
     cues,names=backend.translate([Cue('a',0,1,'Nash came.')],'zh-TW','en',TranslationContext(new_names=('Nash',)))
     assert calls==['object','array'] and names=={} and [c.text for c in cues]==['納許來了']
+
+def test_a_rendering_shared_by_two_requested_names_stays_with_the_longest_spelling(tmp_path):
+    backend=Backend(tmp_path)
+    backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"見到約翰·納什。"}],"names":{"John_Nash":"約翰·納什","Nash":"約翰·納什"}}'
+    cues,names=backend.translate([Cue('a',0,1,'Meet John Nash.')],'zh-TW','en',TranslationContext(new_names=('John Nash','Nash')))
+    assert names=={'John Nash':'約翰·納什'}
+
+def test_a_rendering_already_established_for_another_name_is_not_learned(tmp_path):
+    backend=Backend(tmp_path)
+    backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"弗吉尼亞的英語。"}],"names":{"English":"弗吉尼亞"}}'
+    cues,names=backend.translate([Cue('a',0,1,'Virginia English.')],'zh-TW','en',TranslationContext(glossary={'Virginia':'弗吉尼亞'},new_names=('English',)))
+    assert names=={}
+
+def test_single_token_names_get_a_pattern_without_the_middle_dot(tmp_path):
+    backend=Backend(tmp_path);calls=[]
+    def send(prompt,max_tokens,schema=None,system=None):
+        calls.append(schema);return '{"cues":[{"id":"1","text":"納什和約翰·納什。"}],"names":{"Nash":"納什","John_Nash":"約翰·納什"}}'
+    backend.send=send
+    backend.translate([Cue('a',0,1,'Nash and John Nash.')],'zh-TW','en',TranslationContext(new_names=('Nash','John Nash')))
+    props=calls[0]['properties']['names']['properties']
+    assert props['Nash']['pattern']=='^[㐀-鿿]+$' and props['John_Nash']['pattern']=='^[㐀-鿿·]+$'

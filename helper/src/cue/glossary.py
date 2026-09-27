@@ -7,9 +7,8 @@ from .core import _sentence_end, digest
 
 LATIN_SOURCES = {"en", "de", "es", "fr", "it", "pt"}
 MAX_NEW_NAMES = 6
-WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
-NAME_TOKEN = re.compile(r"[A-Z][a-z][A-Za-z'’\-]+|[A-Z]{2,5}")
-ACRONYM = re.compile(r"[A-Z]{2,5}")
+# Whole words in any Latin-script language: letters, with inner apostrophes or hyphens.
+WORD = re.compile(r"[^\W\d_][^\W\d_'’\-]*")
 POSSESSIVE = re.compile(r"['’]s$")
 STOPWORDS = {"I", "Mr", "Mrs", "Ms", "Dr", "Prof", "Sir", "Madam", "Oh", "Ah", "Well", "Yeah", "Yes", "No", "Okay", "OK",
              "God", "Jesus", "Christ", "Hey", "Hi", "Hello", "Wow", "Please", "Thank", "Thanks", "Sorry",
@@ -56,11 +55,21 @@ def _shouting(text: str) -> bool:
 def _candidate(word: str) -> str:
     return POSSESSIVE.sub("", word)
 
+def _is_acronym(token: str) -> bool:
+    return 2 <= len(token) <= 5 and token.isalpha() and token.isupper()
+
+def _looks_like_name(token: str) -> bool:
+    """Capitalised, at least three characters, letters with inner apostrophes or hyphens (José, Jean-Luc, McCoy)."""
+    return (len(token) >= 3 and token[0].isupper() and token[1].islower()
+            and all(c.isalpha() or c in "'’-" for c in token[2:]))
+
 def _is_name_token(word: str, shouting: bool) -> bool:
     token = _candidate(word)
-    if token in STOPWORDS or not NAME_TOKEN.fullmatch(token):
+    if token in STOPWORDS:
         return False
-    return not (shouting and ACRONYM.fullmatch(token))
+    if _is_acronym(token):
+        return not shouting
+    return _looks_like_name(token)
 
 def _runs(text: str) -> list[tuple[list[str], bool]]:
     """Maximal runs of up to three adjacent name tokens as (tokens, first token opens a sentence)."""

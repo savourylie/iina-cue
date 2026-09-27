@@ -21,6 +21,27 @@ BATCH_UNITS = 12
 # Whole-string patterns for a reported name rendering. The middle dot allows 約翰·納許.
 NAME_PATTERNS = {"zh-TW": "^[\u3400-\u9fff·]+$", "zh-CN": "^[\u3400-\u9fff·]+$",
                  "ja": "^[\u3400-\u9fff\u3040-\u30ff・ー]+$", "ko": "^[\uac00-\ud7af ]+$", "en": "^[^\n]+$"}
+# A single-token name gets no separator, so "Nash" cannot come back as the full 約翰·納什.
+SINGLE_NAME_PATTERNS = {"zh-TW": "^[\u3400-\u9fff]+$", "zh-CN": "^[\u3400-\u9fff]+$",
+                        "ja": "^[\u3400-\u9fff\u3040-\u30ffー]+$", "ko": "^[\uac00-\ud7af]+$", "en": "^[^\n]+$"}
+
+def accept_names(found: dict[str, str], texts: list[str], glossary: dict[str, str], learned: dict[str, str]) -> dict[str, str]:
+    """Renderings actually used in the batch, one name per rendering. A rendering that already
+    stands for another name, in the glossary or earlier in this window, is not learned again;
+    when two requested names share one rendering the longest spelling keeps it."""
+    taken = {value: key for key, value in glossary.items()}
+    taken.update({value: key for key, value in learned.items()})
+    kept: dict[str, str] = {}
+    for key in sorted(found, key=len, reverse=True):
+        value = found[key]
+        if not any(value in text for text in texts):
+            continue
+        owner = taken.get(value)
+        if owner is not None and owner != key:
+            continue
+        kept[key] = value
+        taken[value] = key
+    return kept
 
 def system_message(target: str) -> str:
     chinese = " For Chinese, 'Jesus Christ' or 'Oh god' become 天啊 or 老天, never a literal rendering." if target in {"zh-TW", "zh-CN"} else ""
@@ -53,7 +74,7 @@ def names_parse(raw: str, aliases: list[Cue], names: tuple) -> tuple[dict[str, s
                 kept[original[key]] = value
     return texts, kept
 
-def translation_schema(ids: list[str], forbid_kana: bool = False, names=(), name_pattern: str | None = None) -> dict:
+def translation_schema(ids: list[str], forbid_kana: bool = False, names=(), name_pattern: str | None = None, single_pattern: str | None = None) -> dict:
     """One object per cue, ids in order, non-empty text. With names, an object that also
     carries one rendering per requested name. Enforced while decoding."""
     text = {"type": "string", "minLength": 1, "maxLength": 1000}
@@ -64,9 +85,11 @@ def translation_schema(ids: list[str], forbid_kana: bool = False, names=(), name
                              "required": ["id", "text"], "additionalProperties": False} for i in ids]}
     if not names:
         return cues
-    rendering = {"type": "string", "minLength": 1, "maxLength": 16, **({"pattern": name_pattern} if name_pattern else {})}
+    def rendering(name: str) -> dict:
+        pattern = single_pattern if single_pattern and not re.search(r"\s", name) else name_pattern
+        return {"type": "string", "minLength": 1, "maxLength": 16, **({"pattern": pattern} if pattern else {})}
     keys = [safe_key(name) for name in names]
-    return {"type": "object", "properties": {"cues": cues, "names": {"type": "object", "properties": {key: rendering for key in keys},
+    return {"type": "object", "properties": {"cues": cues, "names": {"type": "object", "properties": {safe_key(name): rendering(name) for name in names},
             "required": keys, "additionalProperties": False}}, "required": ["cues", "names"], "additionalProperties": False}
 
 def check_target_script(sources: list[str], results: list[str], target: str) -> None:
@@ -215,7 +238,7 @@ class Backend:
                 # A name-only cue may stay in Latin letters, so the script rule applies to the batch.
                 check_target_script([c.text for c in batch], texts, target)
                 found = {}
-            names.update({k: v for k, v in found.items() if any(v in t for t in texts)})
+            names.update(accept_names(found, texts, batch_context.glossary, names))
             translated.extend(Cue(c.id, c.start_ms, c.end_ms, text) for c, text in zip(batch, texts))
             previous.extend((c.text, text) for c, text in zip(batch, texts))
         return translated, names
@@ -245,7 +268,7 @@ class Backend:
                      f"Return ONLY {shape}. Copy every id exactly once. No timestamps, commentary, Markdown, or empty translations.\n"
                      + json.dumps([{"id": a.id, "text": a.text} for a in aliases], ensure_ascii=False))
         prompt = "\n".join(parts)
-        schema = translation_schema([a.id for a in aliases], forbid_kana, names, NAME_PATTERNS[target])
+        schema = translation_schema([a.id for a in aliases], forbid_kana, names, NAME_PATTERNS[target], SINGLE_NAME_PATTERNS[target])
         raw = self.send(prompt, max_tokens=1536, schema=schema, system=system_message(target))
         if names:
             result, found = names_parse(raw, aliases, names)
