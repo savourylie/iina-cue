@@ -154,7 +154,7 @@ Retry: unchanged shape. When the batch call fails validation, each unit is trans
 
 ### 8.2 Matching a spelling to an established name
 
-`core.match_name(candidate, known) -> str | None`: exact key first; otherwise, case-insensitive Levenshtein distance ≤ 1 for candidates of 4–5 letters and ≤ 2 for 6 or more, and the first letters must agree; 3-letter candidates match exactly only. Multi-word candidates are compared as whole strings. Ties go to the smallest distance, then the earliest known entry. Hanson and Hans map to Hansen; Sal and Saw do not map to Sol.
+`core.match_name(candidate, known) -> str | None`: exact key first; otherwise the first letters must agree and the case-insensitive Levenshtein distance may be ≤ 1 when the longer of the two spellings has 4–5 letters and ≤ 2 when it has 6 or more; candidates of 3 letters or fewer match exactly only. Multi-word candidates are compared as whole strings. Ties go to the smallest distance, then the earliest known entry. Hanson and Hans map to Hansen; Sal and Saw do not map to Sol.
 
 ### 8.3 Storage
 
