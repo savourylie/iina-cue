@@ -171,7 +171,7 @@ test('first-run setup replaces the normal controls until the smoke test has pass
   const posted: [string, any][] = [];
   vm.runInNewContext(script, {
     setTimeout: () => 0, clearTimeout: () => {},
-    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}})},
+    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}}), body: {classList: {toggle: () => {}}}},
     iina: {onMessage: (name: string, fn: any) => messages.set(name, fn), postMessage: (name: string, data: any) => posted.push([name, data])},
   });
   const show = (phase: Parameters<typeof setupView>[0]['phase'], extra: Partial<Parameters<typeof setupView>[0]> = {}) => {
@@ -209,8 +209,11 @@ test('an update is a small button that can be ignored, then a short status with 
   const html = readFileSync('plugin/sidebar.html', 'utf8');
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script);
-  // The button sits above everything else, and a showing status block is separated from the controls.
-  assert.ok(html.indexOf('id="update-row"') < html.indexOf('id="setup-card"'));
+  // The button is fixed in the bottom-left corner, after the content, so it pushes nothing down;
+  // a showing status block is separated from the controls.
+  assert.ok(html.indexOf('id="update-row"') > html.indexOf('id="normal-controls"'));
+  assert.match(html, /\.update-row\{position:fixed;left:16px;bottom:12px/);
+  assert.match(html, /body\.has-update\{padding-bottom:52px\}/);
   assert.match(html, /#setup-card:not\(\[hidden\]\)\+#normal-controls\{margin-top:16px/);
   const elements = new Map<string, any>();
   const element = (id: string) => {
@@ -219,9 +222,10 @@ test('an update is a small button that can be ignored, then a short status with 
   };
   const messages = new Map<string, (data: any) => void>();
   const posted: [string, any][] = [];
+  const body = {classes: new Set<string>(), classList: {toggle(name: string, on: boolean) { if (on) body.classes.add(name); else body.classes.delete(name); }}};
   vm.runInNewContext(script, {
     setTimeout: () => 0, clearTimeout: () => {},
-    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}})},
+    document: {getElementById: element, querySelectorAll: () => [], querySelector: (selector: string) => element(selector), createElement: () => ({className: '', style: {}}), body},
     iina: {onMessage: (name: string, fn: any) => messages.set(name, fn), postMessage: (name: string, data: any) => posted.push([name, data])},
   });
   const show = (phase: Parameters<typeof setupView>[0]['phase'], extra: Partial<Parameters<typeof setupView>[0]> = {}) => {
@@ -231,6 +235,7 @@ test('an update is a small button that can be ignored, then a short status with 
   };
   const offer = show('update');
   assert.equal(element('update-row').hidden, false);
+  assert.ok(body.classes.has('has-update'), 'room is kept below the last control while the button shows');
   assert.equal(element('update-button').textContent, 'Update Cue');
   assert.match(element('update-button').title, /284 MB download/);
   assert.equal(element('setup-card').hidden, true, 'no card until the user starts the update');
@@ -241,6 +246,7 @@ test('an update is a small button that can be ignored, then a short status with 
   assert.equal(posted[posted.length - 1][0], 'start-setup');
   const starting = show('runtime', {previous: 'update'});
   assert.equal(element('update-row').hidden, true);
+  assert.equal(body.classes.has('has-update'), false);
   assert.equal(element('setup-card').hidden, false);
   assert.equal(element('normal-controls').hidden, false, 'captions keep working while the update downloads');
   assert.equal(element('setup-title').textContent, "Updating Cue's helper");

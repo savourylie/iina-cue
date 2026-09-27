@@ -87,8 +87,10 @@
   .model-credits{margin:10px 0 0;font-size:12px;line-height:1.4}
   .model-credits summary{padding:2px 0;font-weight:500;opacity:.75}
   .model-credits p{margin:4px 0 0;opacity:.75}
-  /* An available update is a small button at the top right; the controls stay put. */
-  .update-row{display:flex;justify-content:flex-end;margin:-6px 0 6px}
+  /* An available update is a small button fixed in the bottom-left corner: it moves
+     nothing, and while it shows the page keeps room so the last control scrolls clear of it. */
+  .update-row{position:fixed;left:16px;bottom:12px;z-index:2}
+  body.has-update{padding-bottom:52px}
   .update-button{padding:2px 10px;border:0;border-radius:999px;background:var(--accent);background:AccentColor;color:#fff;font-size:11px;font-weight:600;cursor:pointer}
   .update-row[hidden],#setup-intro:empty{display:none}
   #setup-progress{display:block;width:100%;accent-color:AccentColor}
@@ -109,7 +111,6 @@
   @media(prefers-reduced-motion:reduce){.switch-track,.switch-track::after,details summary::before{transition:none}.status[data-tone="working"] .status-dot{animation:none;opacity:.7}}
 </style>
 <h1 data-i18n="sidebar.title">Cue subtitles</h1>
-<div id="update-row" class="update-row" hidden><button id="update-button" class="update-button" type="button" data-i18n="sidebar.updateButton">Update Cue</button></div>
 <section id="setup-card" hidden>
   <h2 id="setup-title" data-i18n="sidebar.setupTitle">Set up Cue</h2>
   <p id="setup-intro" data-i18n="sidebar.setupIntro">Cue downloads about 3.8 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.</p>
@@ -212,6 +213,7 @@
   </div>
 </details>
 </div>
+<div id="update-row" class="update-row" hidden><button id="update-button" class="update-button" type="button" data-i18n="sidebar.updateButton">Update Cue</button></div>
 <script>
   // Strings arrive from the plugin (cue-strings); these English defaults cover
   // the moment before that message and must match plugin/src/strings.ts.
@@ -356,6 +358,7 @@
     document.getElementById('normal-controls').hidden=data.showControls===false;
     const update=document.getElementById('update-button');
     document.getElementById('update-row').hidden=!data.updateButton;
+    document.body.classList.toggle('has-update',!!data.updateButton);
     if(data.updateButton){update.textContent=data.updateButton;update.title=data.updateHint||'';}
     if(data.title)document.getElementById('setup-title').textContent=data.title;
     document.getElementById('setup-intro').textContent=data.intro||'';
