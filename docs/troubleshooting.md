@@ -20,7 +20,7 @@ For reproducible evidence: `scripts/test`, `.venv/bin/python scripts/integration
 
 ## Pinning names with a glossary file
 
-Cue learns how it rendered each name the first time it appears in a film and keeps that rendering for the rest of the film. To correct or pre-seed renderings, put a JSON file next to the video named after it, for example `A Beautiful Mind (2001).cue-glossary.json` for `A Beautiful Mind (2001).mp4`, or a global `~/Library/Application Support/Cue/glossary.json`:
+Cue learns how it rendered a name once the film has mentioned it twice and keeps that rendering for the rest of the film; a name mentioned only once needs no pinning, and this keeps one-off mishearings out of the list. To correct or pre-seed renderings, put a JSON file next to the video named after it, for example `A Beautiful Mind (2001).cue-glossary.json` for `A Beautiful Mind (2001).mp4`, or a global `~/Library/Application Support/Cue/glossary.json`:
 
 ```json
 {"zh-TW": {"Nash": "納許", "Hansen": "漢森", "Governing dynamics": "支配動力學"}}

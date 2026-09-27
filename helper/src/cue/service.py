@@ -14,7 +14,7 @@ import time
 from urllib.parse import parse_qs
 from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
 from .bootstrap import HELPER_VERSION, model_manifest_path
-from .glossary import builtin_glossary, common_words, glossary_hash, is_common_word, load_user_glossary
+from .glossary import builtin_glossary, common_words, glossary_hash, is_common_word, load_user_glossary, mention_count
 from .media import Media, installed_ffmpeg_record
 from .pipeline import worker_entry, MIN_KEPT_MS
 from .vad import VAD_ID
@@ -264,14 +264,18 @@ class Supervisor:
                         pinned = set(glossary.get("user", {})) | set(glossary.get("builtin", {}))
                         reported = r.get("names", {})
                         learned = {k: v for k, v in reported.items() if k not in pinned}
-                        skipped = {"pinned": [k for k in reported if k in pinned], "common": [], "owned": []}
+                        skipped = {"pinned": [k for k in reported if k in pinned], "common": [], "owned": [], "once": []}
                         if learned:
-                            # A word the film writes in lowercase somewhere is not a name.
                             try:
                                 _, source_cues, _ = self.cache.read(job["source_profile"])
-                                common = common_words([c.text for c in source_cues])
+                                texts = [c.text for c in source_cues]
+                                # A word the film writes in lowercase somewhere is not a name, and a name
+                                # mentioned only once never needs a consistent rendering: one-off junk
+                                # from ASR capitalisation stays out of the ledger.
+                                common = common_words(texts)
                                 skipped["common"] = [k for k in learned if is_common_word(k, common)]
-                                learned = {k: v for k, v in learned.items() if k not in skipped["common"]}
+                                skipped["once"] = [k for k in learned if k not in skipped["common"] and mention_count(k, texts) < 2]
+                                learned = {k: v for k, v in learned.items() if k not in skipped["common"] and k not in skipped["once"]}
                             except CueError:
                                 pass
                         if learned:

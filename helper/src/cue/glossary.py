@@ -42,6 +42,11 @@ def common_words(texts) -> set[str]:
 def is_common_word(name: str, common: set[str]) -> bool:
     return name.split()[0].lower() in common
 
+def mention_count(name: str, texts) -> int:
+    """Whole-word, case-sensitive mentions of a name across texts."""
+    pattern = re.compile(rf"(?<![^\W\d_]){re.escape(name)}(?![^\W\d_])")
+    return sum(len(pattern.findall(text)) for text in texts)
+
 @lru_cache(maxsize=None)
 def builtin_glossary(target: str) -> dict[str, str]:
     """Cue's built-in renderings of common names for a target, or {} when it has none. Read-only."""

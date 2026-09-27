@@ -277,15 +277,17 @@ def test_jobs_carry_previous_lines_and_the_glossary_and_learned_names_are_stored
     assert job['glossary']['user']=={'Nash':'納許'} and job['glossary']['learned']==[['Hansen','漢森',0]]
     sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
                     'committed_range':[20000,30000],'names':{'Nash':'納什','Parcher':'帕徹'}}})
+    sup.busy['job_id']=job['job_id']
+    sup.outbox.queue[-1]['result']['source']=[{'id':'x','start_ms':20000,'end_ms':20400,'text':'Parcher, Parcher.'}]
     sup.tick()
-    # Sol would be pinned by the built-in table; Parcher is not in it.
+    # Sol would be pinned by the built-in table; Parcher is not in it and is mentioned twice.
     assert sup.cache.names(s.media.signature,'zh-TW')==[['Parcher','帕徹',20000],['Hansen','漢森',0]]
 
 def test_learned_names_skip_builtin_keys_and_words_the_film_uses_in_lowercase(sup,monkeypatch):
     s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
     monkeypatch.setattr(Media,'unchanged',lambda self:True)
     sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
-    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously.')],{'code':'en'})
+    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously, Nash. Nash?')],{'code':'en'})
     sup.tick()
     job=sup.inbox.get_nowait()
     assert job['glossary']['builtin']['John']=='約翰'
@@ -298,7 +300,7 @@ def test_names_the_supervisor_skips_are_logged_with_the_reason(sup,monkeypatch,c
     s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
     monkeypatch.setattr(Media,'unchanged',lambda self:True)
     sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
-    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously.')],{'code':'en'})
+    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'I mean it seriously, Bender. Bender and Nash. Nash?')],{'code':'en'})
     sup.cache.add_names(s.media.signature,'zh-TW',{'Baker':'貝克'},0)
     sup.tick();job=sup.inbox.get_nowait()
     sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
@@ -307,4 +309,17 @@ def test_names_the_supervisor_skips_are_logged_with_the_reason(sup,monkeypatch,c
     sup.tick()
     events=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
     skipped=[e for e in events if e.get('event')=='names_skipped']
-    assert skipped==[{'event':'names_skipped','pinned':['John'],'common':['Seriously'],'owned':['Bender']}]
+    assert skipped==[{'event':'names_skipped','pinned':['John'],'common':['Seriously'],'owned':['Bender'],'once':[]}]
+
+def test_a_name_is_stored_only_once_the_film_has_mentioned_it_twice(sup,monkeypatch,capsys):
+    s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();sup.outbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    sup.cache.put(s.source_profile,0,10000,[Cue('s0',0,500,'Come on, Bender. Enjoy your Punch.')],{'code':'en'})
+    sup.tick();job=sup.inbox.get_nowait()
+    sup.outbox.put({'job_id':job['job_id'],'result':{'source':[{'id':'s1','start_ms':20000,'end_ms':20500,'text':'Bender is here.'}],'rendered':[],
+                    'language':{'code':'en'},'timings':{},'committed_range':[20000,30000],'names':{'Bender':'本德','Punch':'潘奇'}}})
+    capsys.readouterr();sup.tick()
+    assert sup.cache.names(s.media.signature,'zh-TW')==[['Bender','本德',20000]]
+    events=[json.loads(l) for l in capsys.readouterr().out.splitlines() if l.startswith('{')]
+    assert [e for e in events if e.get('event')=='names_skipped']==[{'event':'names_skipped','pinned':[],'common':[],'owned':[],'once':['Punch']}]

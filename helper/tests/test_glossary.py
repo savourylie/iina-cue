@@ -1,7 +1,7 @@
 import json
 import pytest
 import re
-from cue.glossary import builtin_glossary, common_words, glossary_hash, load_user_glossary, match_name, names_hint, proper_nouns, select_entries
+from cue.glossary import builtin_glossary, common_words, glossary_hash, load_user_glossary, match_name, mention_count, names_hint, proper_nouns, select_entries
 
 def test_proper_nouns_find_names_and_phrases_but_not_sentence_starts_or_stopwords():
     texts=["Hansen won the Carnegie scholarship.","Well, he has his sights set on Wheeler Labs.","Nash. Oh, Mr. Sol is here."]
@@ -143,3 +143,7 @@ def test_select_entries_injects_builtin_entries_on_whole_word_matches_only():
     builtin={'Becker':'貝克','Bender':'本德','Ann':'安'}
     assert select_entries({},[],["Come on, Bender. Don't annoy me."],[],builtin)=={'Bender':'本德'}
     assert select_entries({},[['Hansen','漢森',0]],["Thank you, Mr. Hanson."],[],builtin)=={'Hansen':'漢森'}
+
+def test_mention_count_counts_whole_word_capitalised_mentions():
+    texts=["Nash is late.","Hey, Nash.","John Nash.","the nashville train","Nashville is far."]
+    assert mention_count('Nash',texts)==3 and mention_count('John Nash',texts)==1 and mention_count('Punch',texts)==0
