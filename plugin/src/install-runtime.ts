@@ -17,7 +17,8 @@ export type Preflight =
   | {ok: true}
   | {ok: false; code: "UNSUPPORTED_MAC" | "MACOS_TOO_OLD" | "IINA_TOO_OLD" | "DISK_FULL" | "LOW_MEMORY"; reason: string};
 
-function compareVersions(left: string, right: string): number {
+/** Numeric dot-separated versions: -1, 0 or 1. */
+export function compareVersions(left: string, right: string): number {
   const a = left.split(".").map(Number);
   const b = right.split(".").map(Number);
   const count = Math.max(a.length, b.length);

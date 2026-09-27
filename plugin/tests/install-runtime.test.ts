@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {installVerifiedArchive} from '../src/install-archive';
 import {DEFAULT_RAM_BYTES, curlResumeArgs, maySwap, preflight, startInstall} from '../src/install-runtime';
-import {CREDIT_LINKS, installPublishedRuntime, openCreditLink, RUNTIME_ARCHIVE_BYTES, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS, UNPACK_RUNTIME_SCRIPT} from '../src/runtime-install';
+import {CREDIT_LINKS, installPublishedRuntime, openCreditLink, RUNTIME_ARCHIVE_BYTES, RUNTIME_ARCHIVE_SHA256, RUNTIME_ARCHIVE_URLS, RUNTIME_PARTIAL, UNPACK_RUNTIME_SCRIPT} from '../src/runtime-install';
 
 const base = {arch: 'arm64', macos: '27.0', iina: '1.4.4', freeBytes: 10_000, ramBytes: DEFAULT_RAM_BYTES, minimumMacos: '27.0', bytesNeeded: 1000};
 
@@ -103,14 +103,15 @@ test('the plugin install path resumes the published archive and rejects a differ
     });
     assert.equal(rejected.ok, false);
     if (!rejected.ok) assert.equal(rejected.reason, 'The runtime download does not match the published checksum.');
-    assert.equal(calls[0][0], '/usr/bin/curl');
-    assert.ok(calls[0].includes('-C'));
-    assert.ok(calls[0].includes('--fail'));
-    assert.equal(calls[0][calls[0].length - 1], RUNTIME_ARCHIVE_URLS[0]);
-    assert.equal(calls[1][0], '/bin/sh');
-    assert.ok(calls[1].includes(RUNTIME_ARCHIVE_SHA256));
+    const curl = calls.find(([file]) => file === '/usr/bin/curl')!;
+    assert.ok(curl.includes('-C'));
+    assert.ok(curl.includes('--fail'));
+    assert.equal(curl[curl.length - 1], RUNTIME_ARCHIVE_URLS[0]);
+    assert.equal(curl[curl.indexOf('-o') + 1], join(root, RUNTIME_PARTIAL));
+    const unpack = calls.findIndex((call) => call[0] === '/bin/sh' && call.includes(RUNTIME_ARCHIVE_SHA256));
+    assert.ok(unpack > calls.indexOf(curl));
     // A file that fails the checksum is removed, so Retry downloads it again.
-    assert.deepEqual(calls[2], ['/bin/rm', '-f', calls[0][calls[0].indexOf('-o') + 1]]);
+    assert.deepEqual(calls[unpack + 1], ['/bin/rm', '-f', join(root, RUNTIME_PARTIAL)]);
     assert.equal(existsSync(join(root, 'installed')), false);
     assert.equal(existsSync(join(root, 'runtime', 'bin', 'ffmpeg')), false);
     const busy = await installPublishedRuntime({
@@ -168,7 +169,8 @@ test('when every copy fails, setup reports a stopped download and unpacks nothin
     exec: async (file, args) => { calls.push([file, ...args]); return {status: 6}; },
   });
   assert.deepEqual(result, {ok: false, reason: 'The runtime download stopped.'});
-  assert.equal(calls.length, RUNTIME_ARCHIVE_URLS.length);
+  assert.equal(calls.filter(([file]) => file === '/usr/bin/curl').length, RUNTIME_ARCHIVE_URLS.length);
+  assert.ok(!calls.some((call) => call.includes(RUNTIME_ARCHIVE_SHA256)), 'nothing is unpacked');
 });
 
 test('credit links open only the pinned model pages in the browser', () => {

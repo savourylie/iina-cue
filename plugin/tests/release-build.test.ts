@@ -20,10 +20,10 @@ test('with no development launcher and nothing installed, the general-user pack 
 
 test('the general-user pack starts the installed runtime, and an explicit preference still overrides it', () => {
   const installed = (path: string) => path === marker || path === launcher;
-  assert.deepEqual(planLaunch({preference: '', devBootstrap: '', exists: installed, resolve: resolvePath}), {file: '/bin/sh', args: [absoluteLauncher, 'ensure']});
+  assert.deepEqual(planLaunch({preference: '', devBootstrap: '', exists: installed, resolve: resolvePath}), {file: '/bin/sh', args: [absoluteLauncher, 'ensure'], mode: 'installed'});
   assert.deepEqual(
     planLaunch({preference: '/custom/helper', devBootstrap: '', exists: (path) => path === '/custom/helper', resolve: resolvePath}),
-    {file: '/custom/helper', args: ['ensure']},
+    {file: '/custom/helper', args: ['ensure'], mode: 'preference'},
   );
 });
 

@@ -21,7 +21,7 @@ function resolve(path: string): string | null {
 
 test('an explicit launcher preference is used as-is', () => {
   const plan = planLaunch({preference: '/custom/helper', devBootstrap: dev, exists: exists(['/custom/helper', marker, launcher]), resolve});
-  assert.deepEqual(plan, {file: '/custom/helper', args: ['ensure']});
+  assert.deepEqual(plan, {file: '/custom/helper', args: ['ensure'], mode: 'preference'});
 });
 
 test('a missing explicit launcher reports setup required', () => {
@@ -30,7 +30,7 @@ test('a missing explicit launcher reports setup required', () => {
 
 test('development mode keeps the baked helper when Cue is not installed', () => {
   const plan = planLaunch({preference: '', devBootstrap: dev, exists: exists([dev]), resolve});
-  assert.deepEqual(plan, {file: dev, args: ['ensure']});
+  assert.deepEqual(plan, {file: dev, args: ['ensure'], mode: 'development'});
 });
 
 test('a missing development helper reports setup required', () => {
@@ -39,13 +39,13 @@ test('a missing development helper reports setup required', () => {
 
 test('installed mode runs the runtime launcher through /bin/sh', () => {
   const plan = planLaunch({preference: '', devBootstrap: dev, exists: exists([marker, launcher, python, dev]), resolve});
-  assert.deepEqual(plan, {file: '/bin/sh', args: [absoluteLauncher, 'ensure']});
+  assert.deepEqual(plan, {file: '/bin/sh', args: [absoluteLauncher, 'ensure'], mode: 'installed'});
   assert.equal(plan.args[0].includes('/project/'), false);
 });
 
 test('installed mode runs the runtime Python when the launcher script is absent', () => {
   const plan = planLaunch({preference: '', devBootstrap: dev, exists: exists([marker, python, dev]), resolve});
-  assert.deepEqual(plan, {file: absolutePython, args: ['-m', 'cue.cli', 'ensure']});
+  assert.deepEqual(plan, {file: absolutePython, args: ['-m', 'cue.cli', 'ensure'], mode: 'installed'});
 });
 
 test('a marker without a runtime reports setup required and does not use the checkout helper', () => {
@@ -54,5 +54,5 @@ test('a marker without a runtime reports setup required and does not use the che
 
 test('without resolvePath the runtime script is still the program IINA expands', () => {
   const plan = planLaunch({preference: '', devBootstrap: dev, exists: exists([marker, launcher]), resolve: () => null});
-  assert.deepEqual(plan, {file: launcher, args: ['ensure']});
+  assert.deepEqual(plan, {file: launcher, args: ['ensure'], mode: 'installed'});
 });
