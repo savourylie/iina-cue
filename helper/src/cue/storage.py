@@ -83,11 +83,14 @@ class Cache:
         return ranges_merge(ranges), deduped, language
 
     def add_names(self, media: str, target: str, names: dict[str, str], first_ms: int) -> int:
-        """Remember the first rendering seen for each source spelling; later ones are ignored."""
+        """Remember the first rendering seen for each source spelling; later ones are ignored.
+        One rendering stands for one name: a rendering another source already owns is not stored."""
         with self.db:
             before = self.db.total_changes
-            self.db.executemany("INSERT OR IGNORE INTO glossary (media,target,source,rendering,first_ms) VALUES (?,?,?,?,?)",
-                                [(media, target, source, rendering, first_ms) for source, rendering in names.items()])
+            self.db.executemany(
+                "INSERT OR IGNORE INTO glossary (media,target,source,rendering,first_ms) SELECT ?,?,?,?,? "
+                "WHERE NOT EXISTS (SELECT 1 FROM glossary WHERE media=? AND target=? AND rendering=? AND source<>?)",
+                [(media, target, source, rendering, first_ms, media, target, rendering, source) for source, rendering in names.items()])
             return self.db.total_changes - before
 
     def names(self, media: str, target: str) -> list[list]:

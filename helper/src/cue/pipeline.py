@@ -26,8 +26,9 @@ def build_context(units: list[Cue], continues: frozenset[str], job: dict, langua
     texts = [u.text for u in units]
     previous_texts = [source for source, _ in previous]
     new_names, variants = proper_nouns(texts, previous_texts, known, language)
+    taken = frozenset([*user.values(), *(rendering for _, rendering, *_ in learned)])
     return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts),
-                              variants=variants, new_names=tuple(new_names), continues=continues)
+                              variants=variants, new_names=tuple(new_names), continues=continues, taken=taken)
 
 class Pipeline:
     def __init__(self, models: Path, temp: Path, vad_model: Path | None = None, gemma: Path | None = None):

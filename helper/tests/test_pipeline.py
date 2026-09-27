@@ -238,3 +238,9 @@ def test_build_context_reports_new_names_and_misheard_spellings():
     assert context.new_names==('Bender',) and context.variants=={'Hanson':'Hansen'}
     assert context.glossary=={'Hansen':'漢森'} and context.continues==frozenset({'u2'})
     assert build_context(units,frozenset(),job,'ja').new_names==()
+
+def test_build_context_marks_every_ledger_rendering_as_taken():
+    from cue.pipeline import build_context
+    job={'glossary':{'user':{'Nash':'納許'},'learned':[['John','約翰',0],['Bender','本德',5]]},'previous_source':[],'previous_rendered':[]}
+    context=build_context([Cue('u1',0,1000,'Hey, Nash.')],frozenset(),job,'en')
+    assert context.taken==frozenset({'納許','約翰','本德'})

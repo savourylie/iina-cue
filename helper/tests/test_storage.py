@@ -72,3 +72,12 @@ def test_a_version_one_cache_gains_the_glossary_table(tmp_path):
     cache=Cache(root)
     assert cache.db.execute('PRAGMA user_version').fetchone()[0]==2
     assert cache.add_names('m','zh-TW',{'Nash':'納許'},0)==1
+
+def test_a_rendering_already_owned_by_another_name_is_not_stored(tmp_path):
+    cache=Cache(tmp_path/'cache')
+    assert cache.add_names('media','zh-TW',{'John':'約翰'},0)==1
+    assert cache.add_names('media','zh-TW',{'Nash':'約翰','Bender':'本德'},1000)==1
+    assert cache.names('media','zh-TW')==[['Bender','本德',1000],['John','約翰',0]]
+    # The same rendering is fine for another film or target.
+    assert cache.add_names('other','zh-TW',{'Nash':'約翰'},0)==1
+    assert cache.add_names('media','ja',{'Nash':'約翰'},0)==1

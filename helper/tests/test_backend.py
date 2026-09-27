@@ -286,3 +286,11 @@ def test_single_token_names_get_a_pattern_without_the_middle_dot(tmp_path):
     backend.translate([Cue('a',0,1,'Nash and John Nash.')],'zh-TW','en',TranslationContext(new_names=('Nash','John Nash')))
     props=calls[0]['properties']['names']['properties']
     assert props['Nash']['pattern']=='^[㐀-鿿]+$' and props['John_Nash']['pattern']=='^[㐀-鿿·]+$'
+
+def test_a_rendering_owned_anywhere_in_the_ledger_is_not_learned_for_another_name(tmp_path):
+    # "John" was learned in an earlier window; it is not among the entries selected for this
+    # prompt, but its rendering is still taken.
+    backend=Backend(tmp_path)
+    backend.send=lambda prompt,max_tokens,schema=None,system=None:'{"cues":[{"id":"1","text":"嘿，約翰·納西。"}],"names":{"Nash":"約翰"}}'
+    cues,names=backend.translate([Cue('a',0,1,'Hey, Nash.')],'zh-TW','en',TranslationContext(new_names=('Nash',),taken=frozenset({'約翰'})))
+    assert names=={}

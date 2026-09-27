@@ -273,6 +273,7 @@ class TranslationContext:
     variants: dict[str, str] = field(default_factory=dict)  # misheard spelling -> established source spelling
     new_names: tuple[str, ...] = ()                     # candidates to report in "names", at most 6
     continues: frozenset[str] = frozenset()             # unit ids that continue the previous unit
+    taken: frozenset[str] = frozenset()                 # every rendering the film's ledger already uses
 
 def assemble(units: list[Unit], zero_ms: int, core_start: int, core_end: int, source_key: str, *, verbatim: bool = False) -> list[Cue]:
     owned = [u for u in units if core_start <= zero_ms + (u.start_ms + u.end_ms) / 2 < core_end]

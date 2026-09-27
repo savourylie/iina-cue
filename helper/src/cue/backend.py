@@ -25,11 +25,13 @@ NAME_PATTERNS = {"zh-TW": "^[\u3400-\u9fff·]+$", "zh-CN": "^[\u3400-\u9fff·]+$
 SINGLE_NAME_PATTERNS = {"zh-TW": "^[\u3400-\u9fff]+$", "zh-CN": "^[\u3400-\u9fff]+$",
                         "ja": "^[\u3400-\u9fff\u3040-\u30ffー]+$", "ko": "^[\uac00-\ud7af]+$", "en": "^[^\n]+$"}
 
-def accept_names(found: dict[str, str], texts: list[str], glossary: dict[str, str], learned: dict[str, str]) -> dict[str, str]:
+def accept_names(found: dict[str, str], texts: list[str], glossary: dict[str, str], learned: dict[str, str],
+                 owned: frozenset[str] = frozenset()) -> dict[str, str]:
     """Renderings actually used in the batch, one name per rendering. A rendering that already
-    stands for another name, in the glossary or earlier in this window, is not learned again;
-    when two requested names share one rendering the longest spelling keeps it."""
-    taken = {value: key for key, value in glossary.items()}
+    stands for another name, anywhere in the film's ledger or earlier in this window, is not
+    learned again; when two requested names share one rendering the longest spelling keeps it."""
+    taken = {value: "" for value in owned}
+    taken.update({value: key for key, value in glossary.items()})
     taken.update({value: key for key, value in learned.items()})
     kept: dict[str, str] = {}
     for key in sorted(found, key=len, reverse=True):
@@ -238,7 +240,7 @@ class Backend:
                 # A name-only cue may stay in Latin letters, so the script rule applies to the batch.
                 check_target_script([c.text for c in batch], texts, target)
                 found = {}
-            names.update(accept_names(found, texts, batch_context.glossary, names))
+            names.update(accept_names(found, texts, batch_context.glossary, names, batch_context.taken))
             translated.extend(Cue(c.id, c.start_ms, c.end_ms, text) for c, text in zip(batch, texts))
             previous.extend((c.text, text) for c, text in zip(batch, texts))
         return translated, names
