@@ -1,5 +1,6 @@
 """Per-film glossary: name heuristics, prompt selection and read-only user files."""
 from __future__ import annotations
+from collections import Counter
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -24,11 +25,19 @@ STOPWORDS = {"I", "Mr", "Mrs", "Ms", "Dr", "Prof", "Sir", "Madam", "Oh", "Ah", "
              "Because", "You", "We", "They", "He", "She", "It", "This", "That", "There", "Here", "Not", "Just", "Very",
              "Professor", "Doctor", "Mister", "Miss", "Ma'am", "Captain", "Sergeant", "Officer", "Father", "Mother", "Uncle", "Aunt",
              "English", "American", "French", "German", "Spanish", "Italian", "Japanese", "Chinese", "Korean", "Russian", "British", "European",
-             "Nobody", "Everybody", "Everyone", "Someone", "Somebody", "Anyone", "Anybody", "Nothing", "Something", "Everything", "Anything", "Alright"}
+             "Nobody", "Everybody", "Everyone", "Someone", "Somebody", "Anyone", "Anybody", "Nothing", "Something", "Everything", "Anything", "Alright", "Name"}
 
 def common_words(texts) -> set[str]:
-    """Words the source writes in lowercase somewhere. A capitalised twin of one is not a name."""
-    return {word.lower() for text in texts for word in WORD.findall(text) if word[:1].islower()}
+    """Words the source writes in lowercase at least as often as capitalised.
+
+    A capitalised twin of one is not a name; one lowercased mention of a name the
+    film otherwise capitalises does not veto it."""
+    lower: Counter = Counter()
+    upper: Counter = Counter()
+    for text in texts:
+        for word in WORD.findall(text):
+            (lower if word[:1].islower() else upper)[word.lower()] += 1
+    return {word for word, count in lower.items() if count >= upper.get(word, 0)}
 
 def is_common_word(name: str, common: set[str]) -> bool:
     return name.split()[0].lower() in common
@@ -140,17 +149,29 @@ def proper_nouns(texts, previous_texts, known, language: str, limit: int | None 
                 tokens = tokens[1:]
             if not tokens:
                 continue
-            candidate = " ".join(tokens)
-            if candidate in seen or is_common_word(candidate, common):
-                continue
-            seen.add(candidate)
-            match = match_name(candidate, known)
-            if match == candidate:
-                continue
-            if match is not None:
-                variants[candidate] = match
-            elif limit is None or len(new) < limit:
-                new.append(candidate)
+            if len(tokens) > 1 and any(match_name(token, known) is not None for token in tokens):
+                # A phrase with established parts is not learned whole: misheard parts
+                # become variant notes and only the unknown parts are asked for alone.
+                pieces = []
+                for token in tokens:
+                    match = match_name(token, known)
+                    if match is None:
+                        pieces.append(token)
+                    elif match != token:
+                        variants[token] = match
+            else:
+                pieces = [" ".join(tokens)]
+            for candidate in pieces:
+                if candidate in seen or is_common_word(candidate, common):
+                    continue
+                seen.add(candidate)
+                match = match_name(candidate, known)
+                if match == candidate:
+                    continue
+                if match is not None:
+                    variants[candidate] = match
+                elif limit is None or len(new) < limit:
+                    new.append(candidate)
     return new, variants
 
 MAX_PROMPT_ENTRIES = 40

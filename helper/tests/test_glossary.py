@@ -118,3 +118,16 @@ def test_the_builtin_zh_tw_name_table_is_large_and_clean():
 def test_select_entries_puts_relevant_builtin_entries_after_user_and_before_learned():
     chosen=select_entries({'Nash':'納許'},[['Bender','本德',5]],["John and Nash met Bender."],[],{'John':'約翰','Mary':'瑪麗'})
     assert list(chosen)==['Nash','John','Bender'] and 'Mary' not in chosen
+
+def test_a_phrase_with_known_parts_asks_only_for_its_unknown_tokens():
+    known={'John':'約翰','Wheeler':'惠勒','Hansen':'漢森','Martin':'馬丁'}
+    assert proper_nouns(["Meet John Nash of Wheeler Lab."],["Hi John."],known,'en')==(['Nash','Lab'],{})
+    # Every part known or a misheard known name: nothing new, only the variant note.
+    assert proper_nouns(["Well, Martin Hans."],[],known,'en')==([],{'Hans':'Hansen'})
+    # A phrase with no known part stays whole.
+    assert proper_nouns(["We drove to Los Alamos."],[],known,'en')==(['Los Alamos'],{})
+
+def test_one_lowercased_mention_does_not_veto_a_name_the_film_capitalises():
+    assert common_words(["Nash is here.","nash said no.","Nash again.","Seriously?","I mean it seriously."])=={'is','here','said','no','again','mean','it','seriously'}
+    assert proper_nouns(["Hey, Nash."],["nash said no.","Nash again."],{},'en')==(['Nash'],{})
+    assert proper_nouns(["Name Bender, atomic physics."],[],{},'en')==(['Bender'],{})
