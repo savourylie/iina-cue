@@ -307,3 +307,10 @@ def test_a_names_request_that_fell_back_is_reported(tmp_path):
     backend.send=lambda prompt,max_tokens,schema=None,system=None:next(replies)
     backend.translate([Cue('a',0,1,'Nash came.')],'zh-TW','en',TranslationContext(new_names=('Nash',)))
     assert backend.names_report['fallback'] is True and backend.names_report['reported']=={}
+
+def test_the_prompt_carries_the_ten_most_recent_previous_pairs(tmp_path):
+    backend=Backend(tmp_path);prompts=[]
+    backend.send=lambda prompt,max_tokens,schema=None,system=None: prompts.append(prompt) or '[{"id":"1","text":"你好"}]'
+    previous=tuple((f'line {i}',f'譯{i}') for i in range(12))
+    backend.translate([Cue('a',0,1,'Hello.')],'zh-TW','en',TranslationContext(previous=previous))
+    assert '"source": "line 2"' in prompts[0] and '"source": "line 11"' in prompts[0] and '"source": "line 1"' not in prompts[0]

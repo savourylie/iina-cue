@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
+from .core import Cue, CueError, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -18,7 +18,7 @@ def build_context(units: list[Cue], continues: frozenset[str], job: dict, langua
     """Previous lines, glossary entries, misheard spellings and new names for one window."""
     previous_source = [Cue(**c) for c in job.get("previous_source", [])]
     previous_rendered = [Cue(**c) for c in job.get("previous_rendered", [])]
-    previous = pair_previous(previous_source, previous_rendered)[-6:]
+    previous = pair_previous(previous_source, previous_rendered)[-PREVIOUS_PAIRS:]
     glossary = job.get("glossary") or {}
     user, builtin, learned = glossary.get("user", {}), glossary.get("builtin", {}), glossary.get("learned", [])
     known = {source: rendering for source, rendering, *_ in reversed(learned)}

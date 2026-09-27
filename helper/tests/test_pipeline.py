@@ -290,3 +290,11 @@ def test_build_context_never_treats_a_new_name_as_a_misheard_builtin_name():
     job={'glossary':{'user':{},'builtin':{'Becker':'貝克'},'learned':[]},'previous_source':[],'previous_rendered':[]}
     context=build_context([Cue('u1',0,1000,'Come on, Bender.')],frozenset(),job,'en')
     assert context.new_names==('Bender',) and context.variants=={} and context.glossary=={}
+
+def test_build_context_keeps_the_ten_most_recent_previous_units():
+    from cue.pipeline import build_context
+    job={'glossary':{'user':{},'builtin':{},'learned':[]},
+         'previous_source':[{'id':f's{i}','start_ms':i*1000,'end_ms':i*1000+500,'text':f'line {i}'} for i in range(12)],
+         'previous_rendered':[{'id':f'r{i}','start_ms':i*1000,'end_ms':i*1000+500,'text':f'譯{i}'} for i in range(12)]}
+    context=build_context([Cue('u1',20000,21000,'Hello.')],frozenset(),job,'en')
+    assert len(context.previous)==10 and context.previous[0]==('line 2','譯2') and context.previous[-1]==('line 11','譯11')

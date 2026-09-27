@@ -272,8 +272,9 @@ def test_jobs_carry_previous_lines_and_the_glossary_and_learned_names_are_stored
     sup.tick()
     job=sup.inbox.get_nowait()
     assert job['range'][0]==20000
-    assert [c['id'] for c in job['previous_source']]==[f's{i}' for i in range(2,14)]
-    assert [c['id'] for c in job['previous_rendered']]==[f'r{i}' for i in range(2,8)]
+    # Ten previous units at most; the source cues cover the span of those units, not a fixed count.
+    assert [c['id'] for c in job['previous_rendered']]==[f'r{i}' for i in range(0,8)]
+    assert [c['id'] for c in job['previous_source']]==[f's{i}' for i in range(0,14)]
     assert job['glossary']['user']=={'Nash':'納許'} and job['glossary']['learned']==[['Hansen','漢森',0]]
     sup.outbox.put({'job_id':job['job_id'],'result':{'source':[],'rendered':[],'language':{'code':'en'},'timings':{},
                     'committed_range':[20000,30000],'names':{'Nash':'納什','Parcher':'帕徹'}}})
@@ -323,3 +324,22 @@ def test_a_name_is_stored_only_once_the_film_has_mentioned_it_twice(sup,monkeypa
     assert sup.cache.names(s.media.signature,'zh-TW')==[['Bender','本德',20000]]
     events=[json.loads(l) for l in capsys.readouterr().out.splitlines() if l.startswith('{')]
     assert [e for e in events if e.get('event')=='names_skipped']==[{'event':'names_skipped','pinned':[],'common':[],'owned':[],'once':['Punch']}]
+
+def test_previous_source_covers_the_span_of_the_previous_units(sup,monkeypatch):
+    s=next(iter(sup.sessions.values()));s.position=20000;sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',lambda:None)
+    for i in range(14):
+        sup.cache.put(s.source_profile,i*1000,(i+1)*1000,[Cue(f's{i}',i*1000,i*1000+500,f'line {i}')],{'code':'en'})
+    sup.cache.put(s.profile,5000,6000,[Cue('r5',5000,5500,'譯5')],{'code':'en'})
+    sup.tick()
+    job=sup.inbox.get_nowait()
+    assert [c['id'] for c in job['previous_rendered']]==['r5']
+    assert [c['id'] for c in job['previous_source']]==[f's{i}' for i in range(5,14)]
+    # Without any previous unit the last source cue still travels, for the boundary check.
+    sup.busy=None;s.source_profile='source2';s.profile='translated2'
+    for i in range(3):
+        sup.cache.put(s.source_profile,i*1000,(i+1)*1000,[Cue(f's{i}',i*1000,i*1000+500,f'line {i}')],{'code':'en'})
+    sup.tick()
+    job=sup.inbox.get_nowait()
+    assert [c['id'] for c in job['previous_source']]==['s2'] and job['previous_rendered']==[]

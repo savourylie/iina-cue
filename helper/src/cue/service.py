@@ -12,7 +12,7 @@ import secrets
 import threading
 import time
 from urllib.parse import parse_qs
-from .core import Cue, CueError, Settings, continuous_end, digest, next_window, ranges_merge, srt
+from .core import Cue, CueError, PREVIOUS_PAIRS, Settings, continuous_end, digest, next_window, ranges_merge, srt
 from .bootstrap import HELPER_VERSION, model_manifest_path
 from .glossary import builtin_glossary, common_words, glossary_hash, is_common_word, load_user_glossary, mention_count
 from .media import Media, installed_ffmpeg_record
@@ -345,8 +345,13 @@ class Supervisor:
                 _, previous_rendered, _ = self.cache.read(s.profile)
             except CueError as exc:
                 s.error = {"code":exc.code}; s.state = "error"; return
-            job["previous_source"] = [asdict(c) for c in previous_source if c.end_ms <= job["range"][0]][-12:]
-            job["previous_rendered"] = [asdict(c) for c in previous_rendered if c.end_ms <= job["range"][0]][-6:]
+            # The previous units and every source cue inside their span, so each unit pairs with its whole
+            # source. With no unit yet, the last source cue still travels for the boundary check.
+            source_before = [c for c in previous_source if c.end_ms <= job["range"][0]]
+            rendered_before = [c for c in previous_rendered if c.end_ms <= job["range"][0]][-PREVIOUS_PAIRS:]
+            covering = [c for c in source_before if rendered_before and c.end_ms >= rendered_before[0].start_ms - 80][-60:]
+            job["previous_source"] = [asdict(c) for c in (covering or source_before[-1:])]
+            job["previous_rendered"] = [asdict(c) for c in rendered_before]
             job["glossary"] = {"user": s.user_glossary, "builtin": builtin_glossary(s.settings.target),
                                "learned": self.cache.names(s.media.signature, s.settings.target)[:500]}
             self.inbox.put_nowait(job)

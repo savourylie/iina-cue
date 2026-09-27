@@ -295,6 +295,9 @@ def hold_back(cues: list[Cue], start: int, committed_end: int, min_commit_ms: in
         return None
     return cues[:k], hold_start
 
+# Previous source/rendered pairs the translator sees. Twelve pairs cost about 0.1 s per batch.
+PREVIOUS_PAIRS = 10
+
 @dataclass(frozen=True)
 class TranslationContext:
     """What the translator sees besides the batch. Every field is optional."""

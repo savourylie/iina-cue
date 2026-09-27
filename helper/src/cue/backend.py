@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
-from .core import Cue, CueError, TranslationContext, Unit, SOURCE_LANGUAGES, clean_text, translation_parse, coalesce_quantized_units, coalesce_until_collapse
+from .core import Cue, CueError, PREVIOUS_PAIRS, TranslationContext, Unit, SOURCE_LANGUAGES, clean_text, translation_parse, coalesce_quantized_units, coalesce_until_collapse
 
 LANGUAGES = SOURCE_LANGUAGES
 TARGET_LANGUAGES = {"zh-TW": "Traditional Chinese using natural Taiwan vocabulary",
@@ -232,7 +232,7 @@ class Backend:
         for offset in range(0, len(cues), BATCH_UNITS):
             batch = cues[offset:offset + BATCH_UNITS]
             wanted = tuple(n for n in context.new_names if any(n in c.text for c in batch))
-            batch_context = replace(context, previous=tuple(previous[-6:]), new_names=wanted)
+            batch_context = replace(context, previous=tuple(previous[-PREVIOUS_PAIRS:]), new_names=wanted)
             try:
                 texts, found = self._translate_batch(batch, target, batch_context)
             except (CueError, RuntimeError):
