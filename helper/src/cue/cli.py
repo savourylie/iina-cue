@@ -8,6 +8,7 @@ import time
 from .bootstrap import PROJECT, call, connection, ensure, models_root, runtime_root
 from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, digest, srt
 from .doctor import doctor
+from .glossary import load_user_glossary
 from .media import Media, fingerprint, local_media
 from .storage import Cache, atomic_write
 
@@ -17,6 +18,7 @@ def benchmark(args):
         raise CueError("MEDIA_REQUIRED", "Provide --media /absolute/path.mp4 --duration-ms 180000; no private folders are searched")
     media = Media.open(str(Path(args.media).resolve()), {"ff_index": args.stream} if args.stream is not None else {})
     settings = Settings(target=args.mode, source=args.source)
+    user = load_user_glossary(media.path, runtime_root(), settings.target)
     start, limit = args.from_ms, min(media.duration_ms, args.from_ms+args.duration_ms)
     if not 0 <= start < limit: raise CueError("INVALID_REQUEST")
     out = Path(args.output).resolve(); out.mkdir(parents=True, exist_ok=True)
@@ -24,11 +26,16 @@ def benchmark(args):
     runs = []
     try:
         for run in range(args.runs):
-            batches, cues, source_cues = [], [], []
+            batches, cues, source_cues, learned = [], [], [], {}
             t = time.monotonic(); pos = start
             while pos < limit:
                 end = min(limit, pos + (settings.first_ms if pos == start else settings.window_ms))
-                result = pipeline.run({"media": asdict(media), "settings": asdict(settings), "range": [pos,end], "source_profile": digest([media.stream_key,settings.source]), "previous_source": source_cues[-1:]})
+                result = pipeline.run({"media": asdict(media), "settings": asdict(settings), "range": [pos,end], "source_profile": digest([media.stream_key,settings.source]),
+                                       "previous_source": source_cues[-12:], "previous_rendered": [asdict(c) for c in cues if c.end_ms <= pos][-6:],
+                                       "glossary": {"user": user, "learned": [[s, r, f] for s, (r, f) in reversed(list(learned.items()))]},
+                                       "min_commit_ms": 8000 if pos == start else 2000})
+                for name, rendering in result.get("names", {}).items():
+                    if name not in learned and name not in user: learned[name] = (rendering, pos)
                 # Explicit benchmark output includes transcripts for boundary review.
                 atomic_write(out/f"run-{run+1}-batch-{len(batches)+1}.json", json.dumps(result, ensure_ascii=False, indent=2))
                 cues.extend(Cue(**c) for c in result["rendered"])
@@ -44,6 +51,24 @@ def benchmark(args):
     finally: pipeline.backend.close()
     return {"output": str(out), "runs": [{k:v for k,v in x.items() if k != "batches"} for x in runs]}
 
+def glossary_command(cache: Cache, args) -> dict:
+    media = Media.open(str(Path(args.media).resolve()), {})
+    user = load_user_glossary(media.path, runtime_root(), args.target)
+    learned = cache.names(media.signature, args.target)
+    if args.action == "show":
+        return {"user": user, "learned": [{"source": s, "rendering": r, "first_ms": f} for s, r, f in learned]}
+    if not args.output: raise CueError("INVALID_REQUEST", "--output /absolute/path.json is required")
+    out = Path(args.output).resolve()
+    if out.suffix.lower() != ".json" or out.is_symlink(): raise CueError("UNSAFE_PATH", "output must be a new .json file")
+    merged = {s: r for s, r, _ in reversed(learned)}; merged.update(user)
+    try:
+        # Exclusive creation never overwrites an existing file.
+        with out.open("x", encoding="utf-8") as f:
+            json.dump({args.target: merged}, f, ensure_ascii=False, indent=2); f.write("\n")
+    except FileExistsError as exc:
+        raise CueError("OUTPUT_EXISTS") from exc
+    return {"path": str(out), "entries": len(merged)}
+
 def main():
     parser = argparse.ArgumentParser(prog="cue-helper")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -55,6 +80,8 @@ def main():
     b.add_argument("--stream", type=int); b.add_argument("--runs", type=int, default=2); b.add_argument("--output", default="benchmarks/results/local-benchmark")
     c = commands.add_parser("cache"); c.add_argument("action", choices=["status","clear"]); c.add_argument("--media")
     e = commands.add_parser("export"); e.add_argument("--media", required=True); e.add_argument("--target", choices=["original","zh-TW","zh-CN","en","ja","ko"], default="zh-TW"); e.add_argument("--output", required=True)
+    g = commands.add_parser("glossary"); g.add_argument("action", choices=["show", "export"]); g.add_argument("--media", required=True)
+    g.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW"); g.add_argument("--output")
     args = parser.parse_args()
     try:
         if args.command == "doctor": result = doctor(models_root())
@@ -71,6 +98,8 @@ def main():
                     if not args.media: raise CueError("MEDIA_REQUIRED")
                     cache.clear_media(fingerprint(local_media(str(Path(args.media).resolve()))))
                 result = cache.status()
+            elif args.command == "glossary":
+                result = glossary_command(cache, args)
             else:
                 media = Media.open(str(Path(args.media).resolve()), {})
                 rows = cache.db.execute("SELECT profile FROM profiles WHERE media=? AND target=?", (media.signature,args.target)).fetchall()
