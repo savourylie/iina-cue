@@ -66,3 +66,11 @@ def test_a_failing_batch_is_split_and_a_single_bad_item_is_marked_unjudged(tmp_p
     assert scores[:10]==[5]*10 and scores[10] is None and report['results'][10]['issue']=='unjudged'
     assert max(fake.calls)==8 and 1 in fake.calls
     assert report['summary']['count']==11 and report['summary']['unjudged']==1 and report['summary']['mean']==5.0
+
+def test_summary_counts_sources_the_judge_suspects_in_its_wording_too():
+    results=[{'index':0,'start_ms':0,'end_ms':1,'source':'a','target':'b','before':[],'after':[],'score':1,'source_ok':False,'issue':''},
+             {'index':1,'start_ms':2,'end_ms':3,'source':'a','target':'b','before':[],'after':[],'score':1,'source_ok':True,'issue':"'gas mark' is likely a mishearing of something else"},
+             {'index':2,'start_ms':4,'end_ms':5,'source':'a','target':'b','before':[],'after':[],'score':2,'source_ok':True,'issue':'The transcription looks garbled'},
+             {'index':3,'start_ms':6,'end_ms':7,'source':'a','target':'b','before':[],'after':[],'score':5,'source_ok':True,'issue':''}]
+    summary=summarize(results)
+    assert summary['source_not_ok']==1 and summary['source_suspect']==3 and summary['mean_where_source_clean']==5.0

@@ -8,6 +8,7 @@ Everything runs offline on the speech models already installed.
 from __future__ import annotations
 import json
 from pathlib import Path
+import re
 from .backend import Backend, LANGUAGES, TARGET_LANGUAGES
 from .core import Cue, CueError, clean_text, join_texts
 from .report import chunks, inside, latest_profile, source_language
@@ -64,15 +65,25 @@ def parse_verdicts(raw: str, ids: list[str]) -> list[dict]:
     except (TypeError, ValueError, KeyError) as exc:
         raise CueError("JUDGE_FAILED", f"invalid verdict JSON ({len(raw)} chars)") from exc
 
+SUSPECT_WORDS = re.compile(r"mishear|misheard|transcri|garbled|recogni", re.IGNORECASE)
+
+def source_suspect(result: dict) -> bool:
+    """The judge under-uses source_ok but says 'mishearing' or 'transcription' in its reason; count both."""
+    return result["source_ok"] is False or bool(SUSPECT_WORDS.search(result.get("issue") or ""))
+
 def summarize(results: list[dict], worst: int = 20) -> dict:
     judged = [r for r in results if r["score"] is not None]
     scores = [r["score"] for r in judged]
     ok_scores = [r["score"] for r in judged if r["source_ok"]]
+    clean_scores = [r["score"] for r in judged if not source_suspect(r)]
+    mean = lambda values: round(sum(values) / len(values), 2) if values else None
     return {"count": len(results), "unjudged": len(results) - len(judged),
-            "mean": round(sum(scores) / len(scores), 2) if scores else None,
+            "mean": mean(scores),
             "distribution": {str(s): scores.count(s) for s in range(1, 6)},
             "source_not_ok": sum(1 for r in judged if not r["source_ok"]),
-            "mean_where_source_ok": round(sum(ok_scores) / len(ok_scores), 2) if ok_scores else None,
+            "source_suspect": sum(1 for r in judged if source_suspect(r)),
+            "mean_where_source_ok": mean(ok_scores),
+            "mean_where_source_clean": mean(clean_scores),
             "worst": sorted(judged, key=lambda r: (r["score"], r["start_ms"]))[:worst]}
 
 def _judge_batch(backend, batch: list[dict], target: str, language: str) -> list[dict | None]:
