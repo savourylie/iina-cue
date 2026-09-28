@@ -114,8 +114,15 @@ def main():
                 gemma = speech_model_path(models_root(), json.loads(model_manifest_path().read_text()), args.judge)
                 def progress(done, total): print(json.dumps({"event": "judging", "done": done, "total": total}), file=sys.stderr, flush=True)
                 report = judge_captions(cache, media.signature, args.target, gemma, models_root(), args.from_ms, args.to_ms, progress)
-                out = Path(args.output).resolve() if args.output else PROJECT / "benchmarks" / "results" / f"judge-{media.signature[:8]}-{args.target}-{args.judge}.json"
-                atomic_write(out, json.dumps(report, ensure_ascii=False, indent=1))
+                out = Path(args.output).resolve() if args.output else PROJECT / "benchmarks" / "results" / f"judge-{media.signature[:8]}-{args.target}-{args.judge}-{time.strftime('%Y%m%d-%H%M%S')}.json"
+                if out.suffix.lower() != ".json" or out.is_symlink(): raise CueError("UNSAFE_PATH", "output must be a new .json file")
+                out.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    # Exclusive creation never overwrites an earlier report.
+                    with out.open("x", encoding="utf-8") as f:
+                        json.dump(report, f, ensure_ascii=False, indent=1); f.write("\n")
+                except FileExistsError as exc:
+                    raise CueError("OUTPUT_EXISTS") from exc
                 result = {"path": str(out), **report["summary"]}
             elif args.command == "dump":
                 from .report import dump_report
