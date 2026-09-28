@@ -35,3 +35,34 @@ def test_summarize_reports_mean_distribution_source_problems_and_the_worst():
     assert summary['count']==5 and summary['mean']==3.0 and summary['distribution']=={'1':1,'2':1,'3':1,'4':1,'5':1}
     assert summary['source_not_ok']==2 and summary['mean_where_source_ok']==4.0
     assert [r['score'] for r in summary['worst']]==[1,2]
+
+from cue.judge import judge_captions
+from cue.storage import Cache
+
+class FakeJudge:
+    """Answers a judge prompt per item; raises for any batch that contains a poisoned line."""
+    def __init__(self, poison=None, fail_large=False):
+        self.poison=poison; self.fail_large=fail_large; self.calls=[]
+    def load(self): pass
+    def close(self): pass
+    def send(self, prompt, max_tokens=768, schema=None, system=None):
+        rows=json.loads(prompt[prompt.index('\n[')+1:])
+        self.calls.append(len(rows))
+        if self.fail_large and len(rows)>2: raise CueError('JUDGE_FAILED','invalid verdict JSON')
+        if self.poison and any(self.poison in r['line'] for r in rows): raise RuntimeError('engine')
+        return json.dumps([{'id':r['id'],'score':5 if 'good' in r['line'] else 3,'source_ok':True,'issue':''} for r in rows])
+
+def seeded_cache(tmp_path,lines):
+    cache=Cache(tmp_path/'cache');cache.register('src','media','original');cache.register('tgt','media','zh-TW')
+    cache.put('src',0,100000,[Cue(f's{i}',i*1000,i*1000+500,line) for i,line in enumerate(lines)],{'code':'en'})
+    cache.put('tgt',0,100000,[Cue(f't{i}',i*1000,i*1000+500,f'譯{i}') for i in range(len(lines))],{'code':'en'})
+    return cache
+
+def test_a_failing_batch_is_split_and_a_single_bad_item_is_marked_unjudged(tmp_path):
+    lines=[f'good line {i}' for i in range(10)]+['bad line']
+    fake=FakeJudge(poison='bad',fail_large=True)
+    report=judge_captions(seeded_cache(tmp_path,lines),'media','zh-TW',tmp_path/'gemma.litertlm',tmp_path,backend=fake)
+    scores=[r['score'] for r in report['results']]
+    assert scores[:10]==[5]*10 and scores[10] is None and report['results'][10]['issue']=='unjudged'
+    assert max(fake.calls)==8 and 1 in fake.calls
+    assert report['summary']['count']==11 and report['summary']['unjudged']==1 and report['summary']['mean']==5.0

@@ -14,6 +14,7 @@ from .report import chunks, inside, latest_profile, source_language
 from .storage import Cache
 
 BATCH = 8
+UNJUDGED = {"score": None, "source_ok": None, "issue": "unjudged"}
 
 def judge_items(source: list[Cue], rendered_chunks) -> list[dict]:
     """One item per caption with a source: its source text, the caption, and up to two neighbouring lines each way."""
@@ -41,7 +42,7 @@ def judge_prompt(items: list[dict], target: str, language: str) -> str:
 def judge_schema(ids: list[str]) -> dict:
     def item(i: str) -> dict:
         return {"type": "object", "properties": {"id": {"const": i}, "score": {"type": "integer", "enum": [1, 2, 3, 4, 5]},
-                                                 "source_ok": {"type": "boolean"}, "issue": {"type": "string", "maxLength": 120}},
+                                                 "source_ok": {"type": "boolean"}, "issue": {"type": "string", "maxLength": 80}},
                 "required": ["id", "score", "source_ok", "issue"], "additionalProperties": False}
     return {"type": "array", "minItems": len(ids), "maxItems": len(ids), "items": False, "prefixItems": [item(i) for i in ids]}
 
@@ -61,20 +62,34 @@ def parse_verdicts(raw: str, ids: list[str]) -> list[dict]:
             by_id[row["id"]] = {"score": score, "source_ok": ok, "issue": clean_text(issue)[:120]}
         return [by_id[i] for i in ids]
     except (TypeError, ValueError, KeyError) as exc:
-        raise CueError("JUDGE_FAILED", "invalid verdict JSON") from exc
+        raise CueError("JUDGE_FAILED", f"invalid verdict JSON ({len(raw)} chars)") from exc
 
 def summarize(results: list[dict], worst: int = 20) -> dict:
-    scores = [r["score"] for r in results]
-    ok_scores = [r["score"] for r in results if r["source_ok"]]
-    return {"count": len(results),
+    judged = [r for r in results if r["score"] is not None]
+    scores = [r["score"] for r in judged]
+    ok_scores = [r["score"] for r in judged if r["source_ok"]]
+    return {"count": len(results), "unjudged": len(results) - len(judged),
             "mean": round(sum(scores) / len(scores), 2) if scores else None,
             "distribution": {str(s): scores.count(s) for s in range(1, 6)},
-            "source_not_ok": sum(1 for r in results if not r["source_ok"]),
+            "source_not_ok": sum(1 for r in judged if not r["source_ok"]),
             "mean_where_source_ok": round(sum(ok_scores) / len(ok_scores), 2) if ok_scores else None,
-            "worst": sorted(results, key=lambda r: (r["score"], r["start_ms"]))[:worst]}
+            "worst": sorted(judged, key=lambda r: (r["score"], r["start_ms"]))[:worst]}
+
+def _judge_batch(backend, batch: list[dict], target: str, language: str) -> list[dict | None]:
+    """Verdicts for a batch. A batch the judge cannot answer is split in halves; a single
+    item that still fails is returned as None, so one bad line never loses the run."""
+    ids = [str(k+1) for k in range(len(batch))]
+    try:
+        raw = backend.send(judge_prompt(batch, target, language), max_tokens=2048, schema=judge_schema(ids))
+        return parse_verdicts(raw, ids)
+    except (CueError, RuntimeError):
+        if len(batch) == 1:
+            return [None]
+        half = len(batch) // 2
+        return _judge_batch(backend, batch[:half], target, language) + _judge_batch(backend, batch[half:], target, language)
 
 def judge_captions(cache: Cache, media_signature: str, target: str, gemma: Path, models: Path,
-                   from_ms: int = 0, to_ms: int | None = None, progress=None) -> dict:
+                   from_ms: int = 0, to_ms: int | None = None, progress=None, backend=None) -> dict:
     """Grade every cached caption of a film and target in the given range with the model at `gemma`."""
     source_profile = latest_profile(cache, media_signature, "original")
     profile = latest_profile(cache, media_signature, target)
@@ -83,16 +98,14 @@ def judge_captions(cache: Cache, media_signature: str, target: str, gemma: Path,
     source = sorted({c.id: c for _, _, cues in chunks(cache, source_profile) for c in cues}.values(), key=lambda c: (c.start_ms, c.end_ms))
     items = [it for it in judge_items(source, chunks(cache, profile)) if it["end_ms"] > from_ms and (to_ms is None or it["start_ms"] < to_ms)]
     language = source_language(cache, source_profile)
-    backend = Backend(models, gemma=gemma)
+    backend = backend or Backend(models, gemma=gemma)
     backend.load()
     results = []
     try:
         for offset in range(0, len(items), BATCH):
             batch = items[offset:offset + BATCH]
-            ids = [str(k+1) for k in range(len(batch))]
-            raw = backend.send(judge_prompt(batch, target, language), max_tokens=1024, schema=judge_schema(ids))
-            for item, verdict in zip(batch, parse_verdicts(raw, ids)):
-                results.append({**item, **verdict})
+            for item, verdict in zip(batch, _judge_batch(backend, batch, target, language)):
+                results.append({**item, **(verdict or UNJUDGED)})
             if progress:
                 progress(len(results), len(items))
     finally:
