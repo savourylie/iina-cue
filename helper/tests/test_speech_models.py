@@ -282,7 +282,8 @@ def test_the_worker_starts_with_the_selected_model(env, monkeypatch):
     monkeypatch.setattr("cue.service.mp.get_context", lambda name: FakeContext())
     sup.speech_model = "e4b"
     sup.start_worker()
-    assert started["args"][-1] == str(models / "gemma-e4b" / "gemma-4-E4B-it.litertlm")
+    # args: inbox, outbox, models, temp, gemma, asr
+    assert started["args"][4] == str(models / "gemma-e4b" / "gemma-4-E4B-it.litertlm") and started["args"][5] is None
 
 
 def test_concurrent_marker_and_progress_writes_neither_fail_nor_lose_entries(tmp_path):

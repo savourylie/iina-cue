@@ -343,3 +343,30 @@ def test_previous_source_covers_the_span_of_the_previous_units(sup,monkeypatch):
     sup.tick()
     job=sup.inbox.get_nowait()
     assert [c['id'] for c in job['previous_source']]==['s2'] and job['previous_rendered']==[]
+
+def test_a_dedicated_asr_engine_reaches_the_worker_and_the_source_profile(sup,monkeypatch,tmp_path):
+    video=tmp_path/'film.mp4';video.touch()
+    media=Media(str(video),'sig',1,'stream',100000,0,1,1)
+    monkeypatch.setattr(Media,'open',classmethod(lambda cls,path,hint:media))
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    monkeypatch.setattr(sup,'speech_model_key',lambda:'gemma-e2b@test')
+    def create(request_id):
+        snap=sup.request('POST','/v1/sessions',{'request_id':request_id,'path':str(video),'settings':{'target':'zh-TW'}},'a')
+        return sup.sessions[snap['session_id']]
+    gemma_only=create('one')
+    sup.asr='/models/qwen3-asr-1.7b-4bit'
+    with_asr=create('two')
+    assert gemma_only.source_profile!=with_asr.source_profile and gemma_only.profile!=with_asr.profile
+    started={}
+    class FakeProcess:
+        def __init__(self,target,args,daemon): started['args']=args
+        def start(self): started['started']=True
+        def is_alive(self): return True
+    class FakeCtx:
+        def Queue(self,maxsize=0): return queue.Queue()
+        def Process(self,target,args,daemon): return FakeProcess(target,args,daemon)
+    monkeypatch.setattr('cue.service.mp.get_context',lambda kind:FakeCtx())
+    import cue.setupflow
+    monkeypatch.setattr(cue.setupflow,'speech_model_path',lambda models,manifest,model_id:tmp_path/'gemma.litertlm')
+    sup.start_worker()
+    assert started['started'] and started['args'][-1]=='/models/qwen3-asr-1.7b-4bit'

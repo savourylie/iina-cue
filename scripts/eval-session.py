@@ -26,11 +26,14 @@ def main() -> None:
     ap.add_argument("--from-ms", type=int, default=0); ap.add_argument("--to-ms", type=int, required=True)
     ap.add_argument("--timeout-s", type=int, default=3600)
     ap.add_argument("--model", help="speech model id from models/manifest.json (e2b, e4b); default: the model chosen in Advanced, else e2b")
+    ap.add_argument("--asr", help="path of a dedicated mlx_audio speech-to-text model (e.g. .runtime/models/qwen3-asr-1.7b-4bit); Gemma then only translates")
     args = ap.parse_args()
     sup = Supervisor(runtime_root(), models_root())
     if args.model:
         # Only this run uses the model; the choice saved by Advanced is untouched.
         sup.speech_model = args.model
+    if args.asr:
+        sup.asr = str(Path(args.asr).resolve())
     client = sup.request("POST", "/v1/clients", {}, None)["client_id"]
     snap = sup.request("POST", "/v1/sessions", {"request_id": "eval", "path": str(Path(args.media).resolve()), "position_ms": args.from_ms,
                                                   "settings": {"target": args.target, "source": args.source}}, client)
@@ -66,7 +69,7 @@ def main() -> None:
                    "asr_s_mean": round(sum(w.get("asr_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "align_s_mean": round(sum(w.get("align_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "peak_rss_gb": round(max((w.get("process_peak_rss_bytes", 0) for w in windows), default=0) / 2**30, 2),
-                   "speech_model": sup.speech_model,
+                   "speech_model": sup.speech_model, "asr": sup.asr,
                    "names_rejected_by_worker": dict(Counter(f"{k} → {v}" for w in windows for k, v in w.get("names_rejected", {}).items())),
                    "names_fallback_windows": sum(1 for w in windows if w.get("names_fallback"))}
         signature, path = s.media.signature, s.media.path

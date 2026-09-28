@@ -103,8 +103,10 @@ def check_target_script(sources: list[str], results: list[str], target: str) -> 
         raise CueError("TRANSLATION_FAILED", "Japanese kana left in the translation")
 
 class Backend:
-    def __init__(self, models: Path, gemma: Path | None = None):
+    def __init__(self, models: Path, gemma: Path | None = None, asr=None):
         self.models = models
+        # A dedicated speech-to-text engine (see asr.py). With one, Gemma only translates.
+        self.asr = asr
         # The selected speech model's file; E2B unless the user chose another in Advanced.
         self.gemma = gemma or models / "gemma" / "gemma-4-E2B-it.litertlm"
         self.engine = None
@@ -136,6 +138,8 @@ class Backend:
         except Exception as exc:
             self.close()
             raise CueError("MODEL_LOAD_FAILED", type(exc).__name__) from exc
+        if self.asr is not None:
+            self.asr.load()
 
     def load_aligner(self):
         if self.aligner is not None: return
@@ -179,6 +183,8 @@ class Backend:
 
     def transcribe(self, audio: Path, source: str = "auto", names=()) -> str:
         if source != "auto" and source not in LANGUAGES: raise CueError("INVALID_SETTINGS")
+        if self.asr is not None:
+            return self.asr.transcribe(audio, source, names)
         instruction = ("Transcribe the following speech segment in its original language." if source == "auto" else
                        f"Transcribe the following speech segment in {LANGUAGES[source]} into {LANGUAGES[source]} text.")
         # Known names are local context (spec §6.5), never film history.

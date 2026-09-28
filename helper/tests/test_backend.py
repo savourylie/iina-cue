@@ -314,3 +314,26 @@ def test_the_prompt_carries_the_ten_most_recent_previous_pairs(tmp_path):
     previous=tuple((f'line {i}',f'譯{i}') for i in range(12))
     backend.translate([Cue('a',0,1,'Hello.')],'zh-TW','en',TranslationContext(previous=previous))
     assert '"source": "line 2"' in prompts[0] and '"source": "line 11"' in prompts[0] and '"source": "line 1"' not in prompts[0]
+
+class DedicatedAsr:
+    key='mlx-asr:test'
+    def __init__(self): self.loaded=False; self.calls=[]
+    def load(self): self.loaded=True
+    def transcribe(self, audio, source='auto', names=()): self.calls.append((audio,source,tuple(names))); return 'Hello.'
+
+def test_transcription_delegates_to_a_dedicated_asr_engine_when_one_is_set(tmp_path):
+    asr=DedicatedAsr();backend=Backend(tmp_path,asr=asr)
+    backend.send=lambda *a,**k:(_ for _ in ()).throw(AssertionError('Gemma must not transcribe'))
+    assert backend.transcribe(tmp_path/'a.wav','en',names=['Nash'])=='Hello.'
+    assert asr.calls==[(tmp_path/'a.wav','en',('Nash',))]
+    with pytest.raises(CueError): backend.transcribe(tmp_path/'a.wav','xx')
+
+def test_loading_the_backend_loads_the_dedicated_asr_engine_too(tmp_path,monkeypatch):
+    (tmp_path/'gemma').mkdir(); (tmp_path/'aligner').mkdir()
+    (tmp_path/'gemma/gemma-4-E2B-it.litertlm').touch(); (tmp_path/'aligner/model.safetensors').touch()
+    engine=SimpleNamespace(close=lambda:None)
+    monkeypatch.setitem(sys.modules,'litert_lm',SimpleNamespace(set_min_log_severity=lambda severity:None,LogSeverity=SimpleNamespace(ERROR=1),
+        Engine=lambda *args,**kwargs:engine,Backend=SimpleNamespace(GPU=lambda:'gpu',CPU=lambda:'cpu')))
+    asr=DedicatedAsr();backend=Backend(tmp_path,asr=asr);backend.load()
+    assert asr.loaded is True
+    backend.close()

@@ -298,3 +298,8 @@ def test_build_context_keeps_the_ten_most_recent_previous_units():
          'previous_rendered':[{'id':f'r{i}','start_ms':i*1000,'end_ms':i*1000+500,'text':f'譯{i}'} for i in range(12)]}
     context=build_context([Cue('u1',20000,21000,'Hello.')],frozenset(),job,'en')
     assert len(context.previous)==10 and context.previous[0]==('line 2','譯2') and context.previous[-1]==('line 11','譯11')
+
+def test_pipeline_hands_a_dedicated_asr_engine_to_its_backend(tmp_path):
+    marker=object()
+    assert Pipeline(tmp_path/'models',tmp_path/'temp',asr=marker).backend.asr is marker
+    assert Pipeline(tmp_path/'models',tmp_path/'temp').backend.asr is None

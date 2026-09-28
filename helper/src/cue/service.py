@@ -89,6 +89,12 @@ class Supervisor:
         self.smoking = False
         # True while a model chosen in Advanced is on trial; sessions wait for the outcome.
         self.switching_model = False
+        # Path of a dedicated speech-to-text model (asr.py) used in front of Gemma, or None. Set by
+        # the evaluation driver for now; it is part of the source cache key.
+        self.asr: str | None = None
+
+    def asr_key(self) -> str:
+        return f"asr:{Path(self.asr).name}" if self.asr else ""
 
     def setup_api(self):
         if self._setup is None:
@@ -184,7 +190,7 @@ class Supervisor:
         gemma = speech_model_path(self.models, self._manifest(), self.speech_model)
         ctx = mp.get_context("spawn")
         self.inbox, self.outbox = ctx.Queue(maxsize=1), ctx.Queue(maxsize=16)
-        self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp"), str(gemma)), daemon=True)
+        self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp"), str(gemma), self.asr), daemon=True)
         self.worker.start()
 
     def stop_worker(self):
@@ -448,7 +454,7 @@ class Supervisor:
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
-                                         "sentence-cues-v4", VAD_ID, self.speech_model_key()])
+                                         "sentence-cues-v4", VAD_ID, self.speech_model_key(), self.asr_key()])
                 profile = digest([source_profile, settings.target, "translate-v3", glossary_hash(user_glossary)])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position, user_glossary=user_glossary)
                 self.cache.register(source_profile, media.signature, "original")
