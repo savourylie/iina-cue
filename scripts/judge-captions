@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# Grade cached captions with a local Gemma model as judge; writes benchmarks/results/judge-*.json.
+# For captions made by the installed runtime: CUE_HOME="$HOME/Library/Application Support/Cue" scripts/judge-captions ...
+CUE_PROJECT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec "$CUE_PROJECT/scripts/cue-helper" judge "$@"

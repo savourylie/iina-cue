@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 import time
-from .bootstrap import PROJECT, call, connection, ensure, models_root, runtime_root
+from .bootstrap import PROJECT, call, connection, ensure, model_manifest_path, models_root, runtime_root
 from .core import Cue, CueError, Settings, SOURCE_LANGUAGES, digest, srt
 from .doctor import doctor
 from .glossary import load_user_glossary
@@ -85,6 +85,10 @@ def main():
     d = commands.add_parser("dump"); d.add_argument("--media", required=True)
     d.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW")
     d.add_argument("--from-ms", type=int, default=0); d.add_argument("--to-ms", type=int)
+    j = commands.add_parser("judge"); j.add_argument("--media", required=True)
+    j.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW")
+    j.add_argument("--judge", default="e4b", help="speech model id used as the judge (e2b, e4b)")
+    j.add_argument("--from-ms", type=int, default=0); j.add_argument("--to-ms", type=int); j.add_argument("--output")
     args = parser.parse_args()
     try:
         if args.command == "doctor": result = doctor(models_root())
@@ -103,6 +107,16 @@ def main():
                 result = cache.status()
             elif args.command == "glossary":
                 result = glossary_command(cache, args)
+            elif args.command == "judge":
+                from .judge import judge_captions
+                from .setupflow import speech_model_path
+                media = Media.open(str(Path(args.media).resolve()), {})
+                gemma = speech_model_path(models_root(), json.loads(model_manifest_path().read_text()), args.judge)
+                def progress(done, total): print(json.dumps({"event": "judging", "done": done, "total": total}), file=sys.stderr, flush=True)
+                report = judge_captions(cache, media.signature, args.target, gemma, models_root(), args.from_ms, args.to_ms, progress)
+                out = Path(args.output).resolve() if args.output else PROJECT / "benchmarks" / "results" / f"judge-{media.signature[:8]}-{args.target}-{args.judge}.json"
+                atomic_write(out, json.dumps(report, ensure_ascii=False, indent=1))
+                result = {"path": str(out), **report["summary"]}
             elif args.command == "dump":
                 from .report import dump_report
                 media = Media.open(str(Path(args.media).resolve()), {})
