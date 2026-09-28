@@ -46,6 +46,7 @@ scripts/cue-helper glossary export --media /absolute/path/movie.mp4 --target zh-
 scripts/dump-captions --media /absolute/path/movie.mp4 --target zh-TW          # 開發 checkout 的快取；IINA 用的快取加 CUE_HOME="$HOME/Library/Application Support/Cue"
 .venv/bin/python scripts/eval-session.py --media /absolute/path/movie.mp4 --from-ms 0 --to-ms 600000 --target zh-TW
 scripts/judge-captions --media /absolute/path/movie.mp4 --target zh-TW --judge e4b   # 本機模型當裁判逐條打分，報告寫到 benchmarks/results/
+scripts/judge-captions --media /absolute/path/movie.mp4 --target zh-TW --judge opencode --items benchmarks/results/judge-….json   # 用 .env 裡的外部模型重評一份舊報告，僅供評測
 scripts/cue-helper shutdown
 ```
 

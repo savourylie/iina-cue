@@ -41,6 +41,7 @@ from cue.storage import Cache
 
 class FakeJudge:
     """Answers a judge prompt per item; raises for any batch that contains a poisoned line."""
+    name="fake"
     def __init__(self, poison=None, fail_large=False):
         self.poison=poison; self.fail_large=fail_large; self.calls=[]
     def load(self): pass
@@ -74,3 +75,55 @@ def test_summary_counts_sources_the_judge_suspects_in_its_wording_too():
              {'index':3,'start_ms':6,'end_ms':7,'source':'a','target':'b','before':[],'after':[],'score':5,'source_ok':True,'issue':''}]
     summary=summarize(results)
     assert summary['source_not_ok']==1 and summary['source_suspect']==3 and summary['mean_where_source_clean']==5.0
+
+import urllib.error
+import cue.judge
+from cue.judge import RemoteJudge, load_dotenv, remote_judge_from_env
+
+class FakeResponse:
+    def __init__(self, body): self.body=body
+    def read(self): return self.body
+    def __enter__(self): return self
+    def __exit__(self,*a): return False
+
+def test_remote_judge_posts_an_openai_style_chat_request_and_returns_the_json_array(monkeypatch):
+    captured={}
+    def fake_urlopen(req, timeout=0):
+        captured['url']=req.full_url; captured['auth']=req.get_header('Authorization'); captured['body']=json.loads(req.data); captured['timeout']=timeout
+        return FakeResponse(json.dumps({"choices":[{"message":{"content":"```json\n[{\"id\":\"1\",\"score\":5,\"source_ok\":true,\"issue\":\"\"}]\n```"}}]}).encode())
+    monkeypatch.setattr(cue.judge.urllib.request,'urlopen',fake_urlopen)
+    judge=RemoteJudge('https://example.test/v1/chat/completions','deepseek-v4-flash','sk-test')
+    raw=judge.send('grade this',max_tokens=512,schema={'type':'array'})
+    assert raw=='[{"id":"1","score":5,"source_ok":true,"issue":""}]'
+    assert captured['url']=='https://example.test/v1/chat/completions' and captured['auth']=='Bearer sk-test' and captured['timeout']==120
+    assert captured['body']['model']=='deepseek-v4-flash' and captured['body']['temperature']==0 and captured['body']['max_tokens']==512
+    assert captured['body']['messages']==[{'role':'user','content':'grade this'}]
+    assert 'sk-test' not in repr(judge) and judge.name=='deepseek-v4-flash'
+
+def test_remote_judge_failures_are_judge_failures(monkeypatch):
+    def down(req, timeout=0): raise urllib.error.URLError('down')
+    monkeypatch.setattr(cue.judge.urllib.request,'urlopen',down)
+    with pytest.raises(CueError) as first:
+        RemoteJudge('https://x','m','k').send('p')
+    monkeypatch.setattr(cue.judge.urllib.request,'urlopen',lambda req,timeout=0:FakeResponse(b'{"choices":[{"message":{"content":"no array here"}}]}'))
+    with pytest.raises(CueError) as second:
+        RemoteJudge('https://x','m','k').send('p')
+    assert first.value.code==second.value.code=='JUDGE_FAILED'
+
+def test_dotenv_fills_only_unset_variables_and_the_remote_judge_needs_all_three(tmp_path,monkeypatch):
+    for k in ('OPENCODE_GO_URL','OPENCODE_GO_MODEL','OPENCODE_GO_API_KEY'): monkeypatch.delenv(k,raising=False)
+    with pytest.raises(CueError) as missing:
+        remote_judge_from_env()
+    assert missing.value.code=='SETUP_REQUIRED'
+    env=tmp_path/'.env';env.write_text('# comment\nOPENCODE_GO_URL=https://x/v1/chat/completions\nOPENCODE_GO_MODEL=m\nOPENCODE_GO_API_KEY="k"\n',encoding='utf-8')
+    monkeypatch.setenv('OPENCODE_GO_MODEL','already')
+    load_dotenv(env)
+    judge=remote_judge_from_env()
+    assert judge.name=='already' and judge.url=='https://x/v1/chat/completions'
+    load_dotenv(tmp_path/'missing.env')
+
+def test_judge_captions_can_rejudge_the_items_of_an_earlier_report(tmp_path):
+    items=[{'index':0,'start_ms':0,'end_ms':500,'source':'good line','target':'譯0','before':[],'after':[]}]
+    fake=FakeJudge()
+    report=judge_captions(None,'media','zh-TW',None,tmp_path,backend=fake,items=items,language='en')
+    assert report['results'][0]['score']==5 and report['judge']=='fake' and report['language']=='en'

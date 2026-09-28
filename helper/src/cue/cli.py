@@ -87,8 +87,9 @@ def main():
     d.add_argument("--from-ms", type=int, default=0); d.add_argument("--to-ms", type=int)
     j = commands.add_parser("judge"); j.add_argument("--media", required=True)
     j.add_argument("--target", choices=["zh-TW", "zh-CN", "en", "ja", "ko"], default="zh-TW")
-    j.add_argument("--judge", default="e4b", help="speech model id used as the judge (e2b, e4b)")
+    j.add_argument("--judge", default="e4b", help="speech model id used as the judge (e2b, e4b), or opencode for the endpoint in OPENCODE_GO_URL")
     j.add_argument("--from-ms", type=int, default=0); j.add_argument("--to-ms", type=int); j.add_argument("--output")
+    j.add_argument("--items", help="re-judge the items of an earlier report instead of the cached captions")
     args = parser.parse_args()
     try:
         if args.command == "doctor": result = doctor(models_root())
@@ -108,12 +109,24 @@ def main():
             elif args.command == "glossary":
                 result = glossary_command(cache, args)
             elif args.command == "judge":
-                from .judge import judge_captions
+                from .judge import judge_captions, load_dotenv, remote_judge_from_env
                 from .setupflow import speech_model_path
                 media = Media.open(str(Path(args.media).resolve()), {})
-                gemma = speech_model_path(models_root(), json.loads(model_manifest_path().read_text()), args.judge)
+                items = language = None
+                if args.items:
+                    earlier = json.loads(Path(args.items).read_text(encoding="utf-8"))
+                    items = [{k: r[k] for k in ("index", "start_ms", "end_ms", "source", "target", "before", "after")} for r in earlier["results"]]
+                    language = earlier.get("language")
+                if args.judge == "opencode":
+                    # Evaluation only: the product never calls a remote model. Credentials come from the
+                    # environment or the checkout's .env and go nowhere but that endpoint.
+                    load_dotenv(PROJECT / ".env")
+                    backend, gemma = remote_judge_from_env(), None
+                else:
+                    backend, gemma = None, speech_model_path(models_root(), json.loads(model_manifest_path().read_text()), args.judge)
                 def progress(done, total): print(json.dumps({"event": "judging", "done": done, "total": total}), file=sys.stderr, flush=True)
-                report = judge_captions(cache, media.signature, args.target, gemma, models_root(), args.from_ms, args.to_ms, progress)
+                report = judge_captions(cache, media.signature, args.target, gemma, models_root(), args.from_ms, args.to_ms, progress,
+                                        backend=backend, items=items, language=language)
                 out = Path(args.output).resolve() if args.output else PROJECT / "benchmarks" / "results" / f"judge-{media.signature[:8]}-{args.target}-{args.judge}-{time.strftime('%Y%m%d-%H%M%S')}.json"
                 if out.suffix.lower() != ".json" or out.is_symlink(): raise CueError("UNSAFE_PATH", "output must be a new .json file")
                 out.parent.mkdir(parents=True, exist_ok=True)

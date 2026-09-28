@@ -7,8 +7,11 @@ Everything runs offline on the speech models already installed.
 """
 from __future__ import annotations
 import json
+import os
 from pathlib import Path
 import re
+import urllib.error
+import urllib.request
 from .backend import Backend, LANGUAGES, TARGET_LANGUAGES
 from .core import Cue, CueError, clean_text, join_texts
 from .report import chunks, inside, latest_profile, source_language
@@ -16,6 +19,53 @@ from .storage import Cache
 
 BATCH = 8
 UNJUDGED = {"score": None, "source_ok": None, "issue": "unjudged"}
+REMOTE_ENV = ("OPENCODE_GO_URL", "OPENCODE_GO_MODEL", "OPENCODE_GO_API_KEY")
+
+class RemoteJudge:
+    """An OpenAI-style chat completions endpoint used as the judge. Evaluation only: the
+    product never calls it, and the key stays out of repr, logs and reports."""
+    def __init__(self, url: str, model: str, key: str, timeout: float = 120):
+        self.url, self.name, self._key, self.timeout = url, model, key, timeout
+
+    def __repr__(self) -> str:
+        return f"RemoteJudge(url={self.url!r}, model={self.name!r})"
+
+    def load(self) -> None: pass
+    def close(self) -> None: pass
+
+    def send(self, prompt: str, max_tokens: int = 768, schema: dict | None = None, system: str | None = None) -> str:
+        body = {"model": self.name, "messages": [{"role": "user", "content": prompt}], "temperature": 0, "max_tokens": max_tokens}
+        request = urllib.request.Request(self.url, data=json.dumps(body).encode("utf-8"), method="POST",
+                                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._key}"})
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                reply = json.loads(response.read().decode("utf-8"))
+            content = reply["choices"][0]["message"]["content"]
+        except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise CueError("JUDGE_FAILED", type(exc).__name__) from exc
+        start, end = content.find("["), content.rfind("]")
+        if start < 0 or end < start:
+            raise CueError("JUDGE_FAILED", "no JSON array in the reply")
+        return content[start:end + 1]
+
+def load_dotenv(path: Path) -> None:
+    """Set variables from a KEY=VALUE file, only where the environment does not already have them."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+def remote_judge_from_env() -> RemoteJudge:
+    values = [os.environ.get(name, "").strip() for name in REMOTE_ENV]
+    if not all(values):
+        raise CueError("SETUP_REQUIRED", "set OPENCODE_GO_URL, OPENCODE_GO_MODEL and OPENCODE_GO_API_KEY, or put them in .env")
+    return RemoteJudge(*values)
 
 def judge_items(source: list[Cue], rendered_chunks) -> list[dict]:
     """One item per caption with a source: its source text, the caption, and up to two neighbouring lines each way."""
@@ -99,16 +149,19 @@ def _judge_batch(backend, batch: list[dict], target: str, language: str) -> list
         half = len(batch) // 2
         return _judge_batch(backend, batch[:half], target, language) + _judge_batch(backend, batch[half:], target, language)
 
-def judge_captions(cache: Cache, media_signature: str, target: str, gemma: Path, models: Path,
-                   from_ms: int = 0, to_ms: int | None = None, progress=None, backend=None) -> dict:
-    """Grade every cached caption of a film and target in the given range with the model at `gemma`."""
-    source_profile = latest_profile(cache, media_signature, "original")
-    profile = latest_profile(cache, media_signature, target)
-    if not source_profile or not profile:
-        raise CueError("NOT_FOUND", f"no cached captions for this media and target {target}")
-    source = sorted({c.id: c for _, _, cues in chunks(cache, source_profile) for c in cues}.values(), key=lambda c: (c.start_ms, c.end_ms))
-    items = [it for it in judge_items(source, chunks(cache, profile)) if it["end_ms"] > from_ms and (to_ms is None or it["start_ms"] < to_ms)]
-    language = source_language(cache, source_profile)
+def judge_captions(cache: Cache | None, media_signature: str, target: str, gemma: Path | None, models: Path,
+                   from_ms: int = 0, to_ms: int | None = None, progress=None, backend=None, items=None, language=None) -> dict:
+    """Grade every cached caption of a film and target in the given range, or the given items
+    (from an earlier report), with the local model at `gemma` or the given backend."""
+    if items is None:
+        source_profile = latest_profile(cache, media_signature, "original")
+        profile = latest_profile(cache, media_signature, target)
+        if not source_profile or not profile:
+            raise CueError("NOT_FOUND", f"no cached captions for this media and target {target}")
+        source = sorted({c.id: c for _, _, cues in chunks(cache, source_profile) for c in cues}.values(), key=lambda c: (c.start_ms, c.end_ms))
+        items = [it for it in judge_items(source, chunks(cache, profile)) if it["end_ms"] > from_ms and (to_ms is None or it["start_ms"] < to_ms)]
+        language = language or source_language(cache, source_profile)
+    language = language or "en"
     backend = backend or Backend(models, gemma=gemma)
     backend.load()
     results = []
@@ -121,4 +174,5 @@ def judge_captions(cache: Cache, media_signature: str, target: str, gemma: Path,
                 progress(len(results), len(items))
     finally:
         backend.close()
-    return {"media": media_signature, "target": target, "judge": str(gemma.name), "language": language, "summary": summarize(results), "results": results}
+    judge_name = getattr(backend, "name", None) or (gemma.name if gemma else "unknown")
+    return {"media": media_signature, "target": target, "judge": judge_name, "language": language, "summary": summarize(results), "results": results}
