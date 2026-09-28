@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import urllib.error
 import urllib.request
+import uuid
 from .backend import Backend, LANGUAGES, TARGET_LANGUAGES
 from .core import Cue, CueError, clean_text, join_texts
 from .report import chunks, inside, latest_profile, source_language
@@ -20,12 +21,16 @@ from .storage import Cache
 BATCH = 8
 UNJUDGED = {"score": None, "source_ok": None, "issue": "unjudged"}
 REMOTE_ENV = ("OPENCODE_GO_URL", "OPENCODE_GO_MODEL", "OPENCODE_GO_API_KEY")
+# A reasoning model spends most of its budget thinking before the answer; below this it returns nothing.
+REMOTE_MIN_TOKENS = 8000
 
 class RemoteJudge:
     """An OpenAI-style chat completions endpoint used as the judge. Evaluation only: the
-    product never calls it, and the key stays out of repr, logs and reports."""
-    def __init__(self, url: str, model: str, key: str, timeout: float = 120):
+    product never calls it, and the key stays out of repr, logs and reports. The gateway sits
+    behind Cloudflare, which rejects a bare urllib agent, and routes on a session id."""
+    def __init__(self, url: str, model: str, key: str, timeout: float = 300):
         self.url, self.name, self._key, self.timeout = url, model, key, timeout
+        self.session = uuid.uuid4().hex
 
     def __repr__(self) -> str:
         return f"RemoteJudge(url={self.url!r}, model={self.name!r})"
@@ -34,13 +39,15 @@ class RemoteJudge:
     def close(self) -> None: pass
 
     def send(self, prompt: str, max_tokens: int = 768, schema: dict | None = None, system: str | None = None) -> str:
-        body = {"model": self.name, "messages": [{"role": "user", "content": prompt}], "temperature": 0, "max_tokens": max_tokens}
-        request = urllib.request.Request(self.url, data=json.dumps(body).encode("utf-8"), method="POST",
-                                         headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._key}"})
+        body = {"model": self.name, "messages": [{"role": "user", "content": prompt}], "temperature": 0,
+                "max_tokens": max(max_tokens, REMOTE_MIN_TOKENS), "reasoning_effort": "low"}
+        headers = {"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "cue-judge/0.1",
+                   "x-opencode-session": self.session, "Authorization": f"Bearer {self._key}"}
+        request = urllib.request.Request(self.url, data=json.dumps(body).encode("utf-8"), method="POST", headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 reply = json.loads(response.read().decode("utf-8"))
-            content = reply["choices"][0]["message"]["content"]
+            content = reply["choices"][0]["message"]["content"] or ""
         except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise CueError("JUDGE_FAILED", type(exc).__name__) from exc
         start, end = content.find("["), content.rfind("]")

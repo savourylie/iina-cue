@@ -90,15 +90,26 @@ def test_remote_judge_posts_an_openai_style_chat_request_and_returns_the_json_ar
     captured={}
     def fake_urlopen(req, timeout=0):
         captured['url']=req.full_url; captured['auth']=req.get_header('Authorization'); captured['body']=json.loads(req.data); captured['timeout']=timeout
+        captured['agent']=req.get_header('User-agent'); captured['session']=req.get_header('X-opencode-session'); captured['accept']=req.get_header('Accept')
         return FakeResponse(json.dumps({"choices":[{"message":{"content":"```json\n[{\"id\":\"1\",\"score\":5,\"source_ok\":true,\"issue\":\"\"}]\n```"}}]}).encode())
     monkeypatch.setattr(cue.judge.urllib.request,'urlopen',fake_urlopen)
     judge=RemoteJudge('https://example.test/v1/chat/completions','deepseek-v4-flash','sk-test')
     raw=judge.send('grade this',max_tokens=512,schema={'type':'array'})
     assert raw=='[{"id":"1","score":5,"source_ok":true,"issue":""}]'
-    assert captured['url']=='https://example.test/v1/chat/completions' and captured['auth']=='Bearer sk-test' and captured['timeout']==120
-    assert captured['body']['model']=='deepseek-v4-flash' and captured['body']['temperature']==0 and captured['body']['max_tokens']==512
-    assert captured['body']['messages']==[{'role':'user','content':'grade this'}]
+    assert captured['url']=='https://example.test/v1/chat/completions' and captured['auth']=='Bearer sk-test' and captured['timeout']==300
+    # The gateway sits behind Cloudflare (a bare urllib agent gets 403) and routes on a session id; the
+    # model reasons before answering, so the budget is raised and reasoning kept short.
+    assert captured['agent'].startswith('cue-judge/') and captured['accept']=='application/json' and len(captured['session'])>=8
+    assert captured['body']['model']=='deepseek-v4-flash' and captured['body']['temperature']==0 and captured['body']['max_tokens']==8000
+    assert captured['body']['reasoning_effort']=='low' and captured['body']['messages']==[{'role':'user','content':'grade this'}]
     assert 'sk-test' not in repr(judge) and judge.name=='deepseek-v4-flash'
+    assert RemoteJudge('u','m','k').session!=judge.session
+
+def test_an_empty_answer_from_a_reasoning_model_is_a_judge_failure(monkeypatch):
+    monkeypatch.setattr(cue.judge.urllib.request,'urlopen',lambda req,timeout=0:FakeResponse(b'{"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"still thinking [1]"}}]}'))
+    with pytest.raises(CueError) as exc:
+        RemoteJudge('https://x','m','k').send('p')
+    assert exc.value.code=='JUDGE_FAILED'
 
 def test_remote_judge_failures_are_judge_failures(monkeypatch):
     def down(req, timeout=0): raise urllib.error.URLError('down')
