@@ -60,7 +60,7 @@ def main() -> None:
             sup.request("GET", base + "/snapshot", {}, client)
             time.sleep(.2)
     finally:
-        summary = {"prepared": s.prepared, "failed": s.failed, "skipped_language": s.skipped_language, "windows": len(windows),
+        summary = {"prepared": s.prepared, "failed": s.failed, "last_failure": s.last_failure, "skipped_language": s.skipped_language, "windows": len(windows),
                    "translate_s_mean": round(sum(w.get("translate_s", 0) for w in windows) / max(1, len(windows)), 2),
                    "held_back_ms_total": sum(w.get("held_back_ms", 0) for w in windows),
                    "translation_units": sum(w.get("translation_units", 0) for w in windows),
