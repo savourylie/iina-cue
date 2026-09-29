@@ -50,17 +50,19 @@ class MlxAsr:
         except Exception as exc:
             raise CueError("MODEL_LOAD_FAILED", type(exc).__name__) from exc
 
-    def transcribe(self, audio: Path, source: str = "auto", names=()) -> str:
+    def transcribe(self, audio: Path, source: str = "auto", names=(), previous: str = "") -> str:
         if source != "auto" and source not in SOURCE_LANGUAGES:
             raise CueError("INVALID_SETTINGS")
         self.load()
         # Names are local context only, never film history (spec §6.5).
         if self.family == "whisper":
             # Whisper takes ISO codes (None detects) and a text prompt for vocabulary.
-            prompt = WHISPER_PROMPTS.get(source, WHISPER_PROMPTS["en"])
-            if names:
-                prompt += f" Names: {', '.join(names)}."
-            kwargs = {"language": None if source == "auto" else source, "return_timestamps": False, "verbose": False,
+            # Whisper copies its prompt. The tail of what was already heard keeps the output
+            # cased, punctuated and continuous across the seam; a names list would be echoed
+            # as words, so names reach it only through that text. Timestamps stay on because
+            # decoding without them drops punctuation and casing.
+            prompt = previous.strip()[-220:] or WHISPER_PROMPTS.get(source, WHISPER_PROMPTS["en"])
+            kwargs = {"language": None if source == "auto" else source, "return_timestamps": True, "verbose": False,
                       "initial_prompt": prompt}
         else:
             kwargs = {"language": LANGUAGE_NAMES.get(source)}
@@ -68,6 +70,8 @@ class MlxAsr:
                 kwargs["system_prompt"] = f"The speakers may mention these names, spell them this way: {', '.join(names)}."
         out = self.model.generate(str(audio), **kwargs)
         text = str(getattr(out, "text", out) or "").strip()
+        if not text and getattr(out, "segments", None):
+            text = " ".join(str(seg.get("text", "")).strip() for seg in out.segments).strip()
         if not text or len(text) > 10000:
             raise CueError("ASR_FAILED", "empty or excessive output")
         return text

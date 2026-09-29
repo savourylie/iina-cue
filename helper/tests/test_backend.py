@@ -319,13 +319,13 @@ class DedicatedAsr:
     key='mlx-asr:test'
     def __init__(self): self.loaded=False; self.calls=[]
     def load(self): self.loaded=True
-    def transcribe(self, audio, source='auto', names=()): self.calls.append((audio,source,tuple(names))); return 'Hello.'
+    def transcribe(self, audio, source='auto', names=(), previous=''): self.calls.append((audio,source,tuple(names),previous)); return 'Hello.'
 
 def test_transcription_delegates_to_a_dedicated_asr_engine_when_one_is_set(tmp_path):
     asr=DedicatedAsr();backend=Backend(tmp_path,asr=asr)
     backend.send=lambda *a,**k:(_ for _ in ()).throw(AssertionError('Gemma must not transcribe'))
-    assert backend.transcribe(tmp_path/'a.wav','en',names=['Nash'])=='Hello.'
-    assert asr.calls==[(tmp_path/'a.wav','en',('Nash',))]
+    assert backend.transcribe(tmp_path/'a.wav','en',names=['Nash'],previous='Earlier line.')=='Hello.'
+    assert asr.calls==[(tmp_path/'a.wav','en',('Nash',),'Earlier line.')]
     with pytest.raises(CueError): backend.transcribe(tmp_path/'a.wav','xx')
 
 def test_loading_the_backend_loads_the_dedicated_asr_engine_too(tmp_path,monkeypatch):

@@ -30,17 +30,25 @@ def test_mlx_asr_rejects_empty_output_unknown_sources_and_a_model_that_will_not_
     with pytest.raises(CueError) as exc: MlxAsr(tmp_path/'qwen', loader=broken).load()
     assert exc.value.code=='MODEL_LOAD_FAILED'
 
-def test_a_whisper_model_gets_language_codes_and_an_initial_prompt_instead_of_qwen_arguments(tmp_path):
+def test_a_whisper_model_gets_language_codes_timestamps_and_the_previous_text_as_its_prompt(tmp_path):
     fake=FakeQwen()
     asr=MlxAsr(tmp_path/'whisper', loader=lambda path: fake, family='whisper')
     asr.transcribe(tmp_path/'a.wav','ja')
-    # A punctuated prompt in the source language keeps Whisper's output cased and punctuated.
-    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':False,'verbose':False,'initial_prompt':'会話の書き起こし。'}
-    asr.transcribe(tmp_path/'a.wav','auto',names=['Nash','Hansen'])
-    assert fake.calls[-1][1]['language'] is None and fake.calls[-1][1]['initial_prompt']=='Dialogue transcript, with punctuation. Names: Nash, Hansen.' and 'system_prompt' not in fake.calls[-1][1]
+    # Without earlier text, a punctuated seed in the source language keeps the output cased and punctuated.
+    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':True,'verbose':False,'initial_prompt':'会話の書き起こし。'}
+    earlier='x'*300+' Hansen is used to being picked first.'
+    asr.transcribe(tmp_path/'a.wav','auto',names=['Nash','Hansen'],previous=earlier)
+    kw=fake.calls[-1][1]
+    # Whisper copies its prompt: the tail of what was already heard, never a "Names:" list it would echo.
+    assert kw['language'] is None and kw['initial_prompt']==earlier[-220:] and 'Names' not in kw['initial_prompt'] and 'system_prompt' not in kw
     from cue.asr import WHISPER_PROMPTS
     from cue.core import SOURCE_LANGUAGES
     assert set(WHISPER_PROMPTS)==set(SOURCE_LANGUAGES) and all(p.rstrip()[-1] in '.。' for p in WHISPER_PROMPTS.values())
+
+def test_qwen_keeps_its_names_hint_and_ignores_the_previous_text(tmp_path):
+    fake=FakeQwen(); asr=MlxAsr(tmp_path/'qwen', loader=lambda path: fake, family='qwen3_asr')
+    asr.transcribe(tmp_path/'a.wav','en',names=['Nash'],previous='Earlier.')
+    assert fake.calls[-1][1]['language']=='English' and 'Nash' in fake.calls[-1][1]['system_prompt'] and 'initial_prompt' not in fake.calls[-1][1]
 
 def test_the_model_family_is_read_from_the_config_file(tmp_path):
     (tmp_path/'w').mkdir(); (tmp_path/'w'/'config.json').write_text('{"model_type": "whisper"}')

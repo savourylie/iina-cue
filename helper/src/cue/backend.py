@@ -181,10 +181,12 @@ class Backend:
             raise CueError("ASR_FAILED", "empty or excessive output")
         return text
 
-    def transcribe(self, audio: Path, source: str = "auto", names=()) -> str:
+    def transcribe(self, audio: Path, source: str = "auto", names=(), previous: str = "") -> str:
+        """The transcript of one window. previous is the text heard just before it; only a
+        dedicated engine uses it, Gemma gets the names hint alone."""
         if source != "auto" and source not in LANGUAGES: raise CueError("INVALID_SETTINGS")
         if self.asr is not None:
-            return self.asr.transcribe(audio, source, names)
+            return self.asr.transcribe(audio, source, names, previous)
         instruction = ("Transcribe the following speech segment in its original language." if source == "auto" else
                        f"Transcribe the following speech segment in {LANGUAGES[source]} into {LANGUAGES[source]} text.")
         # Known names are local context (spec §6.5), never film history.

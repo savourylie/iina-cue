@@ -22,9 +22,9 @@ def setup_pipeline(monkeypatch,tmp_path,silent=False,speech=True):
     monkeypatch.setattr('cue.pipeline.extract',extract)
     p=Pipeline(tmp_path/'models',tmp_path/'temp')
     class Backend:
-        calls=[];hints=[];contexts=[]
+        calls=[];hints=[];contexts=[];previous=[]
         def load(self): self.calls.append('load')
-        def transcribe(self,a,source='auto',names=()):self.calls.append(('asr',source));self.hints.append(tuple(names));return 'one two'
+        def transcribe(self,a,source='auto',names=(),previous=''):self.calls.append(('asr',source));self.hints.append(tuple(names));self.previous.append(previous);return 'one two'
         def language(self,t,s):return {'code':'en','status':'manual'}
         def align(self,a,t,l,partial=False):
             self.calls.append('align');units=[Unit(500,800,'one'),Unit(8500,9500,'two')]
@@ -51,7 +51,7 @@ def test_cached_source_skips_asr_and_alignment(monkeypatch,tmp_path):
 
 def test_pipeline_restores_asr_sentence_breaks_lost_by_aligner(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda audio,source='auto',names=():'Hello world. Next sentence.'
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':'Hello world. Next sentence.'
     p.backend.align=lambda audio,text,language,partial=False:([
         Unit(500,800,'Hello'),Unit(850,1200,'world'),Unit(1250,1600,'Next'),Unit(1650,2000,'sentence')],None)
     result=p.run(job)
@@ -75,7 +75,7 @@ def test_existing_right_coverage_seals_draft_without_reprocessing_forever(monkey
 
 def test_crossing_word_at_cached_right_edge_is_not_given_an_invented_end(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda audio,source='auto',names=():'one different draft'
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':'one different draft'
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'one'),Unit(8500,10500,'different draft')],None)
     job['following_source']=[{'id':'next','start_ms':10500,'end_ms':11500,'text':'already cached'}]
     result=p.run(job)
@@ -141,7 +141,7 @@ def test_missing_voice_activity_model_is_a_setup_error(monkeypatch,tmp_path):
 def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the_next(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     # Transcript "one two three": the aligner placed "one two"; "three" collapsed at 6.2 s of the span.
-    p.backend.transcribe=lambda a,source='auto',names=():'one two three'
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two three'
     p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one'),Unit(1500,1900,'two')],6200)
     result=p.run(job)
     # The span starts at 0 here, so the cut is at 6.2 s of media time.
@@ -153,7 +153,7 @@ def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the
 
 def test_too_little_before_the_collapse_fails_the_window_as_before(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.transcribe=lambda a,source='auto',names=():'one two'
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two'
     p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one')],1500)
     with pytest.raises(CueError) as exc:
         p.run(job)
@@ -169,7 +169,7 @@ def test_nothing_aligned_before_the_collapse_fails_the_window(monkeypatch,tmp_pa
 def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
-    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's"
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
     result=p.run(job)
     assert result['committed_range']==[0,3000]
@@ -179,7 +179,7 @@ def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkey
 def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_cached(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000]
-    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's"
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
     job['min_commit_ms']=8000
     result=p.run(job)
@@ -193,7 +193,7 @@ def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_
 def test_no_hold_back_after_a_collapse(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
-    p.backend.transcribe=lambda audio,source='auto',names=():"Not one of us. He's going"
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's going"
     p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],6200)
     result=p.run(job)
     assert result['committed_range']==[0,6200] and len(result['source'])==2
@@ -207,7 +207,7 @@ def test_translation_merges_sentence_units_and_passes_context_and_names_back(mon
     # No period after "us": the assembler splits the long group at 4.5 s, and the two source cues
     # are one sentence for the translator.
     seen={}
-    def transcribe(audio,source='auto',names=()):
+    def transcribe(audio,source='auto',names=(),previous=''):
         seen['hint']=tuple(names);return "Not one of us He's going to get her."
     p.backend.transcribe=transcribe
     p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Not'),Unit(1900,2200,'one'),Unit(2300,2600,'of'),Unit(2700,3500,'us'),
@@ -250,7 +250,7 @@ def test_a_phantom_word_squeezed_onto_the_seam_is_not_shown(monkeypatch,tmp_path
     job['range']=[10000,25000];job['min_commit_ms']=2000
     # Fresh ASR over the left context misheard "Adam" and the aligner squeezed it into a
     # 40 ms bin at the core start, 7.8 s before the words that were actually said.
-    p.backend.transcribe=lambda audio,source='auto',names=():"I'm Smith needs revision."
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"I'm Smith needs revision."
     p.backend.align=lambda audio,text,language,partial=False:([Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None)
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Smith needs revision.']
@@ -260,7 +260,7 @@ def test_a_phantom_after_left_context_words_is_not_shown_either(monkeypatch,tmp_
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[10000,25000];job['min_commit_ms']=2000
     job['previous_source']=[{'id':'p','start_ms':9000,'end_ms':9990,'text':'History book.'}]
-    p.backend.transcribe=lambda audio,source='auto',names=():"History book. I'm Smith needs revision."
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"History book. I'm Smith needs revision."
     p.backend.align=lambda audio,text,language,partial=False:([Unit(200,600,'History'),Unit(650,990,'book'),Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None)
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Smith needs revision.']
@@ -277,7 +277,7 @@ def test_build_context_uses_the_builtin_table_as_known_names_and_taken_rendering
 def test_rejected_name_reports_reach_the_timings(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['settings']=asdict(Settings(target='zh-TW'));job['range']=[10000,18000];job['min_commit_ms']=2000
-    p.backend.transcribe=lambda audio,source='auto',names=():"Come on, Bender."
+    p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Come on, Bender."
     p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Come'),Unit(1900,2200,'on'),Unit(2300,2900,'Bender')],None)
     def translate(c,t,l,context=None):
         p.backend.names_report={'reported':{'Bender':'班德'},'accepted':{},'rejected':{'Bender':'班德'}};return c,{}
@@ -303,3 +303,13 @@ def test_pipeline_hands_a_dedicated_asr_engine_to_its_backend(tmp_path):
     marker=object()
     assert Pipeline(tmp_path/'models',tmp_path/'temp',asr=marker).backend.asr is marker
     assert Pipeline(tmp_path/'models',tmp_path/'temp').backend.asr is None
+
+def test_the_transcriber_gets_the_text_heard_before_the_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,20000]
+    job['previous_source']=[asdict(Cue(id='a',start_ms=8000,end_ms=8500,text='Earlier line.')),asdict(Cue(id='b',start_ms=8500,end_ms=9000,text='And another.'))]
+    p.run(job)
+    assert p.backend.previous[-1]=='Earlier line. And another.'
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    p.run(job)
+    assert p.backend.previous[-1]==''

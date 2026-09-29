@@ -88,7 +88,8 @@ class Pipeline:
                     report("transcribing")
                     glossary = job.get("glossary") or {}
                     hint = names_hint(glossary.get("user", {}), glossary.get("learned", []))
-                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source, names=hint); timings["asr_s"] = time.monotonic()-t
+                    heard = " ".join(c["text"] for c in job.get("previous_source", []) if c.get("text")).strip()
+                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source, names=hint, previous=heard); timings["asr_s"] = time.monotonic()-t
                     report("identifying_language")
                     t = time.monotonic(); language = self.backend.language(transcript, settings.source); timings["lid_s"] = time.monotonic()-t
                     if settings.source == "auto" and language["code"] not in SOURCE_LANGUAGES:
