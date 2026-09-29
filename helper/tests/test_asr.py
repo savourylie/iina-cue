@@ -34,9 +34,13 @@ def test_a_whisper_model_gets_language_codes_and_an_initial_prompt_instead_of_qw
     fake=FakeQwen()
     asr=MlxAsr(tmp_path/'whisper', loader=lambda path: fake, family='whisper')
     asr.transcribe(tmp_path/'a.wav','ja')
-    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':False,'verbose':False}
+    # A punctuated prompt in the source language keeps Whisper's output cased and punctuated.
+    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':False,'verbose':False,'initial_prompt':'会話の書き起こし。'}
     asr.transcribe(tmp_path/'a.wav','auto',names=['Nash','Hansen'])
-    assert fake.calls[-1][1]['language'] is None and fake.calls[-1][1]['initial_prompt']=='Nash, Hansen' and 'system_prompt' not in fake.calls[-1][1]
+    assert fake.calls[-1][1]['language'] is None and fake.calls[-1][1]['initial_prompt']=='Dialogue transcript, with punctuation. Names: Nash, Hansen.' and 'system_prompt' not in fake.calls[-1][1]
+    from cue.asr import WHISPER_PROMPTS
+    from cue.core import SOURCE_LANGUAGES
+    assert set(WHISPER_PROMPTS)==set(SOURCE_LANGUAGES) and all(p.rstrip()[-1] in '.。' for p in WHISPER_PROMPTS.values())
 
 def test_the_model_family_is_read_from_the_config_file(tmp_path):
     (tmp_path/'w').mkdir(); (tmp_path/'w'/'config.json').write_text('{"model_type": "whisper"}')
