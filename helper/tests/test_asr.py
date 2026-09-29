@@ -34,16 +34,13 @@ def test_a_whisper_model_gets_language_codes_timestamps_and_the_previous_text_as
     fake=FakeQwen()
     asr=MlxAsr(tmp_path/'whisper', loader=lambda path: fake, family='whisper')
     asr.transcribe(tmp_path/'a.wav','ja')
-    # Without earlier text, a punctuated seed in the source language keeps the output cased and punctuated.
-    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':True,'verbose':False,'initial_prompt':'会話の書き起こし。'}
+    # Before anything was heard there is no prompt: Whisper echoed a seed sentence as speech (会話の).
+    assert fake.calls[-1][1]=={'language':'ja','return_timestamps':True,'verbose':False}
     earlier='x'*300+' Hansen is used to being picked first.'
     asr.transcribe(tmp_path/'a.wav','auto',names=['Nash','Hansen'],previous=earlier)
     kw=fake.calls[-1][1]
     # Whisper copies its prompt: the tail of what was already heard, never a "Names:" list it would echo.
     assert kw['language'] is None and kw['initial_prompt']==earlier[-220:] and 'Names' not in kw['initial_prompt'] and 'system_prompt' not in kw
-    from cue.asr import WHISPER_PROMPTS
-    from cue.core import SOURCE_LANGUAGES
-    assert set(WHISPER_PROMPTS)==set(SOURCE_LANGUAGES) and all(p.rstrip()[-1] in '.。' for p in WHISPER_PROMPTS.values())
 
 def test_qwen_keeps_its_names_hint_and_ignores_the_previous_text(tmp_path):
     fake=FakeQwen(); asr=MlxAsr(tmp_path/'qwen', loader=lambda path: fake, family='qwen3_asr')

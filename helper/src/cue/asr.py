@@ -14,14 +14,6 @@ LANGUAGE_NAMES = {"zh": "Chinese", "yue": "Cantonese", "en": "English", "de": "G
                   "it": "Italian", "pt": "Portuguese", "ru": "Russian", "ko": "Korean", "ja": "Japanese"}
 assert set(LANGUAGE_NAMES) == set(SOURCE_LANGUAGES)
 
-# Whisper copies the style of its prompt: a cased, punctuated seed in the source
-# language keeps it from emitting lowercase run-on text. English seeds detection.
-WHISPER_PROMPTS = {"en": "Dialogue transcript, with punctuation.", "zh": "對話逐字稿，含標點。", "yue": "對話逐字稿，含標點。",
-                   "ja": "会話の書き起こし。", "ko": "대화 기록입니다.", "de": "Dialogtranskript, mit Zeichensetzung.",
-                   "es": "Transcripción del diálogo, con puntuación.", "fr": "Transcription du dialogue, avec ponctuation.",
-                   "it": "Trascrizione del dialogo, con punteggiatura.", "pt": "Transcrição do diálogo, com pontuação.",
-                   "ru": "Расшифровка диалога, с пунктуацией."}
-assert set(WHISPER_PROMPTS) == set(SOURCE_LANGUAGES)
 
 def model_family(path: Path) -> str:
     """The mlx_audio model_type from config.json; Qwen3-ASR when there is none."""
@@ -58,12 +50,13 @@ class MlxAsr:
         if self.family == "whisper":
             # Whisper takes ISO codes (None detects) and a text prompt for vocabulary.
             # Whisper copies its prompt. The tail of what was already heard keeps the output
-            # cased, punctuated and continuous across the seam; a names list would be echoed
-            # as words, so names reach it only through that text. Timestamps stay on because
-            # decoding without them drops punctuation and casing.
-            prompt = previous.strip()[-220:] or WHISPER_PROMPTS.get(source, WHISPER_PROMPTS["en"])
-            kwargs = {"language": None if source == "auto" else source, "return_timestamps": True, "verbose": False,
-                      "initial_prompt": prompt}
+            # cased, punctuated and continuous across the seam; a names list or a seed sentence
+            # would be echoed as words (会話の), so names reach it only through that text and the
+            # first window gets no prompt. Timestamps stay on because decoding without them
+            # drops punctuation and casing.
+            kwargs = {"language": None if source == "auto" else source, "return_timestamps": True, "verbose": False}
+            if previous.strip():
+                kwargs["initial_prompt"] = previous.strip()[-220:]
         else:
             kwargs = {"language": LANGUAGE_NAMES.get(source)}
             if names:
