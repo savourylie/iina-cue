@@ -8,10 +8,20 @@ from cue.backend import Backend
 from cue.bootstrap import models_root
 from cue.core import assemble,validate_units,srt,CueError
 import soundfile as sf
+import argparse
+from cue.asr import MlxAsr
+from cue.bootstrap import model_manifest_path
+from cue.setupflow import hearing_model, hearing_model_path
+ap=argparse.ArgumentParser(); ap.add_argument('--asr',help="hearing engine: unset = the manifest's; 'gemma' = Gemma's own hearing; or a model path"); args=ap.parse_args()
+manifest=json.loads(model_manifest_path().read_text())
+if args.asr=='gemma': engine=None
+elif args.asr: engine=MlxAsr(Path(args.asr).resolve())
+elif hearing_model(manifest): engine=MlxAsr(hearing_model_path(models_root(),manifest))
+else: engine=None
 root=Path(__file__).resolve().parents[1]
-backend=Backend(models_root())
+backend=Backend(models_root(),asr=engine)
 rows=[]
-out=root/'benchmarks/results/languages.json'
+out=root/('benchmarks/results/languages-gemma.json' if args.asr=='gemma' else 'benchmarks/results/languages.json')
 try:
     t=time.monotonic();backend.load();load=time.monotonic()-t
     for lang in ('en','zh','ja','ko'):
@@ -27,5 +37,5 @@ try:
             row.update(status='pass_pipeline_only',units=[asdict(u) for u in units],source=[asdict(c) for c in cues],translated=[asdict(c) for c in translated])
             (out.parent/f'{lang}.srt').write_text(srt(translated))
         except Exception as e: row.update(status='failed',error=str(e),code=getattr(e,'code',type(e).__name__))
-        rows.append(row);out.write_text(json.dumps({'load_s':load,'quality_acceptance':'not_established_by_synthetic_speech','samples':rows},ensure_ascii=False,indent=2));print(lang,row['status'],flush=True)
+        rows.append(row);out.write_text(json.dumps({'hearing':args.asr or 'manifest','load_s':load,'quality_acceptance':'not_established_by_synthetic_speech','samples':rows},ensure_ascii=False,indent=2));print(lang,row['status'],flush=True)
 finally:backend.close()
