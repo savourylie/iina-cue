@@ -86,7 +86,7 @@ def test_the_shipped_catalog_pins_e4b_and_keeps_e2b_default():
     assert optional["gemma-e4b"]["files"][0]["sha256"] == "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0"
     assert set(optional) == {"gemma-e4b"}
     # First-run setup still downloads only E2B and the aligner.
-    assert [a["name"] for a in manifest["assets"]] == ["gemma", "aligner"]
+    assert [a["name"] for a in manifest["assets"]] == ["gemma", "aligner", "whisper-turbo", "whisper-turbo-processor"]  # Whisper hears; required since 2026-09-30
 
 
 def test_status_lists_models_with_size_memory_and_selection(env):

@@ -78,6 +78,88 @@
           "git_blob": "4783fe10ac3adce15ac8f358ef5462739852c569"
         }
       ]
+    },
+    {
+      "name": "whisper-turbo",
+      "repository": "mlx-community/whisper-large-v3-turbo",
+      "revision": "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb",
+      "folder": "whisper-large-v3-turbo",
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 268,
+          "sha256": null,
+          "git_blob": "6ac9a52a28f70a2e5681c250a470eca6e9c8cc3e"
+        },
+        {
+          "path": "weights.safetensors",
+          "bytes": 1613977612,
+          "sha256": "951ed3fc1203e6a62467abb2144a96ce7eafca8fa77e3704fdb8635ff3e7f8a6",
+          "git_blob": "26b12d9fb292a7bee72610f6e7e2ec84225feab7"
+        }
+      ]
+    },
+    {
+      "name": "whisper-turbo-processor",
+      "repository": "openai/whisper-large-v3-turbo",
+      "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "folder": "whisper-large-v3-turbo",
+      "files": [
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 340,
+          "sha256": null,
+          "git_blob": "931c77a740890c46365c7ae0c9d350ba3cca908f"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 2710337,
+          "sha256": null,
+          "git_blob": "17456db595adc78a973f97d69d8cb50bc87c0b1c"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 282843,
+          "sha256": null,
+          "git_blob": "06ffdc8308eae6bb7bd1fdd81e94b0a881a539ab"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "bytes": 2186,
+          "sha256": null,
+          "git_blob": "312bc106291bb51bf2cc1648df070bef963a0639"
+        },
+        {
+          "path": "added_tokens.json",
+          "bytes": 34648,
+          "sha256": null,
+          "git_blob": "1b33526d33aaa60d79f78ae8651dae50b730185a"
+        },
+        {
+          "path": "normalizer.json",
+          "bytes": 52666,
+          "sha256": null,
+          "git_blob": "dd6ae819ad738ac1a546e9f9282ef325c33b9ea0"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 1036558,
+          "sha256": null,
+          "git_blob": "0f3456460629e21d559c6daa23ab6ce3644e8271"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 493869,
+          "sha256": null,
+          "git_blob": "6038932a2a1f09a66991b1c2adae0d14066fa29e"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 3772,
+          "sha256": null,
+          "git_blob": "cbe752958dc3e4671b0e0220aa1c545423a6d5f5"
+        }
+      ]
     }
   ],
   "rejected_artifacts": [
@@ -119,5 +201,13 @@
       "cache_bytes": 2319929280
     }
   ],
-  "default_speech_model": "e2b"
+  "default_speech_model": "e2b",
+  "hearing_model": {
+    "id": "whisper-turbo",
+    "assets": [
+      "whisper-turbo",
+      "whisper-turbo-processor"
+    ],
+    "folder": "whisper-large-v3-turbo"
+  }
 }
