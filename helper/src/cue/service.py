@@ -89,12 +89,25 @@ class Supervisor:
         self.smoking = False
         # True while a model chosen in Advanced is on trial; sessions wait for the outcome.
         self.switching_model = False
-        # Path of a dedicated speech-to-text model (asr.py) used in front of Gemma, or None. Set by
-        # the evaluation driver for now; it is part of the source cache key.
-        self.asr: str | None = None
+        # The dedicated hearing engine (asr.py) in front of Gemma: the manifest's, or None for a
+        # manifest without one. The evaluation driver may replace it. Part of the source cache key.
+        self.asr: str | None = self._manifest_hearing_path()
+
+    def _manifest_hearing_path(self) -> str | None:
+        from .setupflow import hearing_model, hearing_model_path
+        manifest = self._manifest()
+        return str(hearing_model_path(self.models, manifest)) if hearing_model(manifest) else None
 
     def asr_key(self) -> str:
-        return f"asr:{Path(self.asr).name}" if self.asr else ""
+        """Part of the cache key: transcripts from one hearing engine are never served as another's."""
+        if not self.asr:
+            return ""
+        from .setupflow import find_asset, hearing_model
+        manifest = self._manifest()
+        choice = hearing_model(manifest)
+        if choice and Path(self.asr) == self.models / choice["folder"]:
+            return f"asr:{choice['id']}@{find_asset(manifest, choice['assets'][0])[0]['revision']}"
+        return f"asr:{Path(self.asr).name}"
 
     def setup_api(self):
         if self._setup is None:

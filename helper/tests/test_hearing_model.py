@@ -67,3 +67,21 @@ def test_hearing_model_helpers_resolve_the_folder_and_check_every_file_at_its_pi
     tokenizer.unlink(); tokenizer.symlink_to(weights)  # a symlink never counts
     assert setupflow.hearing_model_complete(models, manifest) is False
     assert setupflow.hearing_model_complete(models, {"assets": []}) is False
+
+
+def test_the_supervisor_hears_with_the_manifest_engine_and_keys_the_cache_by_its_revision(tmp_path, monkeypatch):
+    from cue.service import Supervisor
+    manifest = hearing_manifest()
+    path = tmp_path / "manifest.json"; path.write_text(json.dumps(manifest))
+    monkeypatch.setattr("cue.service.model_manifest_path", lambda: path)
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    models = tmp_path / "models"
+    sup = Supervisor(tmp_path / "runtime", models, clock=lambda: 100)
+    assert sup.asr == str(models / "whisper-large-v3-turbo")
+    assert sup.asr_key() == "asr:whisper-turbo@" + "a" * 40
+    sup.asr = str(tmp_path / "elsewhere" / "qwen3-asr-1.7b-4bit")   # the evaluation driver's override
+    assert sup.asr_key() == "asr:qwen3-asr-1.7b-4bit"
+    sup.asr = None
+    assert sup.asr_key() == ""
+    del manifest["hearing_model"]; path.write_text(json.dumps(manifest))
+    assert Supervisor(tmp_path / "runtime2", models, clock=lambda: 100).asr is None
