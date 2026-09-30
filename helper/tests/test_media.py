@@ -229,3 +229,8 @@ def test_remux_on_disk_without_hard_links_does_not_replace_racing_output(fixture
         patch.setattr('cue.remux.os.link',no_links)
         remux(str(fixture),str(output))
     assert len(probe(output)['streams'])==3
+
+def test_avi_is_local_seekable_media_too(tmp_path):
+    from cue.media import local_media
+    path=tmp_path/'film.avi'; path.write_bytes(b'RIFF')
+    assert local_media(str(path))==path.resolve()

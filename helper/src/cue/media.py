@@ -42,7 +42,7 @@ def installed_ffmpeg_record() -> dict | None:
 
 def local_media(path: str) -> Path:
     p = Path(path)
-    if not p.is_absolute() or ".." in p.parts or p.is_symlink() or not p.is_file() or p.suffix.lower() not in {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".wav", ".m4a"}:
+    if not p.is_absolute() or ".." in p.parts or p.is_symlink() or not p.is_file() or p.suffix.lower() not in {".mp4", ".mkv", ".mov", ".m4v", ".webm", ".avi", ".wav", ".m4a"}:
         raise CueError("MEDIA_UNSUPPORTED")
     return p.resolve(strict=True)
 
