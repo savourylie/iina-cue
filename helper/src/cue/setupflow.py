@@ -323,6 +323,36 @@ def speech_model_complete(models: Path, manifest: dict, model_id: str) -> bool:
     return all(path.is_file() and not path.is_symlink() and path.stat().st_size == size for path, size in paths)
 
 
+def hearing_model(manifest: dict) -> dict | None:
+    """The dedicated hearing engine in front of Gemma, or None for a manifest without one."""
+    return manifest.get("hearing_model")
+
+
+def hearing_model_path(models: Path, manifest: dict) -> Path:
+    choice = hearing_model(manifest)
+    if choice is None:
+        raise CueError("INVALID_REQUEST")
+    return models / choice["folder"]
+
+
+def hearing_model_complete(models: Path, manifest: dict) -> bool:
+    """Every file of the engine's assets is in place at its pinned size. Hashes were checked
+    at download time; this is the cheap check at every helper start, as for speech models."""
+    choice = hearing_model(manifest)
+    if choice is None:
+        return False
+    for name in choice["assets"]:
+        asset, _ = find_asset(manifest, name)
+        for item in asset["files"]:
+            try:
+                path = destination(models, asset, item)   # refuses a symlink as UNSAFE_PATH
+            except CueError:
+                return False
+            if not path.is_file() or path.stat().st_size != item["bytes"]:
+                return False
+    return True
+
+
 def machine_memory() -> int:
     return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
 
