@@ -313,3 +313,15 @@ def test_the_transcriber_gets_the_text_heard_before_the_window(monkeypatch,tmp_p
     p,job=setup_pipeline(monkeypatch,tmp_path)
     p.run(job)
     assert p.backend.previous[-1]==''
+
+def test_words_placed_past_the_audio_end_are_left_out_instead_of_failing_the_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    # The span is 0-11 s. The aligner works in 80 ms bins, so it can end the last word
+    # a bin past the audio; that word lies in the right context and is never committed.
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two three'
+    p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one'),Unit(1500,1900,'two'),Unit(10900,11080,'three')],None)
+    result=p.run(job)
+    assert 'three' not in ' '.join(c['text'] for c in result['source'])
+    assert 'one' in ' '.join(c['text'] for c in result['source'])
+    assert result['timings']['units_past_audio_end']==1
+    assert 'alignment_cut_ms' not in result['timings']

@@ -101,11 +101,19 @@ class Pipeline:
                         raise CueError("LANGUAGE_UNCERTAIN", f"unsupported transcript language candidate: {language['code']}")
                     report("aligning", language)
                     t = time.monotonic(); units, cut = self.backend.align(wav, transcript, language["code"], partial=True); timings["align_s"] = time.monotonic()-t
+                    # The aligner works in 80 ms bins, so the last word can end a bin past
+                    # the audio, and a transcript can run on past it. Nothing past the audio
+                    # is ever committed, so keep the words up to it instead of failing.
+                    past = next((i for i, u in enumerate(units) if u.end_ms > limit-zero+50), None)
+                    if past is not None:
+                        timings["units_past_audio_end"] = len(units)-past
+                        units = units[:past]
                     # After a collapse, keep the aligned words before it. The next window
                     # starts at the collapse and transcribes and aligns the rest again.
-                    validate_units(units, limit-zero, transcript, prefix=cut is not None)
+                    prefix = cut is not None or past is not None
+                    validate_units(units, limit-zero, transcript, prefix=prefix)
                     timings["quantized_token_groups"] = sum(bool(u.quality_flags) for u in units)
-                    punctuated = restore_transcript(units, transcript, prefix=cut is not None)
+                    punctuated = restore_transcript(units, transcript, prefix=prefix)
                     if punctuated is not None:
                         units = punctuated
                     timings["transcript_punctuation_restored"] = punctuated is not None
