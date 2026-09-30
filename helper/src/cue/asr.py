@@ -15,6 +15,16 @@ LANGUAGE_NAMES = {"zh": "Chinese", "yue": "Cantonese", "en": "English", "de": "G
 assert set(LANGUAGE_NAMES) == set(SOURCE_LANGUAGES)
 
 
+# Whisper decodes at rising temperatures while its result is too repetitive (compression
+# ratio above 2.4) or too unlikely (mean log-probability below -1). Text that still fails
+# those thresholds at the last temperature is text Whisper itself did not trust.
+WHISPER_LAST_TEMPERATURE = 1.0
+
+def whisper_gave_up(out) -> bool:
+    return any(seg.get("temperature", 0) >= WHISPER_LAST_TEMPERATURE
+               and (seg.get("avg_logprob", 0) < -1.0 or seg.get("compression_ratio", 0) > 2.4)
+               for seg in getattr(out, "segments", None) or [])
+
 def model_family(path: Path) -> str:
     """The mlx_audio model_type from config.json; Qwen3-ASR when there is none."""
     try:
@@ -66,6 +76,9 @@ class MlxAsr:
             if names:
                 kwargs["system_prompt"] = f"The speakers may mention these names, spell them this way: {', '.join(names)}."
         out = self.model.generate(str(audio), **kwargs)
+        if self.family == "whisper" and whisper_gave_up(out):
+            # Better a hole than invented words over noise or music.
+            raise CueError("ASR_FAILED", "the hearing model did not trust its own decode")
         text = str(getattr(out, "text", out) or "").strip()
         if not text and getattr(out, "segments", None):
             text = " ".join(str(seg.get("text", "")).strip() for seg in out.segments).strip()
