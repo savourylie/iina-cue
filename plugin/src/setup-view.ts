@@ -50,7 +50,7 @@ const UPDATE_PHASE_KEY = {
 /** Steps that run without a byte count still show that something is happening. */
 const WORKING = new Set<SetupPhase>(["runtime", "unpacking", "models", "verifying", "smoke"]);
 
-/** Decimal units, as in "about 3.8 GB" in the setup text. */
+/** Decimal units, as in "about 5.5 GB" in the setup text. */
 export function formatBytes(bytes: number): string {
   if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
   return `${Math.max(0, Math.round(bytes / 1e6))} MB`;

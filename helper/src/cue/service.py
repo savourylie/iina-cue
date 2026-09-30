@@ -199,8 +199,14 @@ class Supervisor:
 
     def start_worker(self):
         if self.worker and self.worker.is_alive(): return
-        from .setupflow import speech_model_path
-        gemma = speech_model_path(self.models, self._manifest(), self.speech_model)
+        from .setupflow import hearing_model, hearing_model_complete, speech_model_path
+        manifest = self._manifest()
+        gemma = speech_model_path(self.models, manifest, self.speech_model)
+        choice = hearing_model(manifest)
+        if choice and self.asr == str(self.models / choice["folder"]) and not hearing_model_complete(self.models, manifest):
+            # Like a missing Gemma file: a setup state, never a reason to hear with Gemma instead,
+            # and checked before the worker spends a cold Gemma load on finding out.
+            raise CueError("SETUP_REQUIRED", "hearing model files are missing or incomplete")
         ctx = mp.get_context("spawn")
         self.inbox, self.outbox = ctx.Queue(maxsize=1), ctx.Queue(maxsize=16)
         self.worker = ctx.Process(target=worker_entry, args=(self.inbox, self.outbox, str(self.models), str(self.root/"audio-temp"), str(gemma), self.asr), daemon=True)

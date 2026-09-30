@@ -274,7 +274,7 @@ test('an update is a small button that can be ignored, then a short status with 
   // First-run setup still replaces the controls, with its own heading, intro and credits.
   messages.get('cue-setup')!(setupView({phase: 'download', diskBytes: 3_834_972_052}));
   assert.equal(element('setup-title').textContent, 'Set up Cue');
-  assert.match(element('setup-intro').textContent, /downloads about 3\.8 GB/);
+  assert.match(element('setup-intro').textContent, /downloads about 5\.5 GB/);
   assert.equal(element('setup-credits').hidden, false);
   assert.equal(element('normal-controls').hidden, true);
 });

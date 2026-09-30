@@ -95,3 +95,32 @@ def test_doctor_reports_the_hearing_model_files(tmp_path, monkeypatch):
     folder = models / "whisper-large-v3-turbo"; folder.mkdir(parents=True)
     (folder / "weights.safetensors").write_bytes(b"w"); (folder / "tokenizer.json").write_text("{}")
     assert doctor.model_assets(models) == {"gemma": False, "aligner": False, "whisper-turbo": True, "vad": True}
+
+
+def test_the_worker_does_not_start_without_a_complete_hearing_model(tmp_path, monkeypatch):
+    from cue.service import Supervisor
+    manifest = hearing_manifest()
+    path = tmp_path / "manifest.json"; path.write_text(json.dumps(manifest))
+    monkeypatch.setattr("cue.service.model_manifest_path", lambda: path)
+    monkeypatch.setattr("cue.bootstrap.model_manifest_path", lambda: path)
+    models = tmp_path / "models"; install(models, manifest)
+    started = {}
+    class FakeProcess:
+        def __init__(self, target, args, daemon): started["args"] = args
+        def start(self): started["started"] = True
+        def is_alive(self): return True
+    class FakeContext:
+        def Queue(self, maxsize): return object()
+        def Process(self, target, args, daemon): return FakeProcess(target, args, daemon)
+    monkeypatch.setattr("cue.service.mp.get_context", lambda name: FakeContext())
+    sup = Supervisor(tmp_path / "runtime", models, clock=lambda: 100)
+    (models / "whisper-large-v3-turbo" / "tokenizer.json").unlink()      # the processor files are gone
+    with pytest.raises(CueError) as exc:
+        sup.start_worker()
+    assert exc.value.code == "SETUP_REQUIRED" and "started" not in started
+    install(models, manifest)
+    sup.start_worker()
+    assert started["args"][5] == str(models / "whisper-large-v3-turbo")
+    # An evaluation override is the driver's responsibility and is not gated.
+    sup.worker = None; sup.asr = str(tmp_path / "elsewhere"); sup.start_worker()
+    assert started["args"][5] == str(tmp_path / "elsewhere")

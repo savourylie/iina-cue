@@ -175,7 +175,7 @@ export async function installPublishedRuntime(deps: {
   return {ok: true};
 }
 
-/** Must match release/runtime-0.1.9.json and models/manifest.json. */
+/** Must match models/manifest.json. A runtime archive carrying that manifest must be released and pinned in RUNTIME_VERSION before a plugin built from it ships; an older runtime keeps its own manifest. */
 export const RUNTIME_MINIMUM_MACOS = "14.0";
 export const MODEL_BYTES = 5182597643;
 

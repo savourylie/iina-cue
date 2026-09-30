@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {en, has, sidebarStrings, t, useCatalog} from '../src/strings';
+import {RUNTIME_ARCHIVE_BYTES} from '../src/runtime-install';
 
 const html = readFileSync('plugin/sidebar.html', 'utf8');
 const decode = (text: string) => text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
@@ -55,4 +56,16 @@ test('plugin code keeps user-facing English in the catalog', () => {
     const literals = [...source.matchAll(/["`]([A-Z][a-z]+(?: [a-z'’]+){2,}[^"`]*)["`]/g)].map(match => match[1]);
     assert.deepEqual(literals, [], file);
   }
+});
+
+test('the setup intro states the first-run download computed from the manifest and the runtime archive', () => {
+  const manifest = JSON.parse(readFileSync('models/manifest.json', 'utf8')) as {assets: {files: {bytes: number}[]}[]};
+  const models = manifest.assets.reduce((sum, asset) => sum + asset.files.reduce((inner, file) => inner + file.bytes, 0), 0);
+  const gb = ((models + RUNTIME_ARCHIVE_BYTES) / 1e9).toFixed(1);
+  assert.ok(en['sidebar.setupIntro'].includes(`about ${gb} GB`), en['sidebar.setupIntro']);
+});
+
+test('the larger model is offered for its translation, not its hearing', () => {
+  assert.doesNotMatch(en['model.e4b.description'], /hear/i);
+  assert.match(en['model.e4b.description'], /translat/i);
 });
