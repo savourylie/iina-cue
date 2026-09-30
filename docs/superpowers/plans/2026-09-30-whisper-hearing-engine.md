@@ -493,7 +493,10 @@ from cue.bootstrap import model_manifest_path
 from cue.setupflow import hearing_model, hearing_model_path
 ap=argparse.ArgumentParser(); ap.add_argument('--asr',help="hearing engine: unset = the manifest's; 'gemma' = Gemma's own hearing; or a model path"); args=ap.parse_args()
 manifest=json.loads(model_manifest_path().read_text())
-engine=None if args.asr=='gemma' else MlxAsr(Path(args.asr).resolve() if args.asr else hearing_model_path(models_root(),manifest)) if (args.asr or hearing_model(manifest)) else None
+if args.asr=='gemma': engine=None
+elif args.asr: engine=MlxAsr(Path(args.asr).resolve())
+elif hearing_model(manifest): engine=MlxAsr(hearing_model_path(models_root(),manifest))
+else: engine=None
 ```
 
 and change `backend=Backend(models_root())` to `backend=Backend(models_root(),asr=engine)`; change the output path to `out=root/('benchmarks/results/languages-gemma.json' if args.asr=='gemma' else 'benchmarks/results/languages.json')` and write `engine` into the JSON (`'hearing': args.asr or 'manifest'` next to `'load_s'`).
@@ -729,7 +732,7 @@ Expected: FAIL on `"5.5 GB" in GUIDE`
 
 `docs/install.md` line 21: `Download 3,564,002,544 bytes` → `Download 5,182,597,375 bytes`; `allow 7 GB` → `allow 9 GB`.
 
-`README.md` line 5: `A larger speech model, Gemma 4 E4B, is an optional download` → `A larger translation model, Gemma 4 E4B, is an optional download`; if the sentence before it says how Cue hears, say Whisper large-v3-turbo hears and Gemma translates.
+`README.md` line 5: `This runtime needs macOS 14.0 or later and about 16 GB of memory. A larger speech model, Gemma 4 E4B, is an optional download under Advanced in the Cue sidebar; the guide lists what it needs.` → `This runtime needs macOS 14.0 or later and about 16 GB of memory. Cue hears with Whisper large-v3-turbo and translates with Gemma 4 E2B; a larger translation model, Gemma 4 E4B, is an optional download under Advanced in the Cue sidebar, and the guide lists what it needs.`
 
 `README.md` line 73: `- 模型資產共約 3.56 GB；另有編譯快取。` → `- 模型資產共約 5.18 GB（Gemma 4 E2B、Qwen3 對齊器、Whisper large-v3-turbo 聽寫模型）；另有編譯快取。`
 
@@ -755,27 +758,26 @@ git commit -m "docs: Cue hears with Whisper large-v3-turbo; first-run download 5
 - Modify: `docs/acceptance.md`
 - Modify (memory): `~/.claude/projects/-Users-calvinku-FunProjects-iina-cue/memory/translation-quality-testbed.md`
 
-- [ ] **Step 1: The setup path an existing install takes** — move the checkout's Whisper folder aside and drive the helper's own setup API (the code the plugin calls):
+- [ ] **Step 1: The setup path an existing install takes** — move the checkout's Whisper folder aside and drive the helper's own setup API (the code the plugin calls: `download`, then `smoke`):
 
 ```bash
 cd /Users/calvinku/FunProjects/iina-cue && mv .runtime/models/whisper-large-v3-turbo .runtime/models/whisper-large-v3-turbo.bak && CUE_INSTALLED=0 .venv/bin/python - <<'EOF'
-import json, time
-from pathlib import Path
-from cue.bootstrap import model_manifest_path
-from cue.setupflow import Setup
-root = Path(".runtime").resolve()
-setup = Setup(root / "models", model_manifest_path())
+import time
+from cue.bootstrap import models_root, runtime_root
+from cue.service import Supervisor
+sup = Supervisor(runtime_root(), models_root()); setup = sup.setup_api()
 before = setup.status(); print("needed GB", round(before["bytes_needed"] / 1e9, 2), "files_ready", before["files_ready"])
 setup.action({"action": "download"})
-while True:
-    s = setup.status(); p = s["progress"]
-    if p["phase"] not in {"downloading", "verifying"}: break
-    time.sleep(5)
-print("phase", p["phase"], "error", p["error"], "files_ready", s["files_ready"])
+while setup.status()["progress"]["phase"] == "downloading": time.sleep(5)
+s = setup.status(); print("download phase", s["progress"]["phase"], "error", s["progress"]["error"], "files_ready", s["files_ready"])
+setup.action({"action": "smoke"})
+while setup.status()["progress"]["phase"] == "smoking": time.sleep(5)
+s = setup.status(); print("smoke", s["smoke"], "ready", s["ready"])
+sup.stop_worker()
 EOF
 ```
 
-Expected: `needed GB 1.62`, `files_ready False`, then `phase idle error None files_ready True` (only the two Whisper assets fetched). Then `rm -r .runtime/models/whisper-large-v3-turbo.bak`. If the download fails, restore the folder with `mv` instead and record the failure.
+Expected: `needed GB 1.62`, `files_ready False`; then `download phase idle error None files_ready True` (only the two Whisper assets fetched and verified); then `smoke {'passed': True, ...} ready True`. Then `rm -r .runtime/models/whisper-large-v3-turbo.bak`. If the download fails, restore the folder with `mv` instead and record the failure.
 
 - [ ] **Step 2: Product-path captions on the user-named film** (manifest engine, no flag):
 
