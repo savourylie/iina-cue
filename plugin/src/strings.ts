@@ -216,6 +216,7 @@ export const en = {
   "sidebar.creditGemma": "Gemma 4 E2B (Google, Apache 2.0)",
   "sidebar.creditJoin": "and",
   "sidebar.creditAligner": "Qwen3-ForcedAligner (Qwen team, Apache 2.0; MLX conversion by mlx-community)",
+  "sidebar.creditWhisper": "Whisper large-v3-turbo (OpenAI, MIT; MLX conversion by mlx-community)",
   "sidebar.speechModel": "Speech model",
   "model.e2b.name": "Gemma 4 E2B",
   "model.e2b.description": "Default. The fastest.",

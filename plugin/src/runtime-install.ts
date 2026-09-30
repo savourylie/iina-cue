@@ -177,7 +177,7 @@ export async function installPublishedRuntime(deps: {
 
 /** Must match release/runtime-0.1.9.json and models/manifest.json. */
 export const RUNTIME_MINIMUM_MACOS = "14.0";
-export const MODEL_BYTES = 3564002544;
+export const MODEL_BYTES = 5182597643;
 
 /**
  * Read this Mac with system tools. A tool that fails leaves its fact unknown,
@@ -216,6 +216,8 @@ export const CREDIT_LINKS = {
   gemma: "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
   aligner: "https://huggingface.co/mlx-community/Qwen3-ForcedAligner-0.6B-4bit",
   "gemma-e4b": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm",
+  "whisper-turbo": "https://huggingface.co/mlx-community/whisper-large-v3-turbo",
+  "whisper-turbo-processor": "https://huggingface.co/openai/whisper-large-v3-turbo",
 } as const;
 
 /** The browser opens the page; /usr/bin/open is a system tool, not a plugin file. */

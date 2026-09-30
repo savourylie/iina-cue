@@ -179,6 +179,8 @@ test('credit links open only the pinned model pages in the browser', () => {
   assert.equal(openCreditLink('gemma', exec), true);
   assert.equal(openCreditLink('aligner', exec), true);
   assert.equal(openCreditLink('gemma-e4b', exec), true);
+  assert.equal(openCreditLink('whisper-turbo', exec), true);
+  assert.equal(openCreditLink('whisper-turbo-processor', exec), true);
   assert.equal(openCreditLink('https://example.com', exec), false);
   assert.equal(openCreditLink('toString', exec), false);
   assert.equal(openCreditLink(undefined, exec), false);
@@ -186,6 +188,8 @@ test('credit links open only the pinned model pages in the browser', () => {
     ['/usr/bin/open', CREDIT_LINKS.gemma],
     ['/usr/bin/open', CREDIT_LINKS.aligner],
     ['/usr/bin/open', CREDIT_LINKS['gemma-e4b']],
+    ['/usr/bin/open', CREDIT_LINKS['whisper-turbo']],
+    ['/usr/bin/open', CREDIT_LINKS['whisper-turbo-processor']],
   ]);
   type Asset = {name: string; repository: string};
   const manifest = JSON.parse(readFileSync('models/manifest.json', 'utf8')) as {assets: Asset[]; optional_assets: Asset[]};
