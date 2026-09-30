@@ -2,7 +2,7 @@
 
 Your videos. Your language. In sync.
 
-People installing Cue, rather than building it, should follow [Install Cue](docs/install-cue.md). That guide uses either a double-click of the `.iinaplgz` or IINA's Install from GitHub. It has no Terminal commands. IINA may warn that a plugin "can execute other programs or applications that can harm your computer". The guide explains that warning. This runtime needs macOS 14.0 or later and about 16 GB of memory. A larger speech model, Gemma 4 E4B, is an optional download under Advanced in the Cue sidebar; the guide lists what it needs.
+People installing Cue, rather than building it, should follow [Install Cue](docs/install-cue.md). That guide uses either a double-click of the `.iinaplgz` or IINA's Install from GitHub. It has no Terminal commands. IINA may warn that a plugin "can execute other programs or applications that can harm your computer". The guide explains that warning. This runtime needs macOS 14.0 or later and about 16 GB of memory. Cue hears with Whisper large-v3-turbo and translates with Gemma 4 E2B; a larger translation model, Gemma 4 E4B, is an optional download under Advanced in the Cue sidebar, and the guide lists what it needs.
 
 目前已包含 **0.1.0 開發技術預覽版**：IINA 外掛、本機 Python helper、短窗口排程、字幕快取、seek 隔離與測試。模型已安裝，真實辨識、對齊、翻譯與原生字幕顯示已跑通；**目前是可測試的開發版，尚未完成規格的 v1 驗收。**
 
@@ -70,7 +70,7 @@ scripts/cue-helper shutdown
 
 ## 目前限制
 
-- 模型資產共約 3.56 GB；另有編譯快取。使用同一 E2B 的完整多模態版本，GPU-only 檔缺少音訊編碼器。
+- 模型資產共約 5.18 GB（Gemma 4 E2B、Qwen3 對齊器、Whisper large-v3-turbo 聽寫模型）；另有編譯快取。使用同一 E2B 的完整多模態版本，GPU-only 檔缺少音訊編碼器。
 - 自動啟用預設關閉；等待字幕的暫停模式可手動勾選，字幕就緒後仍由使用者按播放，不會自動解除使用者的暫停。
 - 目前只把「全為零的數位靜音」直接列為無語音；Silero VAD／音樂負例驗收尚未完成。
 - 日／韓 tokenizer 已安裝並固定版本；四語言合成語音通過流程測試，真人語音品質皆未驗收。

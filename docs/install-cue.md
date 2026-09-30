@@ -2,7 +2,7 @@
 
 Cue adds local subtitles in IINA. This page is for someone installing Cue. It has no Terminal commands. Developer setup stays in [Development preview installation](install.md).
 
-You need an Apple Silicon Mac, macOS 14.0 or later, and IINA 1.4 or later. Plan on about 16 GB of memory and about 8 GB of free disk space. The first-run download is about 3.8 GB and often takes 10 to 30 minutes, depending on your connection.
+You need an Apple Silicon Mac, macOS 14.0 or later, and IINA 1.4 or later. Plan on about 16 GB of memory and about 10 GB of free disk space. The first-run download is about 5.5 GB and often takes 10 to 30 minutes, depending on your connection.
 
 ## Double-click the plugin
 
@@ -27,7 +27,7 @@ IINA can show a red warning that a plugin "can execute other programs or applica
 
 ## Larger speech models
 
-Cue listens with Gemma 4 E2B. Under Advanced in the Cue sidebar, Speech model also offers Gemma 4 E4B, a larger model. It hears difficult dialogue more accurately, and it is a little slower. It is a 3.7 GB download that needs about 6.0 GB of disk space and 16 GB of memory. The disk space includes a cache the model writes the first time it runs. Cue downloads it only when you press its Download button.
+Cue hears with Whisper large-v3-turbo and translates with Gemma 4 E2B. Under Advanced in the Cue sidebar, Speech model also offers Gemma 4 E4B, a larger translation model. It translates idioms and long sentences better, and it is a little slower. It is a 3.7 GB download that needs about 6.0 GB of disk space and 16 GB of memory. The disk space includes a cache the model writes the first time it runs. Cue downloads it only when you press its Download button.
 
 To switch models, turn off AI subtitles in every IINA window, then choose the model. Cue tries a short spoken clip with it first. If the clip does not work, Cue keeps the model you had. Remove deletes Gemma 4 E4B and its cache. Gemma 4 E2B stays installed.
 
