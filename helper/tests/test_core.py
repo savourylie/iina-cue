@@ -1,7 +1,7 @@
 import json
 import pytest
 from cue.core import Cue, CueError, Settings, SOURCE_LANGUAGES, Unit, assemble, continuous_end, next_window, ranges_merge, srt, stamp, translation_parse, validate_units
-from cue.core import coalesce_quantized_units, coalesce_until_collapse, restore_transcript
+from cue.core import coalesce_owned, coalesce_quantized_units, coalesce_until_collapse, restore_transcript, transcript_after
 from cue.core import TranslationContext, drop_seam_phantom, hold_back, join_texts, pair_previous, sentence_units
 
 def test_simplified_chinese_target_is_valid_and_separate_from_traditional():
@@ -298,3 +298,30 @@ def test_a_word_stretched_past_one_and_a_half_seconds_takes_no_endings():
     units=[Unit(0,300,'a'),Unit(300,2300,'long'),Unit(2300,2300,'x'),Unit(5000,5200,'b')]
     kept,cut,reason=coalesce_until_collapse(units)
     assert (kept,cut,reason)==([Unit(0,300,'a'),Unit(300,2300,'long')],2300,'collapsed alignment span')
+
+
+def test_an_unplaceable_word_in_the_left_context_is_skipped_until_the_window_owns_a_word():
+    # "Good evening, Nash. Who's winning?": the previous window committed up to "Good";
+    # this one re-hears "Nash" in its first second, and the aligner cannot place it.
+    units=[Unit(0,0,'Nash'),Unit(1600,1760,"Who's"),Unit(1760,2080,'winning')]
+    kept,cut,reason,skipped=coalesce_owned(units,1000)
+    assert (kept,cut,reason)==([Unit(1600,1760,"Who's"),Unit(1760,2080,'winning')],None,None)
+    assert skipped==[Unit(0,0,'Nash')]
+
+def test_placed_left_context_words_before_such_a_collapse_are_skipped_with_it():
+    units=[Unit(560,720,'one'),Unit(720,800,'of'),Unit(1280,1280,'yours'),Unit(1280,1280,'This'),Unit(3500,3800,'is'),Unit(3800,4000,'mine')]
+    kept,cut,reason,skipped=coalesce_owned(units,2000)
+    assert (kept,cut)==([Unit(3500,3800,'is'),Unit(3800,4000,'mine')],None)
+    assert [u.text for u in skipped]==['one','of','yours','This']
+
+def test_a_collapse_after_an_owned_word_still_cuts_and_no_left_context_changes_nothing():
+    units=[Unit(1200,1500,'a'),Unit(1600,1600,'b'),Unit(4000,4200,'c')]
+    assert coalesce_owned(units,1000)==([Unit(1200,1500,'a')],1600,'collapsed alignment span',[])
+    for case in ([Unit(0,0,'Nash'),Unit(1600,1760,"Who's")], units):
+        assert coalesce_owned(case,0)==(*coalesce_until_collapse(case),[])
+
+def test_the_transcript_after_skipped_words_keeps_its_punctuation_and_must_match():
+    assert transcript_after("Nash. Who's winning?",[Unit(0,0,'Nash')])==" Who's winning?"
+    assert transcript_after('一発でガロス粉々になるの。いくらするの?',[Unit(0,0,x) for x in ['一','発','で','ガロス','粉々','に','なる','の']])=='いくらするの?'
+    assert transcript_after('Hello world',[Unit(0,0,'Nash')]) is None
+    assert transcript_after('Nash',[Unit(0,0,'Nash')])==''

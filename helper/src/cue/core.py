@@ -98,6 +98,39 @@ def coalesce_until_collapse(units: list[Unit]) -> tuple[list[Unit], int | None, 
         out.append(Unit(last.start_ms, max(last.end_ms,pending[-1].end_ms), last.text+" "+" ".join(u.text for u in pending), ("quantized_tokens_coalesced",)))
     return out, None, None
 
+def coalesce_owned(units: list[Unit], left_ms: int) -> tuple[list[Unit], int | None, str | None, list[Unit]]:
+    """coalesce_until_collapse for a window whose first left_ms belong to the previous window.
+
+    A collapse inside that left context, before the window has placed a word it owns
+    (midpoint at or after left_ms), does not end the window: what the aligner put there
+    is skipped, as ownership would drop it anyway, and the rest is coalesced as usual.
+    Returns the kept units, the cut, its reason and the skipped units in order.
+    """
+    kept, cut, reason = coalesce_until_collapse(units)
+    if left_ms <= 0 or cut is None or cut >= left_ms or any((u.start_ms+u.end_ms)/2 >= left_ms for u in kept):
+        return kept, cut, reason, []
+    first_owned = next((i for i, u in enumerate(units) if (u.start_ms+u.end_ms)/2 >= left_ms), len(units))
+    kept, cut, reason = coalesce_until_collapse(units[first_owned:])
+    return kept, cut, reason, units[:first_owned]
+
+def transcript_after(transcript: str, skipped: list[Unit]) -> str | None:
+    """The transcript after words skipped at the start of a window, or None if they do
+    not open it. Punctuation closing the skipped phrase goes with it."""
+    want = [c for u in skipped for c in u.text.casefold() if c.isalnum()]
+    seen = 0
+    for i, char in enumerate(transcript):
+        if seen == len(want):
+            if char.isalnum() or char.isspace() or unicodedata.category(char) in ("Ps", "Pi"):
+                return transcript[i:]
+            continue
+        for folded in char.casefold():
+            if not folded.isalnum():
+                continue
+            if seen == len(want) or folded != want[seen]:
+                return None
+            seen += 1
+    return "" if seen == len(want) else None
+
 def _merge_endings(out: list[Unit], pending: list[Unit]) -> list[Unit]:
     """Merge zero-length tokens that sit exactly at the previous word's end into that word.
 

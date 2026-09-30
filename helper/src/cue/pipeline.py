@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript
+from .core import Cue, CueError, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -100,7 +100,15 @@ class Pipeline:
                         report("identifying_language", language)
                         raise CueError("LANGUAGE_UNCERTAIN", f"unsupported transcript language candidate: {language['code']}")
                     report("aligning", language)
-                    t = time.monotonic(); units, cut = self.backend.align(wav, transcript, language["code"], partial=True); timings["align_s"] = time.monotonic()-t
+                    t = time.monotonic(); units, cut, skipped = self.backend.align(wav, transcript, language["code"], partial=True, left_ms=start-zero); timings["align_s"] = time.monotonic()-t
+                    heard = transcript
+                    if skipped:
+                        # Words the aligner could not place in the first second belong to the
+                        # previous window; the rest of the transcript is this window's.
+                        heard = transcript_after(transcript, skipped)
+                        if heard is None:
+                            raise CueError("ALIGNMENT_FAILED", "incomplete text coverage")
+                        timings["left_context_skipped"] = len(skipped)
                     # The aligner works in 80 ms bins, so the last word can end a bin past
                     # the audio, and a transcript can run on past it. Nothing past the audio
                     # is ever committed, so keep the words up to it instead of failing.
@@ -111,9 +119,9 @@ class Pipeline:
                     # After a collapse, keep the aligned words before it. The next window
                     # starts at the collapse and transcribes and aligns the rest again.
                     prefix = cut is not None or past is not None
-                    validate_units(units, limit-zero, transcript, prefix=prefix)
+                    validate_units(units, limit-zero, heard, prefix=prefix)
                     timings["quantized_token_groups"] = sum(bool(u.quality_flags) for u in units)
-                    punctuated = restore_transcript(units, transcript, prefix=prefix)
+                    punctuated = restore_transcript(units, heard, prefix=prefix)
                     if punctuated is not None:
                         units = punctuated
                     timings["transcript_punctuation_restored"] = punctuated is not None

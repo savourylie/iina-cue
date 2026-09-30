@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
-from .core import Cue, CueError, PREVIOUS_PAIRS, TranslationContext, Unit, SOURCE_LANGUAGES, clean_text, translation_parse, coalesce_quantized_units, coalesce_until_collapse
+from .core import Cue, CueError, PREVIOUS_PAIRS, TranslationContext, Unit, SOURCE_LANGUAGES, clean_text, translation_parse, coalesce_quantized_units, coalesce_owned
 
 LANGUAGES = SOURCE_LANGUAGES
 TARGET_LANGUAGES = {"zh-TW": "Traditional Chinese using natural Taiwan vocabulary",
@@ -208,8 +208,9 @@ class Backend:
         return {"code": code, "status": "tentative", "method": "original_asr_text_lid", "score": values[0].value,
                 "score_kind": "classifier_relative_score"}
 
-    def align(self, audio: Path, text: str, language: str, partial: bool = False):
-        """Aligned units. With partial, returns (units before any collapse, collapse time or None)."""
+    def align(self, audio: Path, text: str, language: str, partial: bool = False, left_ms: int = 0):
+        """Aligned units. With partial, returns (units before any collapse, collapse time or None,
+        units skipped in the first left_ms, which belong to the previous window)."""
         if language not in LANGUAGES: raise CueError("ALIGNMENT_LANGUAGE_UNSUPPORTED")
         self.load_aligner()
         import importlib.util
@@ -221,8 +222,8 @@ class Backend:
         mx.synchronize()
         units = [Unit(round(i.start_time * 1000), round(i.end_time * 1000), i.text) for i in result.items]
         if partial:
-            kept, cut, _ = coalesce_until_collapse(units)
-            return kept, cut
+            kept, cut, _, skipped = coalesce_owned(units, left_ms)
+            return kept, cut, skipped
         return coalesce_quantized_units(units)
 
     def translate(self, cues: list[Cue], target: str, language: str, context: TranslationContext | None = None) -> tuple[list[Cue], dict[str, str]]:

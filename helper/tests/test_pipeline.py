@@ -26,9 +26,9 @@ def setup_pipeline(monkeypatch,tmp_path,silent=False,speech=True):
         def load(self): self.calls.append('load')
         def transcribe(self,a,source='auto',names=(),previous=''):self.calls.append(('asr',source));self.hints.append(tuple(names));self.previous.append(previous);return 'one two'
         def language(self,t,s):return {'code':'en','status':'manual'}
-        def align(self,a,t,l,partial=False):
+        def align(self,a,t,l,partial=False,left_ms=0):
             self.calls.append('align');units=[Unit(500,800,'one'),Unit(8500,9500,'two')]
-            return (units,None) if partial else units
+            return (units,None,[]) if partial else units
         def translate(self,c,t,l,context=None):self.calls.append('translate');self.contexts.append(context);return c,{}
     p.backend=Backend()
     p.vad=StubVad(speech)
@@ -52,8 +52,8 @@ def test_cached_source_skips_asr_and_alignment(monkeypatch,tmp_path):
 def test_pipeline_restores_asr_sentence_breaks_lost_by_aligner(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':'Hello world. Next sentence.'
-    p.backend.align=lambda audio,text,language,partial=False:([
-        Unit(500,800,'Hello'),Unit(850,1200,'world'),Unit(1250,1600,'Next'),Unit(1650,2000,'sentence')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([
+        Unit(500,800,'Hello'),Unit(850,1200,'world'),Unit(1250,1600,'Next'),Unit(1650,2000,'sentence')],None,[])
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Hello world.','Next sentence.']
     assert [(c['start_ms'],c['end_ms']) for c in result['source']]==[(500,1200),(1250,2000)]
@@ -76,7 +76,7 @@ def test_existing_right_coverage_seals_draft_without_reprocessing_forever(monkey
 def test_crossing_word_at_cached_right_edge_is_not_given_an_invented_end(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':'one different draft'
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'one'),Unit(8500,10500,'different draft')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(500,800,'one'),Unit(8500,10500,'different draft')],None,[])
     job['following_source']=[{'id':'next','start_ms':10500,'end_ms':11500,'text':'already cached'}]
     result=p.run(job)
     assert result['committed_range']==[0,10000]
@@ -142,7 +142,7 @@ def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the
     p,job=setup_pipeline(monkeypatch,tmp_path)
     # Transcript "one two three": the aligner placed "one two"; "three" collapsed at 6.2 s of the span.
     p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two three'
-    p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one'),Unit(1500,1900,'two')],6200)
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(500,800,'one'),Unit(1500,1900,'two')],6200,[])
     result=p.run(job)
     # The span starts at 0 here, so the cut is at 6.2 s of media time.
     assert result['committed_range']==[0,6200]
@@ -154,14 +154,14 @@ def test_a_collapsed_window_commits_its_aligned_part_and_leaves_the_rest_for_the
 def test_too_little_before_the_collapse_fails_the_window_as_before(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two'
-    p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one')],1500)
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(500,800,'one')],1500,[])
     with pytest.raises(CueError) as exc:
         p.run(job)
     assert exc.value.code=='ALIGNMENT_FAILED'
 
 def test_nothing_aligned_before_the_collapse_fails_the_window(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
-    p.backend.align=lambda a,t,l,partial=False:([],300)
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([],300,[])
     with pytest.raises(CueError) as exc:
         p.run(job)
     assert exc.value.code=='ALIGNMENT_FAILED'
@@ -170,7 +170,7 @@ def test_an_unfinished_trailing_sentence_is_held_back_for_the_next_window(monkey
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's"
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None,[])
     result=p.run(job)
     assert result['committed_range']==[0,3000]
     assert [c['text'] for c in result['source']]==['Not one of us.']
@@ -180,7 +180,7 @@ def test_no_hold_back_below_the_startup_floor_or_when_the_right_side_is_already_
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000]
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's"
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],None,[])
     job['min_commit_ms']=8000
     result=p.run(job)
     assert result['committed_range']==[0,7000] and [c['text'] for c in result['source']]==['Not one of us.',"He's"]
@@ -194,7 +194,7 @@ def test_no_hold_back_after_a_collapse(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['range']=[0,8000];job['min_commit_ms']=2000
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Not one of us. He's going"
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],6200)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(500,800,'Not'),Unit(900,1200,'one'),Unit(1300,1600,'of'),Unit(1700,2500,'us'),Unit(3000,3800,"He's")],6200,[])
     result=p.run(job)
     assert result['committed_range']==[0,6200] and len(result['source'])==2
 
@@ -210,8 +210,8 @@ def test_translation_merges_sentence_units_and_passes_context_and_names_back(mon
     def transcribe(audio,source='auto',names=(),previous=''):
         seen['hint']=tuple(names);return "Not one of us He's going to get her."
     p.backend.transcribe=transcribe
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Not'),Unit(1900,2200,'one'),Unit(2300,2600,'of'),Unit(2700,3500,'us'),
-        Unit(4000,4800,"He's"),Unit(4900,5300,'going'),Unit(5400,5700,'to'),Unit(5800,6100,'get'),Unit(6200,6600,'her')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(1500,1800,'Not'),Unit(1900,2200,'one'),Unit(2300,2600,'of'),Unit(2700,3500,'us'),
+        Unit(4000,4800,"He's"),Unit(4900,5300,'going'),Unit(5400,5700,'to'),Unit(5800,6100,'get'),Unit(6200,6600,'her')],None,[])
     def translate(c,t,l,context=None):
         seen['units']=c;seen['context']=context;return c,{'Sol':'索爾'}
     p.backend.translate=translate
@@ -251,7 +251,7 @@ def test_a_phantom_word_squeezed_onto_the_seam_is_not_shown(monkeypatch,tmp_path
     # Fresh ASR over the left context misheard "Adam" and the aligner squeezed it into a
     # 40 ms bin at the core start, 7.8 s before the words that were actually said.
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"I'm Smith needs revision."
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None,[])
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Smith needs revision.']
     assert result['timings']['seam_dropped']==1 and result['committed_range']==[10000,24000]
@@ -261,7 +261,7 @@ def test_a_phantom_after_left_context_words_is_not_shown_either(monkeypatch,tmp_
     job['range']=[10000,25000];job['min_commit_ms']=2000
     job['previous_source']=[{'id':'p','start_ms':9000,'end_ms':9990,'text':'History book.'}]
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"History book. I'm Smith needs revision."
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(200,600,'History'),Unit(650,990,'book'),Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(200,600,'History'),Unit(650,990,'book'),Unit(1000,1040,"I'm"),Unit(8800,9200,'Smith'),Unit(9300,9600,'needs'),Unit(9700,10400,'revision')],None,[])
     result=p.run(job)
     assert [c['text'] for c in result['source']]==['Smith needs revision.']
     assert result['timings']['seam_dropped']==1
@@ -278,7 +278,7 @@ def test_rejected_name_reports_reach_the_timings(monkeypatch,tmp_path):
     p,job=setup_pipeline(monkeypatch,tmp_path)
     job['settings']=asdict(Settings(target='zh-TW'));job['range']=[10000,18000];job['min_commit_ms']=2000
     p.backend.transcribe=lambda audio,source='auto',names=(),previous='':"Come on, Bender."
-    p.backend.align=lambda audio,text,language,partial=False:([Unit(1500,1800,'Come'),Unit(1900,2200,'on'),Unit(2300,2900,'Bender')],None)
+    p.backend.align=lambda audio,text,language,partial=False,left_ms=0:([Unit(1500,1800,'Come'),Unit(1900,2200,'on'),Unit(2300,2900,'Bender')],None,[])
     def translate(c,t,l,context=None):
         p.backend.names_report={'reported':{'Bender':'班德'},'accepted':{},'rejected':{'Bender':'班德'}};return c,{}
     p.backend.translate=translate
@@ -319,9 +319,33 @@ def test_words_placed_past_the_audio_end_are_left_out_instead_of_failing_the_win
     # The span is 0-11 s. The aligner works in 80 ms bins, so it can end the last word
     # a bin past the audio; that word lies in the right context and is never committed.
     p.backend.transcribe=lambda a,source='auto',names=(),previous='':'one two three'
-    p.backend.align=lambda a,t,l,partial=False:([Unit(500,800,'one'),Unit(1500,1900,'two'),Unit(10900,11080,'three')],None)
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(500,800,'one'),Unit(1500,1900,'two'),Unit(10900,11080,'three')],None,[])
     result=p.run(job)
     assert 'three' not in ' '.join(c['text'] for c in result['source'])
     assert 'one' in ' '.join(c['text'] for c in result['source'])
     assert result['timings']['units_past_audio_end']==1
     assert 'alignment_cut_ms' not in result['timings']
+
+
+def test_words_skipped_in_the_left_context_leave_the_rest_of_the_transcript_to_the_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,20000]; seen={}
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':"Nash. Who's winning? You or you?"
+    def align(a,t,l,partial=False,left_ms=0):
+        seen['left_ms']=left_ms
+        return ([Unit(1600,1760,"Who's"),Unit(1760,2080,'winning'),Unit(2160,2560,'You'),Unit(2560,2640,'or'),Unit(2720,2960,'you')],None,[Unit(0,0,'Nash')])
+    p.backend.align=align
+    result=p.run(job)
+    assert seen['left_ms']==1000
+    text=' '.join(c['text'] for c in result['source'])
+    assert 'Nash' not in text and "Who's winning?" in text
+    assert result['timings']['left_context_skipped']==1
+
+def test_skipped_words_that_do_not_open_the_transcript_fail_the_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,20000]
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':"Who's winning?"
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(1600,1760,"Who's"),Unit(1760,2080,'winning')],None,[Unit(0,0,'Nash')])
+    with pytest.raises(CueError) as exc:
+        p.run(job)
+    assert exc.value.code=='ALIGNMENT_FAILED'

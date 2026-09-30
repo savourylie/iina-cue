@@ -337,3 +337,12 @@ def test_loading_the_backend_loads_the_dedicated_asr_engine_too(tmp_path,monkeyp
     asr=DedicatedAsr();backend=Backend(tmp_path,asr=asr);backend.load()
     assert asr.loaded is True
     backend.close()
+
+def test_partial_alignment_skips_unplaceable_left_context_words_and_reports_them(tmp_path):
+    backend=Backend(tmp_path)
+    item=lambda a,b,t:SimpleNamespace(start_time=a,end_time=b,text=t)
+    backend.aligner=SimpleNamespace(generate=lambda audio,text,language:SimpleNamespace(items=[item(0,0,'Nash'),item(1.6,1.76,"Who's"),item(1.76,2.08,'winning')]))
+    kept,cut,skipped=backend.align(tmp_path/'a.wav',"Nash. Who's winning?",'en',partial=True,left_ms=1000)
+    assert [u.text for u in kept]==["Who's",'winning'] and cut is None and [u.text for u in skipped]==['Nash']
+    # Without a left context the window still collapses at the unplaceable first word.
+    assert backend.align(tmp_path/'a.wav',"Nash. Who's winning?",'en',partial=True)==([],0,[])
