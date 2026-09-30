@@ -85,3 +85,13 @@ def test_the_supervisor_hears_with_the_manifest_engine_and_keys_the_cache_by_its
     assert sup.asr_key() == ""
     del manifest["hearing_model"]; path.write_text(json.dumps(manifest))
     assert Supervisor(tmp_path / "runtime2", models, clock=lambda: 100).asr is None
+
+
+def test_doctor_reports_the_hearing_model_files(tmp_path, monkeypatch):
+    from cue import doctor
+    monkeypatch.setattr(doctor, "_vad_ready", lambda: True)
+    models = tmp_path / "models"
+    assert doctor.model_assets(models)["whisper-turbo"] is False
+    folder = models / "whisper-large-v3-turbo"; folder.mkdir(parents=True)
+    (folder / "weights.safetensors").write_bytes(b"w"); (folder / "tokenizer.json").write_text("{}")
+    assert doctor.model_assets(models) == {"gemma": False, "aligner": False, "whisper-turbo": True, "vad": True}

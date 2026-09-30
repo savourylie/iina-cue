@@ -29,6 +29,15 @@ def _vad_ready() -> bool:
     path = vad_model_path()
     return path.is_file() and not path.is_symlink() and file_sha256(path) == VAD_MODEL_SHA256
 
+def model_assets(models: Path) -> dict:
+    """Which pinned model files are in place; the hearing engine needs its weights and tokenizer."""
+    whisper = models / "whisper-large-v3-turbo"
+    return {"gemma": (models / "gemma/gemma-4-E2B-it.litertlm").is_file(),
+            "aligner": (models / "aligner/model.safetensors").is_file(),
+            "whisper-turbo": (whisper / "weights.safetensors").is_file() and (whisper / "tokenizer.json").is_file(),
+            "vad": _vad_ready()}
+
+
 def doctor(models: Path) -> dict:
     versions = {}
     for name in ("litert-lm-api", "mlx", "mlx-audio", "numpy", "lingua-language-detector", "transformers", "soundfile", "onnxruntime"):
@@ -48,7 +57,6 @@ def doctor(models: Path) -> dict:
             "embedded_mpv": "not_run: inspect mpv-version through smoke plugin",
             "ffmpeg": _ffmpeg_version(),
             "packages": versions,
-            "model_assets": {"gemma": (models/"gemma/gemma-4-E2B-it.litertlm").is_file(), "aligner": (models/"aligner/model.safetensors").is_file(),
-                             "vad": _vad_ready()},
+            "model_assets": model_assets(models),
             "free_disk_bytes": shutil.disk_usage(models.parent if models.parent.exists() else Path.cwd()).free,
             "live_inference": "not_run", "telemetry": False}
