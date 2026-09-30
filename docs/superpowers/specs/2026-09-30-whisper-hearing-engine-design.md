@@ -46,7 +46,7 @@ The download, verification, resume, cancel and disk checks are the existing ones
 
 ## Plugin
 
-No change. The setup credits list is built from the manifest's asset repositories, so both Whisper repositories appear. The memory floor stays 16 GB (`min_ram_bytes` unchanged).
+No new control. The setup screen's credit line is hand-written in `plugin/sidebar.html` with link ids resolved in `main.ts` (`openCreditLink`), so it gains one entry: “Whisper large-v3-turbo (OpenAI, MIT; MLX conversion by mlx-community)” with links to both repositories, plus its string in `strings.ts`. The memory floor stays 16 GB (`min_ram_bytes` unchanged).
 
 ## Documentation and licences
 
