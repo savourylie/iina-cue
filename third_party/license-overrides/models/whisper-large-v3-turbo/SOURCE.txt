@@ -1,0 +1,9 @@
+Repository: mlx-community/whisper-large-v3-turbo
+Revision: a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb
+Processor files: openai/whisper-large-v3-turbo at revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9
+Model card license field: mit (declared by openai/whisper-large-v3-turbo; the MLX conversion's card carries no license field)
+Gated: no
+Neither revision's file list has a LICENSE file.
+The conversion's README says the weights were converted from openai/whisper-large-v3-turbo.
+The LICENSE file beside this note is the MIT License, which that field names.
+This note is not legal advice.

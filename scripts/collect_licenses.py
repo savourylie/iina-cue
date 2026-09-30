@@ -174,6 +174,7 @@ def model_needles(project: Path) -> dict[str, str]:
         gemma = assets["gemma"]["revision"]
         gemma_e4b = assets["gemma-e4b"]["revision"]
         aligner = assets["aligner"]["revision"]
+        whisper = assets["whisper-turbo"]["revision"]
     except KeyError as error:
         fail(f"models/manifest.json is missing {error}")
     return {
@@ -181,19 +182,22 @@ def model_needles(project: Path) -> dict[str, str]:
         "gemma-4-e4b": gemma_e4b,
         "qwen3-forced-aligner-0.6b": "Qwen/Qwen3-ForcedAligner-0.6B",
         "qwen3-forced-aligner-0.6b-4bit": aligner,
+        "whisper-large-v3-turbo": whisper,
     }
 
 
-def copy_models(project: Path, output: Path, apache: Path) -> None:
+def copy_models(project: Path, output: Path, apache: Path, mit: Path) -> None:
     root = project / "third_party" / "license-overrides" / "models"
     for name, needle in model_needles(project).items():
         source = root / name / "SOURCE.txt"
         require_text(source, needle)
-        require_text(source, "apache-2.0")
+        licence = mit if "license field: mit" in source.read_text() else apache
+        if licence is apache:
+            require_text(source, "apache-2.0")
         destination = output / "models" / name
         destination.mkdir(parents=True)
         copy_bytes(source, destination / "SOURCE.txt")
-        copy_bytes(apache, destination / "LICENSE")
+        copy_bytes(licence, destination / "LICENSE")
 
 
 def copy_ffmpeg(ffmpeg_root: Path, output: Path) -> None:
@@ -250,6 +254,8 @@ def collect(prefix: Path, output: Path, project: Path, ffmpeg_root: Path | None,
     overrides = project / "third_party" / "license-overrides"
     apache = overrides / "apache-2.0.txt"
     require_text(apache, "Apache License")
+    mit = overrides / "mit.txt"
+    require_text(mit, "MIT License")
     require_text(overrides / "gpl-3.0.txt", "GNU GENERAL PUBLIC LICENSE")
     require_text(overrides / "mpl-2.0.txt", "Mozilla Public License")
     require_text(overrides / "soynlp" / "LICENSE", "LESSER GENERAL PUBLIC LICENSE")
@@ -263,7 +269,7 @@ def collect(prefix: Path, output: Path, project: Path, ffmpeg_root: Path | None,
     require_text(python_license, "Python")
     (output / "python").mkdir()
     copy_bytes(python_license, output / "python" / "LICENSE.txt")
-    copy_models(project, output, apache)
+    copy_models(project, output, apache, mit)
     if ffmpeg_root is not None:
         copy_ffmpeg(ffmpeg_root, output)
     if vad_root is not None:

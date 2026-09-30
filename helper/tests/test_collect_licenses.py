@@ -188,3 +188,14 @@ def test_notices_name_the_silero_vad_model_and_its_hashes():
     notice = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
     assert VAD_MODEL_SHA256 in notice and VAD_WHEEL_SHA256 in notice
     assert "Silero Team" in notice and "onnxruntime" in notice
+
+
+def test_whisper_notice_ships_with_the_mit_text_and_both_pinned_revisions(tmp_path):
+    prefix = make_prefix(tmp_path, [("Widget", "1.2.3", "widget license\n")])
+    output = tmp_path / "licenses"
+    result = run(prefix, output)
+    assert result.returncode == 0, result.stderr
+    assert "MIT License" in (output / "models" / "whisper-large-v3-turbo" / "LICENSE").read_text()
+    source = (output / "models" / "whisper-large-v3-turbo" / "SOURCE.txt").read_text()
+    assert "a4aaeec0636e6fef84abdcbe3544cb2bf7e9f6fb" in source and "41f01f3fe87f28c78e2fbf8b568835947dd65ed9" in source
+    assert "Apache License" in (output / "models" / "gemma-4-e2b" / "LICENSE").read_text()
