@@ -8,9 +8,12 @@ class FakeQwen:
         self.calls.append((audio, kwargs))
         return type('Out',(),{'text':' Hello, Hansen. '})()
 
+def model_dir(tmp_path, name='qwen', family='qwen3_asr'):
+    path=tmp_path/name; path.mkdir(exist_ok=True); (path/'config.json').write_text('{"model_type": "%s"}' % family); return path
+
 def test_mlx_asr_maps_languages_and_passes_a_names_hint(tmp_path):
     fake=FakeQwen()
-    asr=MlxAsr(tmp_path/'qwen', loader=lambda path: fake)
+    asr=MlxAsr(model_dir(tmp_path), loader=lambda path: fake)
     assert asr.transcribe(tmp_path/'a.wav','en')=='Hello, Hansen.'
     assert fake.calls[-1]==(str(tmp_path/'a.wav'),{'language':'English'})
     asr.transcribe(tmp_path/'a.wav','auto',names=['Nash','Hansen'])
@@ -21,18 +24,18 @@ def test_mlx_asr_maps_languages_and_passes_a_names_hint(tmp_path):
 def test_mlx_asr_rejects_empty_output_unknown_sources_and_a_model_that_will_not_load(tmp_path):
     class Empty:
         def generate(self, audio, **kwargs): return type('Out',(),{'text':'   '})()
-    asr=MlxAsr(tmp_path/'qwen', loader=lambda path: Empty())
+    asr=MlxAsr(model_dir(tmp_path), loader=lambda path: Empty())
     with pytest.raises(CueError) as exc: asr.transcribe(tmp_path/'a.wav','en')
     assert exc.value.code=='ASR_FAILED'
     with pytest.raises(CueError) as exc: asr.transcribe(tmp_path/'a.wav','xx')
     assert exc.value.code=='INVALID_SETTINGS'
     def broken(path): raise RuntimeError('no metal')
-    with pytest.raises(CueError) as exc: MlxAsr(tmp_path/'qwen', loader=broken).load()
+    with pytest.raises(CueError) as exc: MlxAsr(model_dir(tmp_path), loader=broken).load()
     assert exc.value.code=='MODEL_LOAD_FAILED'
 
 def test_a_whisper_model_gets_language_codes_timestamps_and_the_previous_text_as_its_prompt(tmp_path):
     fake=FakeQwen()
-    asr=MlxAsr(tmp_path/'whisper', loader=lambda path: fake, family='whisper')
+    asr=MlxAsr(model_dir(tmp_path, 'whisper', 'whisper'), loader=lambda path: fake)
     asr.transcribe(tmp_path/'a.wav','ja')
     # Before anything was heard there is no prompt: Whisper echoed a seed sentence as speech (会話の).
     assert fake.calls[-1][1]=={'language':'ja','return_timestamps':True,'verbose':False}
@@ -43,7 +46,7 @@ def test_a_whisper_model_gets_language_codes_timestamps_and_the_previous_text_as
     assert kw['language'] is None and kw['initial_prompt']==earlier[-220:] and 'Names' not in kw['initial_prompt'] and 'system_prompt' not in kw
 
 def test_qwen_keeps_its_names_hint_and_ignores_the_previous_text(tmp_path):
-    fake=FakeQwen(); asr=MlxAsr(tmp_path/'qwen', loader=lambda path: fake, family='qwen3_asr')
+    fake=FakeQwen(); asr=MlxAsr(model_dir(tmp_path), loader=lambda path: fake)
     asr.transcribe(tmp_path/'a.wav','en',names=['Nash'],previous='Earlier.')
     assert fake.calls[-1][1]['language']=='English' and 'Nash' in fake.calls[-1][1]['system_prompt'] and 'initial_prompt' not in fake.calls[-1][1]
 
@@ -53,3 +56,10 @@ def test_the_model_family_is_read_from_the_config_file(tmp_path):
     assert MlxAsr(tmp_path/'w', loader=lambda p: FakeQwen()).family=='whisper'
     assert MlxAsr(tmp_path/'q', loader=lambda p: FakeQwen()).family=='qwen3_asr'
     assert MlxAsr(tmp_path/'none', loader=lambda p: FakeQwen()).family=='qwen3_asr'
+
+
+def test_a_missing_hearing_model_is_setup_required_not_a_load_failure(tmp_path):
+    with pytest.raises(CueError) as exc: MlxAsr(tmp_path/'whisper-large-v3-turbo', loader=lambda p: FakeQwen()).load()
+    assert exc.value.code=='SETUP_REQUIRED'
+    asr=MlxAsr(model_dir(tmp_path, 'whisper-large-v3-turbo', 'whisper'), loader=lambda p: FakeQwen()); asr.load()
+    assert asr.model is not None and asr.family=='whisper'

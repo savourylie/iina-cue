@@ -34,6 +34,10 @@ class MlxAsr:
     def load(self) -> None:
         if self.model is not None:
             return
+        if not (self.path / "config.json").is_file():
+            # The engine is a pinned first-run asset: its absence is a setup state, never a
+            # reason to hear with Gemma instead.
+            raise CueError("SETUP_REQUIRED", f"hearing model missing: {self.path.name}")
         if self._loader is None:
             from mlx_audio.stt.utils import load_model
             self._loader = lambda path: load_model(str(path))
