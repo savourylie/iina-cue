@@ -66,6 +66,8 @@ def coalesce_until_collapse(units: list[Unit]) -> tuple[list[Unit], int | None, 
 
     No duration is guessed or distributed. A zero-length token is included in
     an adjacent multi-token span; raw standalone zero intervals stay invalid.
+    It joins the next word when that stays within three tokens and 1.5 s, and
+    otherwise the previous word if it sits exactly at that word's end.
     Stops at the first run that cannot be placed and returns the units before
     it, the time where that run begins, and why. A trailing run also drops the
     word before it, because that word's end was stretched over the run.
@@ -76,21 +78,45 @@ def coalesce_until_collapse(units: list[Unit]) -> tuple[list[Unit], int | None, 
         if u.start_ms == u.end_ms:
             pending.append(u)
             continue
-        if pending:
-            if len(pending) > 3 or u.end_ms-pending[0].start_ms > 1500:
+        if pending and (len(pending) > 3 or u.end_ms-pending[0].start_ms > 1500):
+            pending = _merge_endings(out, pending)
+            if pending and (len(pending) > 3 or u.end_ms-pending[0].start_ms > 1500):
                 return out, pending[0].start_ms, "collapsed alignment span"
+        if pending:
             u = Unit(pending[0].start_ms, u.end_ms, " ".join(x.text for x in pending)+" "+u.text, ("quantized_tokens_coalesced",))
             pending = []
         out.append(u)
-    if pending:
-        if not out or len(pending) > 3 or pending[-1].end_ms-out[-1].start_ms > 1500:
+    if pending and (not out or len(pending) > 3 or pending[-1].end_ms-out[-1].start_ms > 1500):
+        pending = _merge_endings(out, pending)
+        if pending and (not out or len(pending) > 3 or pending[-1].end_ms-out[-1].start_ms > 1500):
             if not out:
                 return [], pending[0].start_ms, "collapsed trailing alignment"
             stretched = out.pop()
             return out, stretched.start_ms, "collapsed trailing alignment"
+    if pending:
         last=out.pop()
         out.append(Unit(last.start_ms, max(last.end_ms,pending[-1].end_ms), last.text+" "+" ".join(u.text for u in pending), ("quantized_tokens_coalesced",)))
     return out, None, None
+
+def _merge_endings(out: list[Unit], pending: list[Unit]) -> list[Unit]:
+    """Merge zero-length tokens that sit exactly at the previous word's end into that word.
+
+    The aligner leaves endings it cannot separate (a particle, the rest of a split
+    number) at the end of the word they belong to. That word's measured span is kept;
+    at most three such tokens join it, and only a word of at most 1.5 s, the bound of
+    every merged span. A longer word was stretched over the run and takes nothing.
+    Returns the tokens that are left.
+    """
+    if not out or out[-1].end_ms-out[-1].start_ms > 1500:
+        return pending
+    at_end = 0
+    while at_end < len(pending) and pending[at_end].start_ms == out[-1].end_ms:
+        at_end += 1
+    if not 1 <= at_end <= 3:
+        return pending
+    last = out.pop()
+    out.append(Unit(last.start_ms, last.end_ms, last.text+" "+" ".join(x.text for x in pending[:at_end]), ("quantized_tokens_coalesced",)))
+    return pending[at_end:]
 
 def coalesce_quantized_units(units: list[Unit]) -> list[Unit]:
     """All-or-nothing form of coalesce_until_collapse: any collapse fails the window."""

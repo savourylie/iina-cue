@@ -273,3 +273,28 @@ def test_a_lowercase_continuation_bridges_a_longer_pause():
     # The lowercase bridge has its own limit, and a finished sentence is never bridged.
     assert [u.text for u in sentence_units([Cue('a',0,1600,'Wait'),Cue('b',5000,5400,'for me.')],'zh-TW')[0]]==['Wait','for me.']
     assert [u.text for u in sentence_units([Cue('a',0,1600,'Wait.'),Cue('b',3680,4080,'for me.')],'zh-TW')[0]]==['Wait.','for me.']
+
+def test_zero_length_endings_at_the_previous_word_merge_into_it_when_the_next_word_is_too_far():
+    # "悪くないじゃん。 と、正三郎は思った": the aligner gives じゃん no length at the end of
+    # ない, and a pause follows. The ending belongs to the word it sits on.
+    units=[Unit(480,880,'悪く'),Unit(880,1040,'ない'),Unit(1040,1040,'じゃん'),Unit(4000,4200,'と'),Unit(4300,5000,'正三郎')]
+    kept,cut,reason=coalesce_until_collapse(units)
+    assert (cut,reason)==(None,None)
+    assert kept==[Unit(480,880,'悪く'),Unit(880,1040,'ない じゃん',('quantized_tokens_coalesced',)),Unit(4000,4200,'と'),Unit(4300,5000,'正三郎')]
+
+def test_split_digits_at_the_previous_word_merge_back_and_a_later_token_still_merges_forward():
+    # "はい、450円。え?": 450円 is split into four tokens, three of them left at the end of 4.
+    units=[Unit(1440,1920,'4'),Unit(1920,1920,'5'),Unit(1920,1920,'0'),Unit(1920,1920,'円'),Unit(3360,3360,'え'),Unit(3400,3600,'いくら')]
+    kept,cut,_=coalesce_until_collapse(units)
+    assert cut is None
+    assert kept==[Unit(1440,1920,'4 5 0 円',('quantized_tokens_coalesced',)),Unit(3360,3600,'え いくら',('quantized_tokens_coalesced',))]
+
+def test_more_than_three_endings_at_one_word_still_collapse():
+    units=[Unit(0,500,'x'),Unit(500,500,'a'),Unit(500,500,'b'),Unit(500,500,'c'),Unit(500,500,'d'),Unit(3000,3200,'y')]
+    kept,cut,reason=coalesce_until_collapse(units)
+    assert (kept,cut,reason)==([Unit(0,500,'x')],500,'collapsed alignment span')
+
+def test_a_word_stretched_past_one_and_a_half_seconds_takes_no_endings():
+    units=[Unit(0,300,'a'),Unit(300,2300,'long'),Unit(2300,2300,'x'),Unit(5000,5200,'b')]
+    kept,cut,reason=coalesce_until_collapse(units)
+    assert (kept,cut,reason)==([Unit(0,300,'a'),Unit(300,2300,'long')],2300,'collapsed alignment span')
