@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after
+from .core import Cue, CueError, Unit, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -148,6 +148,19 @@ class Pipeline:
                         timings["boundary_discarded_units"] = len(crossing)
                     if committed_end <= start: raise CueError("ALIGNMENT_FAILED", "unresolved boundary made no progress")
                     committed = [u for u in units if u.end_ms+zero <= committed_end]
+                    previous_cues = job.get("previous_source", [])
+                    if previous_cues:
+                        # Two windows can measure the word on the seam differently. If the first
+                        # owned word crosses the previous cue's end, start it there: that end is
+                        # the previous window's measurement of where this word begins. A word
+                        # longer than 1.5 s from there was stretched, and still fails below.
+                        prior_end = previous_cues[-1]["end_ms"]-zero
+                        first = next((i for i, u in enumerate(committed) if (u.start_ms+u.end_ms)/2 >= start-zero), None)
+                        if first is not None:
+                            u = committed[first]
+                            if u.start_ms < prior_end-160 and prior_end < u.end_ms <= prior_end+1500:
+                                committed[first] = Unit(prior_end, u.end_ms, u.text, (*u.quality_flags, "start_from_previous_cue"))
+                                timings["start_from_previous_cue_ms"] = prior_end-u.start_ms
                     source = assemble(committed, zero, start, committed_end, job["source_profile"], verbatim=punctuated is not None)
                     source, timings["boundary_reused_ms"] = reconcile_boundary(source, [Cue(**c) for c in job.get("previous_source", [])])
                     if source and known_right:

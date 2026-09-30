@@ -349,3 +349,23 @@ def test_skipped_words_that_do_not_open_the_transcript_fail_the_window(monkeypat
     with pytest.raises(CueError) as exc:
         p.run(job)
     assert exc.value.code=='ALIGNMENT_FAILED'
+
+def test_a_first_word_straddling_the_previous_cue_end_starts_at_that_end(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    # "At Marcellus' request.": the previous window committed up to "Marcellus'" and
+    # measured "request" starting at its end; this window places the word 580 ms earlier.
+    job['range']=[10000,20000]; job['previous_source']=[asdict(Cue(id='p',start_ms=8000,end_ms=9900,text="At Marcellus'"))]
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':'request. Have you met Mia?'
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(320,1680,'request'),Unit(4400,4560,'Have'),Unit(4560,4700,'you'),Unit(4700,4900,'met'),Unit(4900,5300,'Mia')],None,[])
+    result=p.run(job)
+    assert result['source'][0]['start_ms']==9900 and result['source'][0]['text'].startswith('request')
+    assert result['timings']['start_from_previous_cue_ms']==580
+
+def test_a_first_word_stretched_far_past_the_previous_cue_still_fails_the_window(monkeypatch,tmp_path):
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,20000]; job['previous_source']=[asdict(Cue(id='p',start_ms=8000,end_ms=9900,text='The game is flawed.'))]
+    p.backend.transcribe=lambda a,source='auto',names=(),previous='':'Gentlemen, the great John Nash.'
+    p.backend.align=lambda a,t,l,partial=False,left_ms=0:([Unit(0,8640,'Gentlemen'),Unit(8720,8800,'the'),Unit(8960,9200,'great'),Unit(9360,9760,'John'),Unit(9840,9990,'Nash')],None,[])
+    with pytest.raises(CueError) as exc:
+        p.run(job)
+    assert exc.value.code=='ALIGNMENT_FAILED'
