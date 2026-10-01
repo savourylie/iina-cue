@@ -9,13 +9,13 @@ import {t} from "./strings";
  * partial file from either one. The SHA-256 decides, not the host.
  */
 export const RUNTIME_ARCHIVE_URLS = [
-  "https://huggingface.co/onionmonster/cue-runtime/resolve/dcf288cca59483d3b562af9ad04403384c327e56/runtime-0.1.9.tar.xz",
-  "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.9/runtime-0.1.9.tar.xz",
+  "https://huggingface.co/onionmonster/cue-runtime/resolve/4348edce611dfffd245fce87c1db5ef2970aad4e/runtime-0.1.10.tar.xz",
+  "https://github.com/savourylie/iina-cue/releases/download/runtime-0.1.10/runtime-0.1.10.tar.xz",
 ] as const;
-export const RUNTIME_ARCHIVE_SHA256 = "8f4d4dda2358d767fcb84a4739c6533195cd9aaa80d6756735a531e43a33a68e";
-export const RUNTIME_ARCHIVE_BYTES = 283954324;
+export const RUNTIME_ARCHIVE_SHA256 = "073f81902f6fe3568c7f0b04ecf7b2b4238e46049cfca196c5c4c2099654e6ee";
+export const RUNTIME_ARCHIVE_BYTES = 284013672;
 /** The runtime this plugin installs. An installed helper that reports an older version is offered an update. */
-export const RUNTIME_VERSION = "0.1.9";
+export const RUNTIME_VERSION = "0.1.10";
 /** Named for its version: another version's partial download must never be resumed into this one. */
 export const RUNTIME_PARTIAL = `runtime-${RUNTIME_VERSION}.tar.xz.partial`;
 
