@@ -119,3 +119,7 @@ test('the playhead in a failed hole or a range skipped for language gets its own
   assert.equal(holeAt(snapshot, 30000), null);
   assert.equal(holeAt({}, 30000), null);
 });
+
+test('a missing model points to setup in the sidebar, where it happens', () => {
+  assert.equal(errorStatus('SETUP_REQUIRED').detail, "Cue's local models are not installed. Finish setup in Cue's sidebar, then retry.");
+});

@@ -69,7 +69,7 @@ export const en = {
   "stage.translating": "Translating timed captions",
 
   "error.SETUP_REQUIRED": "Setup needed",
-  "error.SETUP_REQUIRED.detail": "Cue's local models are not installed. Finish setup from Cue's preferences, then retry.",
+  "error.SETUP_REQUIRED.detail": "Cue's local models are not installed. Finish setup in Cue's sidebar, then retry.",
   "error.LANGUAGE_UNCERTAIN": "Language not detected",
   "error.LANGUAGE_UNCERTAIN.detail": "Choose the source language below, then retry.",
   "error.ALIGNMENT_LANGUAGE_UNSUPPORTED": "Language not supported",
@@ -176,6 +176,7 @@ export const en = {
   "sidebar.reloadDiagnostic": "100 subtitle reloads (test media)",
   "sidebar.setupTitle": "Set up Cue",
   "sidebar.setupIntro": "Cue downloads about 5.5 GB to this Mac and needs free disk space for that download. The helper and the speech models come from Hugging Face, with a backup copy of the helper on GitHub. Everything runs on this Mac.",
+  "sidebar.setupIntroModels": "Cue needs about {size} of speech models that are not on this Mac yet. They come from Hugging Face, and everything runs on this Mac.",
   "sidebar.setupDisk": "Needs about {size} of free disk space.",
   "sidebar.setupBytes": "{done} of {total} ({percent}%)",
   "sidebar.setupDownload": "Download",

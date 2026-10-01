@@ -63,6 +63,11 @@ export function setupView(input: {
   mode?: "setup" | "update";
   /** The update's download size, shown before it starts. */
   updateBytes?: number;
+  /**
+   * Model bytes still missing from a Mac whose helper is installed; null or absent on a
+   * first run, which also downloads the helper and keeps the first-run intro.
+   */
+  missingModels?: number | null;
 }): SetupView {
   const update = input.mode === "update";
   const offer = input.phase === "update";
@@ -89,7 +94,8 @@ export function setupView(input: {
     showControls: !showCard || update,
     ready: input.phase === "done",
     title: t(!update ? "sidebar.setupTitle" : input.phase === "failed" ? "sidebar.updateFailedTitle" : "sidebar.updateTitle"),
-    intro: update ? "" : t("sidebar.setupIntro"),
+    intro: update ? "" : input.missingModels == null ? t("sidebar.setupIntro")
+      : input.missingModels > 0 ? t("sidebar.setupIntroModels", {size: formatBytes(input.missingModels)}) : "",
     credits: !update,
     primary: nothingToFetch ? t("sidebar.setupContinue") : input.phase === "download" ? t("sidebar.setupDownload")
       : input.phase === "failed" ? t("sidebar.setupRetry") : null,

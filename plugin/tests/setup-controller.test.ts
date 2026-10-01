@@ -233,3 +233,39 @@ test('after the runtime download, the card says it is unpacking instead of sitti
   assert.equal(posts[unpackAt].progress, null);
   assert.ok(posts.slice(unpackAt).every((view) => view.bytes === ''));
 });
+
+test('a first run keeps its intro once its helper answers; later the card asks only for what is missing', async () => {
+  let installed = false;
+  let fetched = false;
+  const posts: any[] = [];
+  const controller = createSetupController({
+    rpc: async (_method, _path, body) => {
+      if (!installed) throw new Error('SETUP_REQUIRED');
+      if (body?.action === 'start') fetched = true;
+      // The download stops partway; the helper keeps what it fetched.
+      return {files_ready: false, bytes_total: 5_182_597_643, bytes_needed: fetched ? 2_000_000_000 : 5_182_597_643, free_disk_bytes: 9e9,
+              progress: {phase: fetched ? 'interrupted' : 'idle', bytes_done: fetched ? 3_182_597_643 : 0, bytes_total: 5_182_597_643}};
+    },
+    post: (view) => posts.push(view), facts: async () => ({...facts, bytesNeeded: 5_466_551_967}), wait: async () => {},
+    installRuntime: async () => { installed = true; return {ok: true}; },
+  });
+  await controller.refresh();
+  await controller.start();
+  const intros = [...new Set(posts.map((view) => view.intro))];
+  assert.deepEqual(intros.length, 1, intros.join(' | '));
+  assert.match(intros[0], /downloads about 5\.5 GB/);
+  await controller.refresh();
+  assert.match(posts[posts.length - 1].intro, /^Cue needs about 2\.0 GB of speech models/);
+});
+
+test('with every file already on this Mac, the card describes no download', async () => {
+  const posts: any[] = [];
+  const controller = createSetupController({
+    rpc: async () => ({files_ready: true, bytes_total: 100, bytes_needed: 0, free_disk_bytes: 9e9, progress: {phase: 'idle'}}),
+    post: (view) => posts.push(view), facts: async () => facts, wait: async () => {},
+    installRuntime: async () => ({ok: true}),
+  });
+  await controller.refresh();
+  assert.equal(posts[0].primary, 'Continue');
+  assert.equal(posts[0].intro, '');
+});

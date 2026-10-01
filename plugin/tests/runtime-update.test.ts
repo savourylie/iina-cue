@@ -309,3 +309,38 @@ test('an update on a Mac with little free space is not mistaken for a first-run 
   assert.ok(!posts.some((view) => /disk space/.test(view.detail)), posts.map((view) => view.detail).join(' | '));
   assert.equal(posts[posts.length - 1].ready, true);
 });
+
+test('an update whose new helper needs a speech model this Mac lacks asks before downloading it', async () => {
+  const helper = installedHelper('0.1.6');
+  const missing = 1_620_000_000;
+  let downloaded = false;
+  let finished = 0;
+  const posts: any[] = [];
+  const controller = createSetupController({
+    rpc: async (method, path, body) => {
+      const answer = await helper.rpc(method, path, body);
+      if (body?.action === 'start') downloaded = true;
+      // The new helper's manifest names a model the old helper's did not.
+      if (helper.state.version === '0.1.6' || downloaded) return answer;
+      return {...answer, files_ready: false, bytes_needed: missing, progress: {phase: 'idle', bytes_done: 0, bytes_total: 0}};
+    },
+    post: (view) => posts.push(view), facts: async () => facts, wait: async () => {},
+    installRuntime: async (onProgress, onUnpack) => { onProgress(runtime.bytes, runtime.bytes); onUnpack(); helper.state.version = '0.1.9'; return {ok: true}; },
+    helper: helper.helper, runtime, updateFinished: () => { finished++; },
+  });
+  await controller.start();
+  assert.ok(!helper.state.calls.some((call) => /actions (start|resume)/.test(call)), 'pressing Update agreed to the runtime download only');
+  assert.equal(helper.state.smoked, 0);
+  assert.equal(finished, 1, 'the update has ended, so windows may use the helper again');
+  const ask = posts[posts.length - 1];
+  assert.equal(ask.showCard, true);
+  assert.equal(ask.title, 'Set up Cue');
+  assert.equal(ask.primary, 'Download');
+  assert.equal(ask.intro, 'Cue needs about 1.6 GB of speech models that are not on this Mac yet. They come from Hugging Face, and everything runs on this Mac.');
+  assert.equal(ask.detail, 'Needs about 1.6 GB of free disk space.');
+  // Download then fetches the missing model with the helper already in place, and tries it.
+  await controller.start();
+  assert.ok(helper.state.calls.includes('POST /setup/actions start'));
+  assert.equal(helper.state.smoked, 1);
+  assert.equal(posts[posts.length - 1].ready, true);
+});

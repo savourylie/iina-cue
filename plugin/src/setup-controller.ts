@@ -43,6 +43,9 @@ export function createSetupController(host: SetupHost) {
   // An update is running; while the runtime is swapped, nothing may start the old helper again.
   let updating = false;
   let swapping = false;
+  // What the setup card offers to download. It is read while nothing runs and kept for a run,
+  // so the intro does not change once the helper starts answering or the download advances.
+  let missingModels: number | null = null;
 
   /**
    * Only Cue's installed runtime is replaced, and only by a newer one. A development
@@ -72,6 +75,7 @@ export function createSetupController(host: SetupHost) {
   async function publish(reason?: string, known?: SetupStatus | null) {
     const reported = known === undefined ? await helperStatus() : known;
     const status = reported ?? {};
+    if (!running) missingModels = offered(reported);
     const {bytesNeeded, result} = await gate(reported);
     const helperPhase = status.progress?.phase;
     const old = outdated(reported);
@@ -96,14 +100,21 @@ export function createSetupController(host: SetupHost) {
       reason: result.ok ? (reason ?? status.smoke?.reason) : result.reason,
       mode: updating || old ? "update" : "setup",
       updateBytes: host.runtime?.bytes,
+      missingModels,
     });
     previous = phase;
     host.post(view);
     return view;
   }
 
-  async function runSetup() {
+  /** A helper that answers is installed, so only its missing models remain; no answer is a first run. */
+  function offered(reported: SetupStatus | null): number | null {
+    return reported && typeof reported.bytes_needed === "number" ? reported.bytes_needed : null;
+  }
+
+  async function runSetup(): Promise<SetupView | null> {
     let first = await helperStatus();
+    missingModels = offered(first);
     const {result} = await gate(first);
     if (!result.ok) return publish(undefined, first);
     started = true;
@@ -127,6 +138,9 @@ export function createSetupController(host: SetupHost) {
         first = await helperStatus();
         // Retry then installs the published runtime again.
         if (!first) return publish(t("sidebar.updateNoHelper"), null);
+        // A newer helper can need speech models this Mac does not have. Pressing Update agreed
+        // to the runtime's download only, so setup's own card asks before those download.
+        if (!first.files_ready) { started = false; return null; }
       }
     } else {
       await publish(undefined, first);
@@ -165,10 +179,13 @@ export function createSetupController(host: SetupHost) {
       startInstall(true);
       if (running) return;
       running = true;
-      try { return await runSetup(); } finally {
+      let view: SetupView | null;
+      try { view = await runSetup(); } finally {
         running = false;
         if (updating) { updating = false; host.updateFinished?.(); }
       }
+      // An update that stopped before a model download shows setup's card once it has ended.
+      return view ?? publish();
     },
   };
 }
