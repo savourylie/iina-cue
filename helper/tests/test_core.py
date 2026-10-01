@@ -325,3 +325,21 @@ def test_the_transcript_after_skipped_words_keeps_its_punctuation_and_must_match
     assert transcript_after('一発でガロス粉々になるの。いくらするの?',[Unit(0,0,x) for x in ['一','発','で','ガロス','粉々','に','なる','の']])=='いくらするの?'
     assert transcript_after('Hello world',[Unit(0,0,'Nash')]) is None
     assert transcript_after('Nash',[Unit(0,0,'Nash')])==''
+
+def test_a_caseless_line_after_an_unfinished_one_bridges_the_same_longer_pause():
+    # "本当にトニー滝谷 … だった。": the aligner places the sentence end 2.3 s late. Japanese has
+    # no lowercase to say "this continues", so an unfinished previous line says it instead.
+    cues=[Cue('a',195280,196800,'本当にトニー滝谷'),Cue('b',199120,199200,'だった。')]
+    units,continues=sentence_units(cues,'zh-TW')
+    assert [(u.start_ms,u.end_ms,u.text) for u in units]==[(195280,199200,'本当にトニー滝谷だった。')] and continues==frozenset()
+    # A finished line is never bridged, and longer lines keep the 3 s limit.
+    assert len(sentence_units([Cue('a',0,1600,'渡った。'),Cue('b',3000,3500,'激しい戦争の時代を、')],'zh-TW')[0])==2
+    assert len(sentence_units([Cue('a',0,1600,'またいるよ'),Cue('b',8000,8400,'ねえ')],'zh-TW')[0])==2
+
+def test_a_short_sentence_tail_rejoins_its_unfinished_line_within_the_unit_cap():
+    # "東京から中国に渡っ … た。": the last syllable of 渡った lands 4.6 s late as an 80 ms blip.
+    cues=[Cue('a',227600,229360,'東京から中国に渡っ'),Cue('b',234000,234080,'た。')]
+    assert [u.text for u in sentence_units(cues,'zh-TW')[0]]==['東京から中国に渡った。']
+    # Never past the seven-second unit cap, and English keeps its own rules.
+    assert len(sentence_units([Cue('a',0,1600,'渡っ'),Cue('b',7200,7280,'た。')],'zh-TW')[0])==2
+    assert len(sentence_units([Cue('a',0,1600,'Wait'),Cue('b',5000,5080,'no.')],'zh-TW')[0])==2

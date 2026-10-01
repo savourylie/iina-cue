@@ -293,6 +293,11 @@ def join_texts(texts: list[str]) -> str:
 SENTENCE_GAP_MS = 1500
 # A cue that starts in lowercase continues the sentence, so it bridges a longer pause.
 CONTINUATION_GAP_MS = 3000
+# Japanese and Chinese have no lowercase; after an unfinished line, a line in those
+# scripts gets the same bridge. A short tail that ends the sentence (だった。, た。) is
+# the aligner placing a sentence's last syllables late, and rejoins within the unit cap.
+CASELESS_START = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+TAIL_MAX_CHARS = 4
 SENTENCE_MAX_MS = 7000
 SENTENCE_MAX_WIDTH = 84
 
@@ -306,9 +311,11 @@ def sentence_units(cues: list[Cue], target: str) -> tuple[list[Cue], frozenset[s
     groups: list[list[Cue]] = []
     current: list[Cue] = []
     for cue in cues:
-        gap_limit = CONTINUATION_GAP_MS if cue.text[:1].islower() else SENTENCE_GAP_MS
+        caseless = CASELESS_START.match(cue.text) is not None
+        gap_limit = CONTINUATION_GAP_MS if cue.text[:1].islower() or caseless else SENTENCE_GAP_MS
+        tail = caseless and _sentence_end(cue.text) and len(re.sub(r"[\W_]", "", cue.text)) <= TAIL_MAX_CHARS
         if current and (_sentence_end(current[-1].text)
-                        or cue.start_ms - current[-1].end_ms > gap_limit
+                        or (cue.start_ms - current[-1].end_ms > gap_limit and not tail)
                         or cue.end_ms - current[0].start_ms > SENTENCE_MAX_MS
                         or _subtitle_width(join_texts([c.text for c in [*current, cue]])) > SENTENCE_MAX_WIDTH):
             groups.append(current); current = []

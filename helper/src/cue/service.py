@@ -474,7 +474,7 @@ class Supervisor:
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
                                          "sentence-cues-v4", VAD_ID, self.speech_model_key(), self.asr_key()])
-                profile = digest([source_profile, settings.target, "translate-v3", glossary_hash(user_glossary)])
+                profile = digest([source_profile, settings.target, "translate-v4", glossary_hash(user_glossary)])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position, user_glossary=user_glossary)
                 self.cache.register(source_profile, media.signature, "original")
                 self.cache.register(profile, media.signature, settings.target)
