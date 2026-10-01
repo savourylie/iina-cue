@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Unit, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after, join_texts
+from .core import Cue, CueError, Unit, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after, join_texts, continues_after
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -27,6 +27,9 @@ def build_context(units: list[Cue], continues: frozenset[str], job: dict, langua
     previous_texts = [source for source, _ in previous]
     new_names, variants = proper_nouns(texts, previous_texts, known, language, exact=builtin)
     taken = frozenset([*user.values(), *builtin.values(), *(rendering for _, rendering, *_ in learned)])
+    if units and previous_source and continues_after(previous_source[-1], units[0]):
+        # The previous window ended mid-sentence and this one opens with its continuation.
+        continues = continues | {units[0].id}
     return TranslationContext(previous=tuple(previous), glossary=select_entries(user, learned, texts, previous_texts, builtin),
                               variants=variants, new_names=tuple(new_names), continues=continues, taken=taken)
 

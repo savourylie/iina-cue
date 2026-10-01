@@ -301,6 +301,25 @@ TAIL_MAX_CHARS = 4
 SENTENCE_MAX_MS = 7000
 SENTENCE_MAX_WIDTH = 84
 
+def _sentence_tail(text: str) -> bool:
+    """A few caseless characters that end a sentence: the aligner's late-placed last syllables."""
+    return (CASELESS_START.match(text) is not None and _sentence_end(text)
+            and len(re.sub(r"[\W_]", "", text)) <= TAIL_MAX_CHARS)
+
+def continues_after(previous: Cue, cue: Cue) -> bool:
+    """Whether cue continues the sentence previous left unfinished, across a pause.
+
+    A lowercase start says so in English. Japanese and Chinese have no case, so a line
+    in those scripts gets the same bridge, and a sentence tail bridges up to the unit cap.
+    """
+    if _sentence_end(previous.text):
+        return False
+    gap = cue.start_ms - previous.end_ms
+    caseless = CASELESS_START.match(cue.text) is not None
+    if gap <= (CONTINUATION_GAP_MS if cue.text[:1].islower() or caseless else SENTENCE_GAP_MS):
+        return True
+    return _sentence_tail(cue.text) and gap <= SENTENCE_MAX_MS
+
 def sentence_units(cues: list[Cue], target: str) -> tuple[list[Cue], frozenset[str]]:
     """Merge fragment cues into sentence units for translation.
 
@@ -311,14 +330,18 @@ def sentence_units(cues: list[Cue], target: str) -> tuple[list[Cue], frozenset[s
     groups: list[list[Cue]] = []
     current: list[Cue] = []
     for cue in cues:
-        caseless = CASELESS_START.match(cue.text) is not None
-        gap_limit = CONTINUATION_GAP_MS if cue.text[:1].islower() or caseless else SENTENCE_GAP_MS
-        tail = caseless and _sentence_end(cue.text) and len(re.sub(r"[\W_]", "", cue.text)) <= TAIL_MAX_CHARS
-        if current and (_sentence_end(current[-1].text)
-                        or (cue.start_ms - current[-1].end_ms > gap_limit and not tail)
-                        or cue.end_ms - current[0].start_ms > SENTENCE_MAX_MS
-                        or _subtitle_width(join_texts([c.text for c in [*current, cue]])) > SENTENCE_MAX_WIDTH):
-            groups.append(current); current = []
+        if current:
+            fits = lambda group: (cue.end_ms - group[0].start_ms <= SENTENCE_MAX_MS
+                                  and _subtitle_width(join_texts([c.text for c in [*group, cue]])) <= SENTENCE_MAX_WIDTH)
+            if not continues_after(current[-1], cue):
+                groups.append(current); current = []
+            elif not fits(current):
+                # Keep a sentence's tail with the line it finishes: split one line earlier
+                # when that makes room within the cap.
+                if _sentence_tail(cue.text) and len(current) > 1 and fits(current[-1:]):
+                    groups.append(current[:-1]); current = current[-1:]
+                else:
+                    groups.append(current); current = []
         current.append(cue)
     if current:
         groups.append(current)

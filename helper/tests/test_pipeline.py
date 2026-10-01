@@ -375,3 +375,11 @@ def test_a_first_word_stretched_far_past_the_previous_cue_still_fails_the_window
     with pytest.raises(CueError) as exc:
         p.run(job)
     assert exc.value.code=='ALIGNMENT_FAILED'
+
+def test_a_window_whose_first_line_finishes_the_previous_windows_sentence_says_so():
+    from cue.pipeline import build_context
+    job={'previous_source':[asdict(Cue(id='p',start_ms=388000,end_ms=392360,text='天外孤独の実'))],'previous_rendered':[]}
+    units=[Cue('t',392360,392440,'になった。'),Cue('n',395000,397000,'それから')]
+    assert build_context(units,frozenset(),job,'ja').continues==frozenset({'t'})
+    job['previous_source']=[asdict(Cue(id='p',start_ms=388000,end_ms=392360,text='天外孤独の実だった。'))]
+    assert build_context(units,frozenset(),job,'ja').continues==frozenset()

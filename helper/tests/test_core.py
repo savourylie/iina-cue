@@ -343,3 +343,18 @@ def test_a_short_sentence_tail_rejoins_its_unfinished_line_within_the_unit_cap()
     # Never past the seven-second unit cap, and English keeps its own rules.
     assert len(sentence_units([Cue('a',0,1600,'渡っ'),Cue('b',7200,7280,'た。')],'zh-TW')[0])==2
     assert len(sentence_units([Cue('a',0,1600,'Wait'),Cue('b',5000,5080,'no.')],'zh-TW')[0])==2
+
+def test_when_the_unit_cap_would_strand_a_tail_the_unit_splits_one_line_earlier():
+    # A 7.8 s unit would break the cap, so the tail goes with the line it finishes.
+    cues=[Cue('a',191440,193600,'トニー滝谷の本当の名前は、'),Cue('b',195280,196800,'本当にトニー滝谷'),Cue('c',199120,199200,'だった。')]
+    units,continues=sentence_units(cues,'zh-TW')
+    assert [(u.start_ms,u.end_ms,u.text) for u in units]==[(191440,193600,'トニー滝谷の本当の名前は、'),(195280,199200,'本当にトニー滝谷だった。')]
+    assert continues=={units[1].id}
+
+def test_a_line_continues_an_unfinished_previous_one_by_the_same_rules_across_windows():
+    from cue.core import continues_after
+    assert continues_after(Cue('p',0,1600,'天外孤独の実'),Cue('t',4000,4200,'になった。'))
+    assert continues_after(Cue('p',0,1600,'Wait'),Cue('t',2800,3200,'for me.'))
+    assert not continues_after(Cue('p',0,1600,'渡った。'),Cue('t',2000,2400,'激しい'))
+    assert not continues_after(Cue('p',0,1600,'Wait'),Cue('t',3600,4000,'Nash is here.'))
+    assert not continues_after(Cue('p',0,1600,'またいるよ'),Cue('t',8000,8400,'ねえ'))
