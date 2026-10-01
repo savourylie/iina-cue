@@ -370,3 +370,24 @@ def test_a_dedicated_asr_engine_reaches_the_worker_and_the_source_profile(sup,mo
     monkeypatch.setattr(cue.setupflow,'speech_model_path',lambda models,manifest,model_id:tmp_path/'gemma.litertlm')
     sup.start_worker()
     assert started['started'] and started['args'][-1]=='/models/qwen3-asr-1.7b-4bit'
+
+def test_with_a_hearing_engine_the_translating_model_keys_only_the_translation(sup,monkeypatch,tmp_path):
+    video=tmp_path/'film.mp4';video.touch()
+    media=Media(str(video),'sig',1,'stream',100000,0,1,1)
+    monkeypatch.setattr(Media,'open',classmethod(lambda cls,path,hint:media))
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    model={'key':'e2b@r2'}
+    monkeypatch.setattr(sup,'speech_model_key',lambda:model['key'])
+    def create(request_id):
+        snap=sup.request('POST','/v1/sessions',{'request_id':request_id,'path':str(video),'settings':{'target':'zh-TW'}},'a')
+        return sup.sessions[snap['session_id']]
+    sup.asr='/models/whisper-large-v3-turbo'
+    monkeypatch.setattr(sup,'asr_key',lambda:'asr:whisper-turbo@r1')
+    e2b=create('one'); model['key']='e4b@r4'; e4b=create('two')
+    # Whisper hears either way: switching E2B and E4B keeps the transcript and redoes the translation.
+    assert e2b.source_profile==e4b.source_profile and e2b.profile!=e4b.profile
+    sup.asr=None
+    monkeypatch.setattr(sup,'asr_key',lambda:'')
+    model['key']='e2b@r2'; heard_by_e2b=create('three'); model['key']='e4b@r4'; heard_by_e4b=create('four')
+    # When Gemma hears, its model is part of the transcript.
+    assert heard_by_e2b.source_profile!=heard_by_e4b.source_profile

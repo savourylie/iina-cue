@@ -470,11 +470,13 @@ class Supervisor:
                 media = Media.open(body["path"], body.get("track", {}))
                 position = integer(body.get("position_ms", 0), upper=media.duration_ms)
                 user_glossary = load_user_glossary(media.path, self.root, settings.target)
+                # With a hearing engine, Gemma only translates: its model keys the translation, not
+                # the transcript, so switching E2B and E4B in Advanced keeps what was already heard.
                 source_profile = digest([media.stream_key, self.manifest_hash, settings.source,
                                          settings.first_ms, settings.window_ms, settings.context_ms,
                                          "pipeline-v3" if settings.source == "auto" else "pipeline-v4-manual-asr",
-                                         "sentence-cues-v4", VAD_ID, self.speech_model_key(), self.asr_key()])
-                profile = digest([source_profile, settings.target, "translate-v5", glossary_hash(user_glossary)])
+                                         "sentence-cues-v4", VAD_ID, "" if self.asr else self.speech_model_key(), self.asr_key()])
+                profile = digest([source_profile, settings.target, "translate-v5", glossary_hash(user_glossary), self.speech_model_key()])
                 s = Session(opaque(), client, media, settings, source_profile, profile, position, user_glossary=user_glossary)
                 self.cache.register(source_profile, media.signature, "original")
                 self.cache.register(profile, media.signature, settings.target)
