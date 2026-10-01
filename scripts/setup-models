@@ -13,7 +13,7 @@ parser.add_argument("--accept-download", action="store_true", help="Consent afte
 args = parser.parse_args()
 manifest = json.loads((ROOT/"models/manifest.json").read_text())
 total = sum(f["bytes"] for a in manifest["assets"] for f in a["files"])
-print(f"Download: {total:,} bytes. Allow 6 GB free for assets and runtime. No microphone or administrator permission.")
+print(f"Download: {total:,} bytes. Allow 7 GB free for assets and runtime. No microphone or administrator permission.")
 for a in manifest["assets"]: print(f"Source: https://huggingface.co/{a['repository']}/tree/{a['revision']}")
 print("Pinned model cards declare Apache 2.0 (Gemma, Qwen aligner) and MIT (Whisper). Read THIRD_PARTY_NOTICES.md before consenting. The notices are not legal advice.")
 if not args.accept_download: raise SystemExit("Review the plan, then rerun with --accept-download to consent.")

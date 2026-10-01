@@ -11,7 +11,7 @@ The IINA plugin archive contains this project's JavaScript, HTML, and manifest. 
 - `THIRD_PARTY_NOTICES.md` — this file.
 - `python/LICENSE.txt` — the CPython license from the standalone interpreter.
 - `packages/<distribution>/` — license files for every third-party distribution installed in that runtime. `licenses/index.txt` lists each distribution, its version, and whether the file came from the wheel or from an exact-version override. The build fails when a third-party distribution has no recoverable license file.
-- `models/` — license text for the pinned Gemma 4 E2B and E4B and Qwen3 ForcedAligner artifacts, and for the Silero VAD model. The Gemma and Qwen weights are not inside the runtime; downloading them remains a separate consent step. E4B is downloaded only when the user chooses it in Advanced. The Silero VAD model is inside the runtime as `vad/silero_vad.onnx`.
+- `models/` — license text for the pinned Gemma 4 E2B and E4B, Qwen3 ForcedAligner and Whisper large-v3-turbo artifacts, and for the Silero VAD model. The Gemma, Qwen and Whisper weights are not inside the runtime; downloading them remains a separate consent step. E4B is downloaded only when the user chooses it in Advanced. The Silero VAD model is inside the runtime as `vad/silero_vad.onnx`.
 - `ffmpeg/` — present when the static LGPL FFmpeg build is included. It contains FFmpeg's LGPL-2.1 text, the source URL, the SHA-256, the version, and the configure flags.
 - `common/MPL-2.0.txt` — the Mozilla Public License 2.0. The certifi and tqdm wheels incorporate that license by reference; their own files are still copied under `packages/`.
 
