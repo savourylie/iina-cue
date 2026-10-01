@@ -310,6 +310,12 @@ def test_the_transcriber_gets_the_text_heard_before_the_window(monkeypatch,tmp_p
     job['previous_source']=[asdict(Cue(id='a',start_ms=8000,end_ms=8500,text='Earlier line.')),asdict(Cue(id='b',start_ms=8500,end_ms=9000,text='And another.'))]
     p.run(job)
     assert p.backend.previous[-1]=='Earlier line. And another.'
+    # Japanese is written without spaces; a spaced prompt would teach Whisper to space its output.
+    p,job=setup_pipeline(monkeypatch,tmp_path)
+    job['range']=[10000,20000]
+    job['previous_source']=[asdict(Cue(id='a',start_ms=8000,end_ms=8500,text='トニー滝谷の本当の名前は、')),asdict(Cue(id='b',start_ms=8500,end_ms=9000,text='本当にトニー滝谷'))]
+    p.run(job)
+    assert p.backend.previous[-1]=='トニー滝谷の本当の名前は、本当にトニー滝谷'
     p,job=setup_pipeline(monkeypatch,tmp_path)
     p.run(job)
     assert p.backend.previous[-1]==''

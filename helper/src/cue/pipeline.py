@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 from .backend import Backend
-from .core import Cue, CueError, Unit, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after
+from .core import Cue, CueError, Unit, PREVIOUS_PAIRS, Settings, SOURCE_LANGUAGES, TranslationContext, assemble, drop_seam_phantom, hold_back, pair_previous, sentence_units, validate_units, reconcile_boundary, restore_transcript, transcript_after, join_texts
 from .glossary import names_hint, proper_nouns, select_entries
 from .media import Media, extract
 from .vad import SileroVad
@@ -88,8 +88,10 @@ class Pipeline:
                     report("transcribing")
                     glossary = job.get("glossary") or {}
                     hint = names_hint(glossary.get("user", {}), glossary.get("learned", []))
-                    heard = " ".join(c["text"] for c in job.get("previous_source", []) if c.get("text")).strip()
-                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source, names=hint, previous=heard); timings["asr_s"] = time.monotonic()-t
+                    # What was heard just before this window, written as the language writes it:
+                    # a spaced Japanese prompt teaches Whisper to space its own output.
+                    earlier = join_texts([c["text"] for c in job.get("previous_source", []) if c.get("text")])
+                    t = time.monotonic(); transcript = self.backend.transcribe(wav, settings.source, names=hint, previous=earlier); timings["asr_s"] = time.monotonic()-t
                     report("identifying_language")
                     t = time.monotonic(); language = self.backend.language(transcript, settings.source); timings["lid_s"] = time.monotonic()-t
                     if settings.source == "auto" and language["code"] not in SOURCE_LANGUAGES:
