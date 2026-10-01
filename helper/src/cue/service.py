@@ -123,8 +123,9 @@ class Supervisor:
         with self.lock:
             if self.busy or self.sessions or self.smoking:
                 raise CueError("SETUP_BUSY", "close Cue in other windows, then retry")
-            self.smoking = True
+            # Started before the flag is set: a worker that cannot start leaves setup and captions free.
             self.start_worker()
+            self.smoking = True
             inbox, outbox, worker = self.inbox, self.outbox, self.worker
         try:
             inbox.put(job, timeout=5)
@@ -347,7 +348,10 @@ class Supervisor:
             retry = s.retry_window
             window = retry or next_window(ranges_merge([*s.prepared, *s.skipped_language, *s.failed]), s.position, s.media.duration_ms, s.settings, s.rate)
             if window is None: s.state = "idle"; return
-            self.start_worker()
+            # A worker that cannot start (no hearing model yet) is this session's error. Raised
+            # here it would leave the helper's main loop and stop the helper.
+            try: self.start_worker()
+            except CueError as exc: s.error = {"code": exc.code}; s.state = "error"; return
             job = {"job_id": opaque(), "session": s.id, "epoch": s.epoch, "source_profile": s.source_profile,
                    "profile": s.profile, "media": asdict(s.media), "settings": asdict(s.settings), "range": list(window), "attempt": 1 if retry else 0,
                    "min_commit_ms": s.settings.startup_ms if window[0] == s.position else MIN_KEPT_MS}

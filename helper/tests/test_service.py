@@ -391,3 +391,24 @@ def test_with_a_hearing_engine_the_translating_model_keys_only_the_translation(s
     model['key']='e2b@r2'; heard_by_e2b=create('three'); model['key']='e4b@r4'; heard_by_e4b=create('four')
     # When Gemma hears, its model is part of the transcript.
     assert heard_by_e2b.source_profile!=heard_by_e4b.source_profile
+
+def missing_hearing_model():
+    raise CueError('SETUP_REQUIRED','hearing model files are missing or incomplete')
+
+def test_a_worker_that_cannot_start_is_a_session_error_not_a_helper_exit(sup,monkeypatch):
+    # Seen on runtime 0.1.10 after an update from 0.1.9: captions resumed before Whisper was downloaded,
+    # the scheduler's worker start raised SETUP_REQUIRED, and the helper's main loop exited.
+    s=next(iter(sup.sessions.values()));sup.active=s.id
+    monkeypatch.setattr(Media,'unchanged',lambda self:True)
+    sup.inbox=queue.Queue();monkeypatch.setattr(sup,'start_worker',missing_hearing_model)
+    sup.tick()
+    assert s.state=='error' and s.error=={'code':'SETUP_REQUIRED'} and sup.inbox.empty()
+    assert sup.snapshot(s)['error']['code']=='SETUP_REQUIRED'
+
+def test_a_setup_job_whose_worker_cannot_start_leaves_setup_and_captions_free(sup,monkeypatch):
+    sup.sessions.clear();monkeypatch.setattr(sup,'start_worker',missing_hearing_model)
+    for _ in range(2):
+        # The second try gets the same answer, not SETUP_BUSY from a flag left behind.
+        with pytest.raises(CueError) as exc:sup.run_setup_job({'job_id':'setup-smoke'})
+        assert exc.value.code=='SETUP_REQUIRED'
+    assert sup.smoking is False
